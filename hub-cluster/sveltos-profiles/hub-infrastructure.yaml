@@ -49,3 +49,22 @@ spec:
         installCRDs: true
         nodeSelector:
           node-role.kubernetes.io/agent: ""
+
+    - repositoryURL: https://metallb.github.io/metallb
+      chartName: metallb
+      chartVersion: "0.14.x"
+      releaseName: metallb
+      releaseNamespace: metallb-system
+      values: |
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""
+
+    - repositoryURL: https://chisel-operator.github.io/charts
+      chartName: chisel-operator
+      chartVersion: "0.x"
+      releaseName: chisel-operator
+      releaseNamespace: chisel-operator-system
+      values: |
+        loadBalancerClass: chisel-operator.io/chisel-operator-class
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""

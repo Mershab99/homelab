@@ -19,6 +19,6 @@ spec:
     preferredAddressTypes:
       - InternalIP
   network:
+    serviceType: LoadBalancer
     serviceAnnotations:
       metallb.universe.tf/address-pool: virt-ip-pool
-    serviceType: LoadBalancer

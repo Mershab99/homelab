@@ -18,3 +18,10 @@ spec:
       chartVersion: "0.x"
       releaseName: chisel-operator
       releaseNamespace: chisel-operator-system
+      values: |
+        loadBalancerClass: chisel-operator.io/chisel-operator-class
+  policyRefs:
+    - kind: ConfigMap
+      name: chisel-exit-node-resources
+      namespace: projectsveltos
+      deploymentType: Remote

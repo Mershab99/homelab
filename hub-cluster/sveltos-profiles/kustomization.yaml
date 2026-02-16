@@ -6,3 +6,4 @@ resources:
   - workload-gpu.yaml
   - workload-knative.yaml
   - workload-ingress.yaml
+  - chisel-resources.yaml
