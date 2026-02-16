@@ -1,0 +1,12 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: workload-knative
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: workload
+  policyRefs:
+    - name: knative-operator-manifests
+      namespace: workload-addons
+      kind: ConfigMap

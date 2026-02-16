@@ -1,0 +1,14 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: workload-gpu
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: workload
+  helmCharts:
+    - repositoryURL: https://helm.ngc.nvidia.com/nvidia
+      chartName: gpu-operator
+      chartVersion: "24.x"
+      releaseName: gpu-operator
+      releaseNamespace: gpu-operator

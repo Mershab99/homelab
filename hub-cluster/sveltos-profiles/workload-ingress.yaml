@@ -1,0 +1,20 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: workload-ingress
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: workload
+  helmCharts:
+    - repositoryURL: https://gateway.envoyproxy.io/charts
+      chartName: gateway-helm
+      chartVersion: "1.x"
+      releaseName: envoy-gateway
+      releaseNamespace: envoy-gateway-system
+
+    - repositoryURL: https://chisel-operator.github.io/charts
+      chartName: chisel-operator
+      chartVersion: "0.x"
+      releaseName: chisel-operator
+      releaseNamespace: chisel-operator-system

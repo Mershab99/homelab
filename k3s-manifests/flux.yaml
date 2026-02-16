@@ -1,0 +1,26 @@
+# K3s HelmChart CRD — auto-installed when copied to
+# /var/lib/rancher/k3s/server/manifests/flux.yaml
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: flux
+  namespace: kube-system
+spec:
+  repo: https://fluxcd-community.github.io/helm-charts
+  chart: flux2
+  version: "2.x"
+  targetNamespace: flux-system
+  createNamespace: true
+  valuesContent: |
+    helmController:
+      nodeSelector:
+        node-role.kubernetes.io/agent: ""
+    kustomizeController:
+      nodeSelector:
+        node-role.kubernetes.io/agent: ""
+    sourceController:
+      nodeSelector:
+        node-role.kubernetes.io/agent: ""
+    notificationController:
+      nodeSelector:
+        node-role.kubernetes.io/agent: ""

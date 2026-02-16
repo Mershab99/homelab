@@ -1,0 +1,20 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: workload-networking
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: workload
+  helmCharts:
+    - repositoryURL: https://helm.cilium.io
+      chartName: cilium
+      chartVersion: "1.16.x"
+      releaseName: cilium
+      releaseNamespace: kube-system
+      values: |
+        hubble:
+          relay:
+            enabled: true
+          ui:
+            enabled: true

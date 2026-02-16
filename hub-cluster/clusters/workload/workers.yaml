@@ -1,0 +1,57 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: workload-workers
+  namespace: workload-cluster
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: workload
+      version: "v1.29.0"
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: KubeadmConfigTemplate
+          name: workload-worker-bootstrap
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: Metal3MachineTemplate
+        name: workload-worker-template
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: workload-worker-template
+  namespace: workload-cluster
+spec:
+  template:
+    spec:
+      image:
+        url: http://image-server.image-server.svc.cluster.local/ubuntu-20.04.raw
+        checksum: http://image-server.image-server.svc.cluster.local/ubuntu-20.04.raw.md5sum
+        checksumType: md5
+        format: raw
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: workload-worker-bootstrap
+  namespace: workload-cluster
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: ""
+      preKubeadmCommands:
+        # Install Cilium CNI binaries so the node can start networking
+        - |
+          CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+          curl -L --fail --remote-name-all \
+            https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
+          tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
+          rm cilium-linux-amd64.tar.gz

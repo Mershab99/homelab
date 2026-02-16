@@ -1,0 +1,22 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: homelab
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/<owner>/homelab.git
+  ref:
+    branch: main
+  secretRef:
+    name: homelab-git-auth
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: homelab-git-auth
+  namespace: flux-system
+type: Opaque
+stringData:
+  username: <CHANGE-ME>
+  password: <CHANGE-ME>  # GitHub PAT or deploy token

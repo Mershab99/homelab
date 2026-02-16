@@ -1,0 +1,49 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: hub-infrastructure
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: hub
+  helmCharts:
+    - repositoryURL: https://kubernetes-sigs.github.io/cluster-api-operator
+      chartName: cluster-api-operator
+      chartVersion: "0.15.x"
+      releaseName: capi-operator
+      releaseNamespace: capi-operator-system
+      values: |
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""
+
+    - repositoryURL: https://metal3-io.github.io/baremetal-operator/charts
+      chartName: baremetal-operator
+      chartVersion: "0.9.x"
+      releaseName: baremetal-operator
+      releaseNamespace: baremetal-operator-system
+      values: |
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""
+        ironic:
+          enabled: true
+          nodeSelector:
+            topology.homelab.dev/chassis: supermicro
+
+    - repositoryURL: https://clastix.github.io/charts
+      chartName: kamaji
+      chartVersion: "1.x"
+      releaseName: kamaji
+      releaseNamespace: kamaji-system
+      values: |
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""
+
+    - repositoryURL: https://charts.jetstack.io
+      chartName: cert-manager
+      chartVersion: "1.16.x"
+      releaseName: cert-manager
+      releaseNamespace: cert-manager
+      values: |
+        installCRDs: true
+        nodeSelector:
+          node-role.kubernetes.io/agent: ""

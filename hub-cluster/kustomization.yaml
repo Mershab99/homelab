@@ -1,0 +1,115 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-sources
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/sources
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-sveltos-profiles
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/sveltos-profiles
+  prune: true
+  dependsOn:
+    - name: hub-sources
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-capi-providers
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/capi-providers
+  prune: true
+  dependsOn:
+    - name: hub-sveltos-profiles
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-kamaji
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/kamaji
+  prune: true
+  dependsOn:
+    - name: hub-sveltos-profiles
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-baremetalhosts
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/baremetalhosts
+  prune: true
+  dependsOn:
+    - name: hub-sveltos-profiles
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-workload-cluster
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/clusters/workload
+  prune: true
+  dependsOn:
+    - name: hub-capi-providers
+    - name: hub-kamaji
+    - name: hub-baremetalhosts
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-image-server
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/image-server
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: hub-vyos
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./hub-cluster/vyos
+  prune: true
