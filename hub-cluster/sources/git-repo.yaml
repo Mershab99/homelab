@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: https://github.com/<owner>/homelab.git
+  url: https://github.com/mershab99/homelab.git
   ref:
     branch: main
   secretRef:

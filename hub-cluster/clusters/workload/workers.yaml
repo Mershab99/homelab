@@ -46,4 +46,5 @@ spec:
       joinConfiguration:
         nodeRegistration:
           kubeletExtraArgs:
-            cloud-provider: ""
+            #cloud-provider: ""
+            max-pods: "250"

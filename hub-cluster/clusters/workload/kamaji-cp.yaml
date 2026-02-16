@@ -7,10 +7,18 @@ spec:
   replicas: 1
   version: "v1.29.0"
   dataStoreName: default
+#  networkProfile:
+#    port: 6443
+#    podCidr: "10.244.0.0/16"
+#    serviceCidr: "10.96.0.0/12"
   addons:
     coreDNS: {}
-    konnectivity:
-      server:
-        port: 8132
-      agent:
-        mode: DaemonSet
+    konnectivity: {}
+  kubelet:
+    cgroupfs: systemd
+    preferredAddressTypes:
+      - InternalIP
+  network:
+    serviceAnnotations:
+      metallb.universe.tf/address-pool: virt-ip-pool
+    serviceType: LoadBalancer
