@@ -7,3 +7,10 @@ spec:
   replicas: 1
   version: "v1.29.0"
   dataStoreName: default
+  addons:
+    coreDNS: {}
+    konnectivity:
+      server:
+        port: 8132
+      agent:
+        mode: DaemonSet

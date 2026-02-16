@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
   - hub-infrastructure.yaml
   - hub-rancher.yaml
-  - workload-networking.yaml
   - workload-gpu.yaml
   - workload-knative.yaml
   - workload-ingress.yaml

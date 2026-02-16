@@ -88,26 +88,48 @@ tasks:
       - vyos:clone
       - vyos:docker-image
     cmds:
+      # Use a Docker volume for the build workspace — bind mounts on macOS
+      # (virtiofs) don't support mknod, which debootstrap requires.
+      - docker volume create vyos-build-{{.VYOS_BRANCH}} || true
+      # Copy source into the volume
       - |
-        cd {{.VYOS_BUILD_DIR}}
+        docker run --rm \
+          --platform linux/amd64 \
+          -v {{.VYOS_BUILD_DIR}}:/src:ro \
+          -v vyos-build-{{.VYOS_BRANCH}}:/vyos \
+          vyos/vyos-build:{{.VYOS_BRANCH}} \
+          bash -c "rsync -a --delete /src/ /vyos/"
+      # Build inside the volume
+      - |
         docker run --rm --privileged \
-          -v {{.VYOS_BUILD_DIR}}:/vyos \
+          --platform linux/amd64 \
+          -v vyos-build-{{.VYOS_BRANCH}}:/vyos \
           -w /vyos \
           vyos/vyos-build:{{.VYOS_BRANCH}} \
           sudo ./build-vyos-image {{.VYOS_BUILD_TYPE}} \
             --architecture {{.VYOS_ARCH}} \
             --build-by "homelab@local" \
             --build-comment "Homelab VyOS build" \
+            --build-type release \
             --version "{{.VYOS_BRANCH}}-$(date +%Y%m%d)"
+      # Copy ISO out of the volume to host
+      - mkdir -p {{.VYOS_BUILD_DIR}}/build
+      - |
+        docker run --rm \
+          --platform linux/amd64 \
+          -v vyos-build-{{.VYOS_BRANCH}}:/vyos:ro \
+          -v {{.VYOS_BUILD_DIR}}/build:/out \
+          vyos/vyos-build:{{.VYOS_BRANCH}} \
+          bash -c "cp /vyos/build/live-image-*.hybrid.iso /out/ 2>/dev/null && echo 'ISO copied' || echo 'ERROR: ISO not found in build output' && exit 1"
       - |
         ISO=$(ls {{.VYOS_BUILD_DIR}}/build/live-image-*.hybrid.iso 2>/dev/null | head -1)
         if [ -n "$ISO" ]; then
           echo ""
           echo "=== VyOS ISO Built ==="
           ls -lh "$ISO"
-          md5sum "$ISO"
+          md5sum "$ISO" 2>/dev/null || md5 "$ISO"
         else
-          echo "ERROR: ISO not found in build output"
+          echo "ERROR: ISO not found"
           exit 1
         fi
     status:
@@ -124,12 +146,13 @@ tasks:
   vyos:docker-image:
     desc: Pull the VyOS build container image
     cmds:
-      - docker pull vyos/vyos-build:{{.VYOS_BRANCH}}
+      - docker pull --platform linux/amd64 vyos/vyos-build:{{.VYOS_BRANCH}}
 
   vyos:clean:
     desc: Clean VyOS build artifacts (keep clone)
     cmds:
       - rm -rf {{.VYOS_BUILD_DIR}}/build
+      - docker volume rm vyos-build-{{.VYOS_BRANCH}} 2>/dev/null || true
 
   # ──────────────────────────────────────────────
   #  Ubuntu 20.04 Cloud Image for Metal3

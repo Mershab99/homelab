@@ -13,6 +13,8 @@ spec:
       releaseName: capi-operator
       releaseNamespace: capi-operator-system
       values: |
+        addon:
+          helm: {}
         nodeSelector:
           node-role.kubernetes.io/agent: ""
 

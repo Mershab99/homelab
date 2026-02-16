@@ -5,3 +5,4 @@ resources:
   - cluster.yaml
   - kamaji-cp.yaml
   - workers.yaml
+  - cilium.yaml

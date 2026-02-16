@@ -47,11 +47,3 @@ spec:
         nodeRegistration:
           kubeletExtraArgs:
             cloud-provider: ""
-      preKubeadmCommands:
-        # Install Cilium CNI binaries so the node can start networking
-        - |
-          CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-          curl -L --fail --remote-name-all \
-            https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-amd64.tar.gz
-          tar xzvf cilium-linux-amd64.tar.gz -C /usr/local/bin
-          rm cilium-linux-amd64.tar.gz
