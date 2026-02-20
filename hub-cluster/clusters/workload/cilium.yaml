@@ -9,7 +9,7 @@ spec:
       cluster-type: workload
   repoURL: https://helm.cilium.io
   chartName: cilium
-  version: "1.16.4"
+  version: "1.19.1"
   releaseName: cilium
   releaseNamespace: kube-system
   options:

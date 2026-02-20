@@ -8,3 +8,9 @@ spec:
     service:
       spec:
         loadBalancerClass: chisel-operator.io/chisel-operator-class
+    api:
+      dashboard: true
+      insecure: true
+    providers:
+      kubernetesGateway:
+        enabled: true

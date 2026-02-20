@@ -7,11 +7,28 @@ spec:
     matchLabels:
       cluster-type: workload
   helmCharts:
-    - repositoryURL: https://gateway.envoyproxy.io/charts
-      chartName: gateway-helm
-      chartVersion: "1.x"
-      releaseName: envoy-gateway
-      releaseNamespace: envoy-gateway-system
+    - repositoryURL: https://traefik.github.io/charts
+      chartName: traefik
+      chartVersion: "39.x"
+      releaseName: traefik
+      releaseNamespace: traefik-system
+      values: |
+        service:
+          spec:
+            loadBalancerClass: chisel-operator.io/chisel-operator-class
+        ingressRoute:
+          dashboard:
+            enabled: false
+        api:
+          dashboard: true
+          insecure: true
+        providers:
+          kubernetesGateway:
+            enabled: true
+          knative:
+            enabled: true
+        experimental:
+          knative: true
 
     - repositoryURL: https://chisel-operator.github.io/charts
       chartName: chisel-operator
@@ -23,5 +40,9 @@ spec:
   policyRefs:
     - kind: ConfigMap
       name: chisel-exit-node-resources
+      namespace: projectsveltos
+      deploymentType: Remote
+    - kind: ConfigMap
+      name: traefik-dashboard-resources
       namespace: projectsveltos
       deploymentType: Remote

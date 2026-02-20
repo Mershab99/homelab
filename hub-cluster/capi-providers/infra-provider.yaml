@@ -3,7 +3,7 @@ kind: InfrastructureProvider
 metadata:
   name: metal3
 spec:
-  version: v1.9.0
+  version: v1.12.2
   deployment:
     spec:
       template:

@@ -9,7 +9,7 @@ spec:
   helmCharts:
     - repositoryURL: https://releases.rancher.com/server-charts/stable
       chartName: rancher
-      chartVersion: "2.10.x"
+      chartVersion: "2.13.x"
       releaseName: rancher
       releaseNamespace: cattle-system
       values: |
@@ -20,7 +20,7 @@ spec:
 
     - repositoryURL: https://rancher.github.io/turtles
       chartName: rancher-turtles
-      chartVersion: "0.13.x"
+      chartVersion: "0.25.x"
       releaseName: rancher-turtles
       releaseNamespace: rancher-turtles-system
       values: |

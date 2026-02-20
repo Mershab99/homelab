@@ -6,7 +6,14 @@ spec:
   clusterSelector:
     matchLabels:
       cluster-type: workload
+  helmCharts:
+    - repositoryURL: https://knative.github.io/operator
+      chartName: knative-operator
+      chartVersion: "1.x"
+      releaseName: knative-operator
+      releaseNamespace: knative-operator
   policyRefs:
-    - name: knative-operator-manifests
-      namespace: workload-addons
+    - name: knative-serving-resources
+      namespace: projectsveltos
       kind: ConfigMap
+      deploymentType: Remote

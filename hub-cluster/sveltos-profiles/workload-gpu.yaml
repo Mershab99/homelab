@@ -9,6 +9,6 @@ spec:
   helmCharts:
     - repositoryURL: https://helm.ngc.nvidia.com/nvidia
       chartName: gpu-operator
-      chartVersion: "24.x"
+      chartVersion: "25.x"
       releaseName: gpu-operator
       releaseNamespace: gpu-operator
