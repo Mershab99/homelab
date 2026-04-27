@@ -3,6 +3,8 @@ kind: ClusterProfile
 metadata:
   name: hub-rancher
 spec:
+  dependsOn:
+    - hub-certmanager
   clusterSelector:
     matchLabels:
       cluster-type: hub

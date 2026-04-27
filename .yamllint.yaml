@@ -1,0 +1,31 @@
+extends: default
+
+ignore: |
+  .build/
+  gen/iso/
+  hub-cluster/
+  k3s-manifests/
+  workload-apps/
+
+rules:
+  line-length:
+    max: 200
+    level: warning
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  truthy:
+    allowed-values: ['true', 'false', 'on', 'off']
+    check-keys: false
+  document-start:
+    present: false
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  empty-lines:
+    max: 2
+    max-end: 1

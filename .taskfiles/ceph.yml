@@ -1,0 +1,19 @@
+# Rook-Ceph operations (Phase 5+).
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  status:
+    desc: 'ceph status via Rook toolbox (Phase 5+)'
+    cmds:
+      - kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
+
+  health:
+    desc: ceph health detail
+    cmds:
+      - kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph health detail
+
+  osd:
+    desc: ceph osd tree
+    cmds:
+      - kubectl -n rook-ceph exec deploy/rook-ceph-tools -- ceph osd tree

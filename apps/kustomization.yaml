@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Phase 4+ — tenant clusters and workload manifests:
+#   tenants/<name> (Cluster + KamajiControlPlane + MachineDeployment),
+#   workloads/<name> (apps targeted by Sveltos selectors).
+resources: []

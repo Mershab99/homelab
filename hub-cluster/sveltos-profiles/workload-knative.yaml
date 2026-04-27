@@ -3,6 +3,8 @@ kind: ClusterProfile
 metadata:
   name: workload-knative
 spec:
+  dependsOn:
+    - workload-ingress
   clusterSelector:
     matchLabels:
       cluster-type: workload

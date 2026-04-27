@@ -1,0 +1,22 @@
+[tools]
+"go-task" = "3.40.1"
+flux2 = "2.4.0"
+talosctl = "1.9.1"
+kubectl = "1.31.4"
+helm = "3.16.4"
+kustomize = "5.5.0"
+sops = "3.9.2"
+age = "1.2.0"
+k9s = "0.32.7"
+yq = "4.44.6"
+clusterctl = "1.9.0"
+kubeconform = "0.6.7"
+yamllint = "1.35.1"
+gitleaks = "8.21.2"
+"npm:@hadolint/hadolint" = "2.12.1-r0"
+oras = "1.2.0"
+
+[env]
+KUBECONFIG = ".kubeconfig"
+TALOSCONFIG = ".talosconfig"
+SOPS_AGE_KEY_FILE = "${HOME}/.config/sops/age/keys.txt"

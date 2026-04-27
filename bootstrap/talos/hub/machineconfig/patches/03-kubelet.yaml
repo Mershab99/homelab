@@ -1,0 +1,18 @@
+# Kubelet — extra mounts for Cilium, nodeIP pinned to VLAN 10 mgmt address.
+machine:
+  kubelet:
+    nodeIP:
+      validSubnets:
+        - 10.10.10.0/24
+    extraMounts:
+      # Cilium needs cgroup access for KubeProxyReplacement.
+      - destination: /sys/fs/cgroup
+        type: cgroup2
+        source: /sys/fs/cgroup
+        options:
+          - rbind
+          - rshared
+          - rw
+    extraConfig:
+      maxPods: 250
+      serializeImagePulls: false

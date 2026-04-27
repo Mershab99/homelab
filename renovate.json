@@ -1,0 +1,86 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Amsterdam",
+  "labels": ["dependencies"],
+  "kubernetes": {
+    "fileMatch": [
+      "infrastructure/.+\\.ya?ml$",
+      "platform/.+\\.ya?ml$",
+      "fleet/.+\\.ya?ml$",
+      "apps/.+\\.ya?ml$",
+      "sources/.+\\.ya?ml$"
+    ]
+  },
+  "helm-values": {
+    "fileMatch": [
+      "infrastructure/.+/values\\.ya?ml$"
+    ]
+  },
+  "flux": {
+    "fileMatch": [
+      "infrastructure/.+\\.ya?ml$",
+      "sources/.+\\.ya?ml$"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "Platform components — manual review required",
+      "matchPackageNames": [
+        "/cilium/",
+        "/talos/",
+        "/sidero/",
+        "/cluster-api/",
+        "/capi/",
+        "/kamaji/",
+        "/projectsveltos/",
+        "/sveltos/",
+        "/kubevirt/",
+        "/cdi/",
+        "/rook/",
+        "/cert-manager/",
+        "/flux/"
+      ],
+      "labels": ["dependencies", "platform"],
+      "automerge": false,
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "App charts — auto-merge minor and patch",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "matchPaths": ["apps/**"],
+      "automerge": true,
+      "automergeType": "branch",
+      "labels": ["dependencies", "apps"]
+    },
+    {
+      "description": "GitHub Actions — auto-merge minor and patch",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "branch"
+    },
+    {
+      "description": "Pin Helm chart digests for supply-chain protection",
+      "matchManagers": ["helm-values", "flux"],
+      "pinDigests": true
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": false
+  },
+  "ignorePaths": [
+    ".build/**",
+    "gen/**",
+    "hub-cluster/**",
+    "k3s-manifests/**",
+    "workload-apps/**"
+  ]
+}

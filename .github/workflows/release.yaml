@@ -1,0 +1,109 @@
+name: release
+
+# Cuts a GitHub release with the hub ISO + schematic JSON attached.
+# Triggered when talos-images.yaml completes successfully on a tag push.
+
+on:
+  workflow_run:
+    workflows: ['talos-images']
+    types: [completed]
+    branches-ignore: ['**']  # tags only
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_branch, 'talos-image-')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ github.event.workflow_run.head_branch }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          VERSION="${TAG#talos-image-}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download hub ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: talos-hub-iso
+          path: artifacts/hub
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download infra artifact bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: talos-infra-images
+          path: artifacts/infra
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate combined SHA256SUMS
+        run: |
+          set -e
+          mkdir -p release
+          cp artifacts/hub/talos-hub.iso release/
+          cp artifacts/hub/talos-hub.iso.sha256 release/
+          cp artifacts/hub/schematic.yaml release/hub-schematic.yaml
+          cp artifacts/hub/hub-schematic-id.txt release/
+
+          if [ -d artifacts/infra ]; then
+            cp -r artifacts/infra/infra release/infra 2>/dev/null || true
+            cp artifacts/infra/schematic.yaml release/infra-schematic.yaml 2>/dev/null || true
+            cp artifacts/infra/infra-schematic-id.txt release/ 2>/dev/null || true
+          fi
+
+          cd release
+          find . -type f -not -name SHA256SUMS -exec sha256sum {} \; | sort > SHA256SUMS
+          ls -lh
+
+      - name: Compose release notes
+        id: notes
+        run: |
+          HUB_ID=$(cat release/hub-schematic-id.txt 2>/dev/null || echo unknown)
+          INFRA_ID=$(cat release/infra-schematic-id.txt 2>/dev/null || echo unknown)
+          {
+            echo "## Talos images — ${{ steps.tag.outputs.version }}"
+            echo
+            echo "Built via Talos Image Factory (https://factory.talos.dev)."
+            echo
+            echo "### Hub"
+            echo "- Schematic ID: \`$HUB_ID\`"
+            echo "- ISO: \`talos-hub.iso\`"
+            echo "- Flash: \`sudo dd if=talos-hub.iso of=/dev/diskN bs=4M status=progress\`"
+            echo "- Network config NOT baked into the ISO; applied at first boot via:"
+            echo "  \`task talos:hub:apply NODE=<dhcp-ip> INSECURE=true\`"
+            echo
+            echo "### Infra (Sidero)"
+            echo "- Schematic ID: \`$INFRA_ID\`"
+            echo "- OCI artifact: \`ghcr.io/${{ github.repository }}/talos-infra:${INFRA_ID}\`"
+            echo "- Direct factory URLs: see \`infra-schematic-id.txt\`"
+            echo
+            echo "### Verification"
+            echo "Compare downloaded files against \`SHA256SUMS\`."
+          } > release/notes.md
+          cat release/notes.md
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            --title "Talos images ${{ steps.tag.outputs.version }}" \
+            --notes-file release/notes.md \
+            --target "${{ github.event.workflow_run.head_sha }}" \
+            release/talos-hub.iso \
+            release/talos-hub.iso.sha256 \
+            release/hub-schematic.yaml \
+            release/infra-schematic.yaml \
+            release/SHA256SUMS

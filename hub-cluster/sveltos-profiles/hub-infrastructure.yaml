@@ -3,6 +3,8 @@ kind: ClusterProfile
 metadata:
   name: hub-infrastructure
 spec:
+  dependsOn:
+    - hub-certmanager
   clusterSelector:
     matchLabels:
       cluster-type: hub
@@ -37,16 +39,6 @@ spec:
       releaseName: kamaji
       releaseNamespace: kamaji-system
       values: |
-        nodeSelector:
-          node-role.kubernetes.io/agent: ""
-
-    - repositoryURL: https://charts.jetstack.io
-      chartName: cert-manager
-      chartVersion: "1.19.x"
-      releaseName: cert-manager
-      releaseNamespace: cert-manager
-      values: |
-        installCRDs: true
         nodeSelector:
           node-role.kubernetes.io/agent: ""
 

@@ -1,1 +1,12 @@
 .build/
+.env
+gen/iso/
+gen/talos-hub-machineconfig.yaml.bak
+*.iso
+*.raw
+*.qcow2
+*.kubeconfig
+.kubeconfig
+.talosconfig
+age.key
+*.age.key

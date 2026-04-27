@@ -1,0 +1,13 @@
+creation_rules:
+  - path_regex: ^secrets/.*\.ya?ml$
+    encrypted_regex: ^(data|stringData|password|token|api[Kk]ey|secret|.*[Pp]assword|.*[Tt]oken)$
+    age: >-
+      age1placeholder000000000000000000000000000000000000000000000000000
+
+  - path_regex: ^bootstrap/talos/.*/secrets\.yaml\.sops$
+    age: >-
+      age1placeholder000000000000000000000000000000000000000000000000000
+
+  - path_regex: ^.*\.sops\.ya?ml$
+    age: >-
+      age1placeholder000000000000000000000000000000000000000000000000000

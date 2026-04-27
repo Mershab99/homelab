@@ -1,0 +1,40 @@
+# SOPS encrypt / decrypt / rotate helpers.
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  encrypt:
+    desc: 'Encrypt a file in place (FILE=path/to/secret.yaml)'
+    preconditions:
+      - sh: test -n "$FILE"
+        msg: 'FILE=<path> required'
+      - sh: test -f "$FILE"
+        msg: 'File "$FILE" not found'
+    cmds:
+      - sops --encrypt --in-place "$FILE"
+
+  decrypt:
+    desc: 'Decrypt a file to stdout (FILE=path/to/secret.yaml)'
+    preconditions:
+      - sh: test -n "$FILE"
+        msg: 'FILE=<path> required'
+    cmds:
+      - sops --decrypt "$FILE"
+
+  rotate:
+    desc: Rotate the SOPS data keys for every encrypted file in the repo
+    cmds:
+      - |
+        for f in $(grep -rl 'sops:' --include='*.yaml' --include='*.sops' \
+                   secrets/ bootstrap/ 2>/dev/null); do
+          echo "Rotating $f"
+          sops --rotate --in-place "$f"
+        done
+
+  edit:
+    desc: 'Edit a SOPS-encrypted file (FILE=path)'
+    preconditions:
+      - sh: test -n "$FILE"
+        msg: 'FILE=<path> required'
+    cmds:
+      - sops "$FILE"

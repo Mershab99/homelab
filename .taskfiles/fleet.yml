@@ -1,0 +1,21 @@
+# Sveltos fleet operations (Phase 7+).
+# https://taskfile.dev
+version: '3'
+
+vars:
+  EXPECTED_CONTEXT: '{{.EXPECTED_CONTEXT | default "homelab-hub"}}'
+
+tasks:
+  apply:
+    desc: 'Apply fleet/ Sveltos profiles (Phase 7+)'
+    preconditions:
+      - sh: '[ "$(kubectl config current-context)" = "{{.EXPECTED_CONTEXT}}" ]'
+        msg: 'kubectl context must be {{.EXPECTED_CONTEXT}}'
+    cmds:
+      - kubectl apply -k fleet/
+
+  list:
+    desc: List ClusterProfiles + EventTriggers
+    cmds:
+      - kubectl get clusterprofiles.config.projectsveltos.io -A
+      - kubectl get eventtriggers.lib.projectsveltos.io -A

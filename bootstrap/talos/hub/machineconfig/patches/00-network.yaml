@@ -1,0 +1,67 @@
+# Hub network — the "baked in" network config.
+#
+# Layout:
+#   eno1 → enslaved to br-wan (KubeVirt VyOS VM uses this via Multus bridge CNI)
+#   eno2 → enslaved to br-lan (VLAN-aware trunk for all lab VLANs 10/20/40/...)
+#   br-lan.10 → host's foot in mgmt VLAN (10.10.10.20/24, no default route here)
+#   eno3 → host management on ISP LAN (192.168.1.20/24, default gateway 192.168.1.1)
+#
+# Both bridges are declared without IPs — they exist to be attached to KubeVirt VMs
+# via Multus NetworkAttachmentDefinitions. Bridges must exist on the host before
+# the Multus bridge CNI can use them.
+machine:
+  network:
+    hostname: hub-supermicro
+    nameservers:
+      - 1.1.1.1
+      - 9.9.9.9
+    interfaces:
+      # WAN bridge — eno1 enslaved, no IP on host. VyOS VM attaches here.
+      - interface: br-wan
+        bridge:
+          stp:
+            enabled: false
+          interfaces:
+            - eno1
+        dhcp: false
+
+      # LAN trunk bridge — eno2 enslaved, VLAN-aware. VyOS VM trunks all VLANs over this.
+      - interface: br-lan
+        bridge:
+          stp:
+            enabled: false
+          vlanFiltering: true
+          interfaces:
+            - eno2
+        dhcp: false
+
+      # Host's foot in VLAN 10 (mgmt). No default route — that lives on eno3.
+      - interface: br-lan.10
+        addresses:
+          - 10.10.10.20/24
+        vlans: []
+
+      # Primary host management on ISP LAN. Default gateway = ISP router.
+      - interface: eno3
+        addresses:
+          - 192.168.1.20/24
+        routes:
+          - network: 0.0.0.0/0
+            gateway: 192.168.1.1
+
+      # eno4 — reserved spare. Configure if needed.
+      - interface: eno4
+        dhcp: false
+        ignore: true
+
+    extraHostEntries:
+      - ip: 10.10.10.20
+        aliases:
+          - hub-supermicro
+          - hub.lab.internal
+
+  kernel:
+    modules:
+      - name: 8021q
+      - name: bridge
+      - name: br_netfilter

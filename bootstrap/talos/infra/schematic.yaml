@@ -1,0 +1,10 @@
+customization:
+  extraKernelArgs:
+    - intel_iommu=on
+    - iommu=pt
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/qemu-guest-agent
+      - siderolabs/iscsi-tools
+      - siderolabs/intel-ucode
+      - siderolabs/i915-ucode

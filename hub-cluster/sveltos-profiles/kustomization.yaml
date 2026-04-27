@@ -1,9 +1,15 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  - hub-certmanager.yaml
+  - hub-certmanager-resources.yaml
   - hub-infrastructure.yaml
   - hub-rancher.yaml
+  - workload-certmanager.yaml
+  - workload-certmanager-resources.yaml
   - workload-gpu.yaml
   - workload-knative.yaml
   - workload-ingress.yaml
   - chisel-resources.yaml
+  - traefik-dashboard-resources.yaml
+  - knative-serving-resources.yaml

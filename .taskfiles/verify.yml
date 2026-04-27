@@ -1,0 +1,108 @@
+# Local verification — same as CI runs.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  KUBE_VERSION: '1.31.0'
+  PATHS_TO_LINT: 'sources infrastructure platform fleet apps clusters'
+  CRD_SCHEMA_LOCATIONS: >-
+    default
+    https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{`{{.Group}}`}}/{{`{{.ResourceKind}}`}}_{{`{{.ResourceAPIVersion}}`}}.json
+
+tasks:
+  lint:
+    desc: All linters — yamllint + kubeconform + helm lint + flux check
+    cmds:
+      - task: lint:yaml
+      - task: lint:kubeconform
+      - task: lint:helm
+      - task: lint:flux
+
+  lint:yaml:
+    desc: yamllint
+    cmds:
+      - yamllint -c .yamllint.yaml {{.PATHS_TO_LINT}} 2>&1 | tee /tmp/yamllint.out || true
+      - |
+        if grep -q 'error' /tmp/yamllint.out; then
+          exit 1
+        fi
+
+  lint:kubeconform:
+    desc: kubeconform schema validation (skips kustomize composition)
+    cmds:
+      - |
+        find {{.PATHS_TO_LINT}} -name '*.yaml' -o -name '*.yml' 2>/dev/null \
+          | xargs kubeconform \
+              -kubernetes-version {{.KUBE_VERSION}} \
+              -strict \
+              -ignore-missing-schemas \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json' \
+              -summary
+
+  lint:helm:
+    desc: helm lint over every chart referenced by HelmReleases
+    cmds:
+      - |
+        for d in infrastructure/*/; do
+          if [ -f "$d/helmrelease.yaml" ]; then
+            CHART=$(yq -r '.spec.chart.spec.chart // ""' "$d/helmrelease.yaml")
+            REPO=$(yq -r '.spec.chart.spec.sourceRef.name // ""' "$d/helmrelease.yaml")
+            VER=$(yq -r '.spec.chart.spec.version // ""' "$d/helmrelease.yaml")
+            if [ -n "$CHART" ] && [ -n "$REPO" ]; then
+              echo "Lint $REPO/$CHART@$VER"
+              helm lint "oci://$REPO/$CHART" --version "$VER" 2>/dev/null || \
+                echo "  (skipped: not OCI; full lint requires repo add)"
+            fi
+          fi
+        done
+
+  lint:flux:
+    desc: flux check --pre (cluster-side requirements)
+    cmds:
+      - flux check --pre
+
+  render:
+    desc: kustomize build every Kustomization → kubeconform
+    cmds:
+      - |
+        for ks_dir in sources infrastructure platform fleet apps; do
+          if [ -d "$ks_dir" ] && [ -f "$ks_dir/kustomization.yaml" ]; then
+            echo "=== Rendering $ks_dir ==="
+            kustomize build "$ks_dir" \
+              | kubeconform \
+                -kubernetes-version {{.KUBE_VERSION}} \
+                -strict \
+                -ignore-missing-schemas \
+                -summary
+          fi
+        done
+
+  policy:
+    desc: kyverno test (no-op until policies/ exists)
+    cmds:
+      - |
+        if [ -d "policies" ] && find policies -name 'kyverno-test.yaml' | grep -q .; then
+          kyverno test policies/
+        else
+          echo "No policies/ yet — skipping (Phase 7+)"
+        fi
+
+  sops:
+    desc: Verify every file under secrets/ is SOPS-encrypted
+    cmds:
+      - |
+        if [ ! -d secrets ]; then
+          echo "secrets/ does not exist yet — skipping"
+          exit 0
+        fi
+        FAILED=0
+        while IFS= read -r f; do
+          if ! grep -q '^sops:' "$f" 2>/dev/null; then
+            if grep -qE '^(apiVersion|kind):' "$f" 2>/dev/null; then
+              echo "PLAINTEXT SECRET: $f"
+              FAILED=1
+            fi
+          fi
+        done < <(find secrets -type f \( -name '*.yaml' -o -name '*.yml' \))
+        exit $FAILED

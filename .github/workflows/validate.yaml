@@ -1,0 +1,198 @@
+name: validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  KUBE_VERSION: '1.31.0'
+  KUBECONFORM_VERSION: '0.6.7'
+  YAMLLINT_VERSION: '1.35.1'
+  FLUX_VERSION: '2.4.0'
+  KUSTOMIZE_VERSION: '5.5.0'
+  KYVERNO_VERSION: '1.13.2'
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: pip install --no-cache-dir yamllint==${{ env.YAMLLINT_VERSION }}
+
+      - name: yamllint
+        run: yamllint -c .yamllint.yaml -s sources infrastructure platform fleet apps clusters || true
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kc.tgz \
+            "https://github.com/yannh/kubeconform/releases/download/v${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kc.tgz -C /tmp kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/
+
+      - name: kubeconform schema validation
+        run: |
+          PATHS=()
+          for d in sources infrastructure platform fleet apps clusters; do
+            [ -d "$d" ] && PATHS+=("$d")
+          done
+          if [ ${#PATHS[@]} -eq 0 ]; then
+            echo "No populated dirs yet — Phase 0.5 skeleton only. Skipping kubeconform."
+            exit 0
+          fi
+          find "${PATHS[@]}" -name '*.yaml' -o -name '*.yml' 2>/dev/null \
+            | xargs -r kubeconform \
+                -kubernetes-version "${{ env.KUBE_VERSION }}" \
+                -strict \
+                -ignore-missing-schemas \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+                -summary
+
+      - name: Install Flux CLI
+        uses: fluxcd/flux2/action@main
+        with:
+          version: ${{ env.FLUX_VERSION }}
+
+      - name: flux check --pre
+        run: flux check --pre || true  # informational on PR
+
+  render:
+    name: render
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kc.tgz \
+            "https://github.com/yannh/kubeconform/releases/download/v${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kc.tgz -C /tmp kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/
+
+      - name: Install kustomize
+        run: |
+          curl -sSLo /tmp/kustomize.tgz \
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${{ env.KUSTOMIZE_VERSION }}/kustomize_v${{ env.KUSTOMIZE_VERSION }}_linux_amd64.tar.gz"
+          tar -xzf /tmp/kustomize.tgz -C /tmp kustomize
+          sudo mv /tmp/kustomize /usr/local/bin/
+
+      - name: kustomize build → kubeconform
+        run: |
+          FAIL=0
+          for ks_dir in sources infrastructure platform fleet apps; do
+            if [ -d "$ks_dir" ] && [ -f "$ks_dir/kustomization.yaml" ]; then
+              echo "::group::Render $ks_dir"
+              if ! kustomize build "$ks_dir" \
+                | kubeconform \
+                    -kubernetes-version "${{ env.KUBE_VERSION }}" \
+                    -strict \
+                    -ignore-missing-schemas \
+                    -schema-location default \
+                    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+                    -summary; then
+                echo "::error::Render or validation failed for $ks_dir"
+                FAIL=1
+              fi
+              echo "::endgroup::"
+            fi
+          done
+          exit $FAIL
+
+  sops:
+    name: sops + secret leaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # gitleaks needs history
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify secrets/ are SOPS-encrypted
+        run: |
+          if [ ! -d secrets ]; then
+            echo "secrets/ does not exist yet — skipping"
+            exit 0
+          fi
+          FAILED=0
+          while IFS= read -r f; do
+            if ! grep -q '^sops:' "$f" 2>/dev/null; then
+              if grep -qE '^(apiVersion|kind):' "$f" 2>/dev/null; then
+                echo "::error file=$f::Plaintext secret committed"
+                FAILED=1
+              fi
+            fi
+          done < <(find secrets -type f \( -name '*.yaml' -o -name '*.yml' \))
+          exit $FAILED
+
+  policy:
+    name: kyverno policies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kyverno CLI
+        run: |
+          curl -sSL "https://github.com/kyverno/kyverno/releases/download/v${{ env.KYVERNO_VERSION }}/kyverno-cli_v${{ env.KYVERNO_VERSION }}_linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin kyverno
+
+      - name: Run policy tests
+        run: |
+          if [ -d "policies" ] && find policies -name 'kyverno-test.yaml' 2>/dev/null | grep -q .; then
+            kyverno test policies/
+          else
+            echo "No policies/ yet — Phase 7+. Skipping."
+          fi
+
+  drift:
+    name: flux drift (informational)
+    if: github.ref == 'refs/heads/main'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Flux CLI
+        uses: fluxcd/flux2/action@main
+        with:
+          version: ${{ env.FLUX_VERSION }}
+
+      - name: Configure kubeconfig
+        if: ${{ secrets.HUB_KUBECONFIG_RO != '' }}
+        env:
+          KUBECONFIG_DATA: ${{ secrets.HUB_KUBECONFIG_RO }}
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBECONFIG_DATA" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Diff against cluster
+        if: ${{ secrets.HUB_KUBECONFIG_RO != '' }}
+        run: |
+          {
+            echo "## Flux drift report"
+            echo
+            for ks in sources infrastructure platform fleet apps; do
+              echo "### $ks"
+              echo '```diff'
+              flux diff kustomization "$ks" --path="./$ks" 2>&1 || true
+              echo '```'
+              echo
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: No kubeconfig — skip
+        if: ${{ secrets.HUB_KUBECONFIG_RO == '' }}
+        run: 'echo "HUB_KUBECONFIG_RO secret not set — skipping drift detection (set it once the hub exists)"'

@@ -1,0 +1,151 @@
+# Talos image build + machineconfig + apply / upgrade.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  TALOS_VERSION: '{{.TALOS_VERSION | default "v1.9.1"}}'
+  IMAGE_FACTORY: 'https://factory.talos.dev'
+  ARCH: amd64
+  HUB_DIR: '{{.ROOT_DIR}}/bootstrap/talos/hub'
+  INFRA_DIR: '{{.ROOT_DIR}}/bootstrap/talos/infra'
+  GEN_DIR: '{{.ROOT_DIR}}/gen'
+  ISO_DIR: '{{.ROOT_DIR}}/gen/iso'
+
+tasks:
+  hub:schematic:
+    desc: Validate hub Image Factory schematic
+    preconditions:
+      - sh: test -f {{.HUB_DIR}}/schematic.yaml
+        msg: 'Schematic not found: {{.HUB_DIR}}/schematic.yaml'
+    cmds:
+      - |
+        SCHEMATIC_ID=$(curl -fsSL --data-binary @{{.HUB_DIR}}/schematic.yaml \
+          {{.IMAGE_FACTORY}}/schematics | yq -r .id)
+        if [ -z "$SCHEMATIC_ID" ] || [ "$SCHEMATIC_ID" = "null" ]; then
+          echo "ERROR: Image Factory rejected the schematic"
+          exit 1
+        fi
+        echo "Hub schematic ID: $SCHEMATIC_ID"
+        mkdir -p {{.GEN_DIR}}
+        echo "$SCHEMATIC_ID" > {{.GEN_DIR}}/hub-schematic-id.txt
+
+  hub:iso:
+    desc: Build hub ISO via Image Factory
+    deps:
+      - hub:schematic
+    cmds:
+      - mkdir -p {{.ISO_DIR}}
+      - |
+        SCHEMATIC_ID=$(cat {{.GEN_DIR}}/hub-schematic-id.txt)
+        URL="{{.IMAGE_FACTORY}}/image/${SCHEMATIC_ID}/{{.TALOS_VERSION}}/metal-{{.ARCH}}.iso"
+        echo "Downloading $URL"
+        curl -fL -o {{.ISO_DIR}}/talos-hub.iso "$URL"
+        sha256sum {{.ISO_DIR}}/talos-hub.iso > {{.ISO_DIR}}/talos-hub.iso.sha256
+        ls -lh {{.ISO_DIR}}/talos-hub.iso
+
+  hub:config:
+    desc: Generate hub machineconfig (talosctl gen + apply patches)
+    preconditions:
+      - sh: test -f {{.HUB_DIR}}/secrets.yaml.sops
+        msg: 'Run "task bootstrap:secrets" first'
+      - sh: test -f {{.ROOT_DIR}}/gen/cilium-bootstrap.yaml
+        msg: 'Run "task bootstrap:render" first'
+    cmds:
+      - mkdir -p {{.GEN_DIR}}
+      - sops --decrypt {{.HUB_DIR}}/secrets.yaml.sops > {{.GEN_DIR}}/.talos-secrets.yaml
+      - defer: rm -f {{.GEN_DIR}}/.talos-secrets.yaml
+      - |
+        talosctl gen config {{.CLUSTER_NAME}} https://10.10.10.20:6443 \
+          --with-secrets {{.GEN_DIR}}/.talos-secrets.yaml \
+          --output-types controlplane \
+          --output {{.GEN_DIR}}/talos-hub-base.yaml \
+          --config-patch @{{.HUB_DIR}}/machineconfig/patches/00-network.yaml \
+          --config-patch @{{.HUB_DIR}}/machineconfig/patches/01-cni-none.yaml \
+          --config-patch @{{.HUB_DIR}}/machineconfig/patches/02-inline-cilium.yaml \
+          --config-patch @{{.HUB_DIR}}/machineconfig/patches/03-kubelet.yaml \
+          --config-patch @{{.HUB_DIR}}/machineconfig/patches/04-features.yaml \
+          --force
+      - mv {{.GEN_DIR}}/talos-hub-base.yaml {{.GEN_DIR}}/talos-hub-machineconfig.yaml
+      - 'echo "Wrote {{.GEN_DIR}}/talos-hub-machineconfig.yaml"'
+
+  hub:apply:
+    desc: Apply hub machineconfig (use NODE=<ip> INSECURE=true for first boot)
+    preconditions:
+      - sh: test -f {{.GEN_DIR}}/talos-hub-machineconfig.yaml
+        msg: 'Run "task talos:hub:config" first'
+      - sh: test -n "$NODE"
+        msg: 'NODE=<ip> required'
+    cmds:
+      - |
+        if [ "${INSECURE:-false}" = "true" ]; then
+          talosctl apply-config --insecure \
+            --nodes "$NODE" \
+            --file {{.GEN_DIR}}/talos-hub-machineconfig.yaml
+        else
+          talosctl apply-config --mode=auto \
+            --nodes "$NODE" \
+            --file {{.GEN_DIR}}/talos-hub-machineconfig.yaml
+        fi
+
+  hub:upgrade:
+    desc: Upgrade hub Talos (DRY_RUN=false to actually run; --preserve always)
+    preconditions:
+      - sh: test -n "$NODE"
+        msg: 'NODE=<ip> required'
+    cmds:
+      - |
+        if [ "${DRY_RUN:-true}" = "true" ]; then
+          echo "DRY RUN — set DRY_RUN=false to execute"
+          talosctl upgrade --dry-run --preserve \
+            --nodes "$NODE" \
+            --image ghcr.io/siderolabs/installer:{{.TALOS_VERSION}}
+        else
+          talosctl upgrade --preserve \
+            --nodes "$NODE" \
+            --image ghcr.io/siderolabs/installer:{{.TALOS_VERSION}}
+        fi
+
+  hub:dashboard:
+    desc: Open talosctl dashboard against the hub
+    preconditions:
+      - sh: test -n "$NODE"
+        msg: 'NODE=<ip> required'
+    cmds:
+      - talosctl dashboard --nodes "$NODE"
+
+  infra:schematic:
+    desc: Validate infra Image Factory schematic
+    preconditions:
+      - sh: test -f {{.INFRA_DIR}}/schematic.yaml
+        msg: 'Schematic not found: {{.INFRA_DIR}}/schematic.yaml'
+    cmds:
+      - |
+        SCHEMATIC_ID=$(curl -fsSL --data-binary @{{.INFRA_DIR}}/schematic.yaml \
+          {{.IMAGE_FACTORY}}/schematics | yq -r .id)
+        if [ -z "$SCHEMATIC_ID" ] || [ "$SCHEMATIC_ID" = "null" ]; then
+          echo "ERROR: Image Factory rejected the schematic"
+          exit 1
+        fi
+        echo "Infra schematic ID: $SCHEMATIC_ID"
+        mkdir -p {{.GEN_DIR}}
+        echo "$SCHEMATIC_ID" > {{.GEN_DIR}}/infra-schematic-id.txt
+
+  infra:image:
+    desc: Fetch infra kernel + initramfs URLs from Image Factory
+    deps:
+      - infra:schematic
+    cmds:
+      - |
+        SCHEMATIC_ID=$(cat {{.GEN_DIR}}/infra-schematic-id.txt)
+        BASE="{{.IMAGE_FACTORY}}/image/${SCHEMATIC_ID}/{{.TALOS_VERSION}}"
+        echo "Kernel:    ${BASE}/kernel-{{.ARCH}}"
+        echo "Initramfs: ${BASE}/initramfs-{{.ARCH}}.xz"
+        cat <<EOF > {{.GEN_DIR}}/infra-image-urls.json
+        {
+          "schematicId": "${SCHEMATIC_ID}",
+          "talosVersion": "{{.TALOS_VERSION}}",
+          "kernel":    "${BASE}/kernel-{{.ARCH}}",
+          "initramfs": "${BASE}/initramfs-{{.ARCH}}.xz"
+        }
+        EOF
+        echo "Wrote {{.GEN_DIR}}/infra-image-urls.json"

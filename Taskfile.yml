@@ -1,0 +1,54 @@
+# https://taskfile.dev
+version: '3'
+
+dotenv: ['.env']
+
+includes:
+  bootstrap:
+    taskfile: .taskfiles/bootstrap.yml
+    optional: false
+  talos:
+    taskfile: .taskfiles/talos.yml
+    optional: false
+  flux:
+    taskfile: .taskfiles/flux.yml
+    optional: false
+  sops:
+    taskfile: .taskfiles/sops.yml
+    optional: false
+  verify:
+    taskfile: .taskfiles/verify.yml
+    optional: false
+  ci:
+    taskfile: .taskfiles/ci.yml
+    optional: false
+  fleet:
+    taskfile: .taskfiles/fleet.yml
+    optional: true
+  ceph:
+    taskfile: .taskfiles/ceph.yml
+    optional: true
+  backup:
+    taskfile: .taskfiles/backup.yml
+    optional: true
+  tools:
+    taskfile: .taskfiles/tools.yml
+    optional: false
+
+vars:
+  REPO_ROOT: '{{.ROOT_DIR}}'
+  GEN_DIR: '{{.ROOT_DIR}}/gen'
+  ISO_DIR: '{{.ROOT_DIR}}/gen/iso'
+  CLUSTER_NAME: '{{.CLUSTER_NAME | default "homelab-hub"}}'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  clean:
+    desc: Remove generated artifacts (ISOs, build cache)
+    cmds:
+      - rm -rf {{.ISO_DIR}}
+      - rm -rf {{.ROOT_DIR}}/.build

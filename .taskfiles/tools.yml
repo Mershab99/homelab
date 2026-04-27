@@ -1,0 +1,51 @@
+# Tool version checks — single source of truth lives in mise.toml.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  REQUIRED:
+    - task
+    - kubectl
+    - helm
+    - flux
+    - clusterctl
+    - talosctl
+    - kustomize
+    - sops
+    - age
+    - kubeconform
+    - yamllint
+    - gitleaks
+    - yq
+    - oras
+    - mise
+
+tasks:
+  check:
+    desc: Verify required tools are installed (versions per mise.toml)
+    cmds:
+      - |
+        MISSING=""
+        for cmd in task kubectl helm flux clusterctl talosctl kustomize \
+                   sops age kubeconform yamllint gitleaks yq oras mise; do
+          if ! command -v "$cmd" >/dev/null 2>&1; then
+            MISSING="$MISSING $cmd"
+          else
+            printf "  %-15s %s\n" "$cmd" "$($cmd --version 2>&1 | head -1)"
+          fi
+        done
+        if [ -n "$MISSING" ]; then
+          echo
+          echo "Missing:$MISSING"
+          echo "Install with: task tools:install"
+          exit 1
+        fi
+
+  install:
+    desc: Install all tools via mise (uses pinned versions in mise.toml)
+    preconditions:
+      - sh: command -v mise
+        msg: 'mise not installed. brew install mise OR https://mise.jdx.dev/getting-started.html'
+    cmds:
+      - mise install
+      - 'echo "Tools installed. Run: task tools:check"'

@@ -1,0 +1,8 @@
+# CNI = none — Cilium replaces flannel via inlineManifests (02-inline-cilium.yaml).
+# kube-proxy disabled — Cilium KubeProxyReplacement handles it.
+cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true

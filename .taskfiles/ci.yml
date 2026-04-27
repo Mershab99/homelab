@@ -1,0 +1,25 @@
+# CI entry points — what GitHub Actions calls.
+# Keep these thin; the real work lives in verify:*.
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  lint:
+    desc: 'CI: lint everything'
+    cmds:
+      - task: verify:lint
+
+  render:
+    desc: 'CI: render every Kustomization and validate'
+    cmds:
+      - task: verify:render
+
+  test:
+    desc: 'CI: policy tests (Phase 7+)'
+    cmds:
+      - task: verify:policy
+
+  sops:
+    desc: 'CI: verify SOPS-encryption of secrets/'
+    cmds:
+      - task: verify:sops

@@ -1,0 +1,184 @@
+name: talos-images
+
+# Build Talos hub ISO + infra kernel/initramfs via Talos Image Factory.
+# - Hub ISO is a USB-flashable installer with extensions baked in. Network config
+#   lives in bootstrap/talos/hub/machineconfig/patches/ — applied at first boot.
+# - Infra artifacts are kernel + initramfs URLs/blobs consumed by Sidero
+#   Environment CRs (Phase 4+).
+
+on:
+  push:
+    tags: ['talos-image-*']
+  workflow_dispatch:
+    inputs:
+      talos_version:
+        description: 'Talos version (e.g., v1.9.1) — overrides workflow default'
+        required: false
+        default: 'v1.9.1'
+  pull_request:
+    paths:
+      - 'bootstrap/talos/**'
+      - '.github/workflows/talos-images.yaml'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE_FACTORY: 'https://factory.talos.dev'
+  TALOS_VERSION: ${{ github.event.inputs.talos_version || 'v1.9.1' }}
+  ARCH: amd64
+  REGISTRY: ghcr.io
+
+jobs:
+  validate-schematic:
+    name: validate schematic (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [hub, infra]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: POST schematic to Image Factory
+        run: |
+          set -e
+          SCHEMATIC=bootstrap/talos/${{ matrix.target }}/schematic.yaml
+          if [ ! -f "$SCHEMATIC" ]; then
+            echo "::warning::No schematic at $SCHEMATIC — skipping"
+            exit 0
+          fi
+          RESPONSE=$(curl -fsSL --data-binary @"$SCHEMATIC" \
+            "${{ env.IMAGE_FACTORY }}/schematics")
+          ID=$(echo "$RESPONSE" | grep -oE '"id":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+          if [ -z "$ID" ]; then
+            echo "::error file=$SCHEMATIC::Image Factory rejected schematic"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "${{ matrix.target }} schematic ID: $ID"
+
+  hub-iso:
+    name: hub ISO
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      schematic_id: ${{ steps.schematic.outputs.id }}
+      iso_path: gen/iso/talos-hub.iso
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Submit hub schematic
+        id: schematic
+        run: |
+          set -e
+          mkdir -p gen
+          RESPONSE=$(curl -fsSL --data-binary @bootstrap/talos/hub/schematic.yaml \
+            "${{ env.IMAGE_FACTORY }}/schematics")
+          ID=$(echo "$RESPONSE" | grep -oE '"id":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+          if [ -z "$ID" ]; then
+            echo "::error::Image Factory rejected hub schematic"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "$ID" > gen/hub-schematic-id.txt
+          echo "Hub schematic ID: $ID"
+
+      - name: Download hub ISO
+        run: |
+          mkdir -p gen/iso
+          ID=$(cat gen/hub-schematic-id.txt)
+          URL="${{ env.IMAGE_FACTORY }}/image/${ID}/${{ env.TALOS_VERSION }}/metal-${{ env.ARCH }}.iso"
+          echo "Downloading $URL"
+          curl -fL -o gen/iso/talos-hub.iso "$URL"
+          sha256sum gen/iso/talos-hub.iso > gen/iso/talos-hub.iso.sha256
+          ls -lh gen/iso/
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-hub-iso
+          path: |
+            gen/iso/talos-hub.iso
+            gen/iso/talos-hub.iso.sha256
+            gen/hub-schematic-id.txt
+            bootstrap/talos/hub/schematic.yaml
+          retention-days: 90
+
+  infra-kernel-initramfs:
+    name: infra kernel + initramfs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      schematic_id: ${{ steps.schematic.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Submit infra schematic
+        id: schematic
+        run: |
+          set -e
+          mkdir -p gen
+          RESPONSE=$(curl -fsSL --data-binary @bootstrap/talos/infra/schematic.yaml \
+            "${{ env.IMAGE_FACTORY }}/schematics")
+          ID=$(echo "$RESPONSE" | grep -oE '"id":"[a-f0-9]+"' | head -1 | cut -d'"' -f4)
+          if [ -z "$ID" ]; then
+            echo "::error::Image Factory rejected infra schematic"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "$ID" > gen/infra-schematic-id.txt
+          echo "Infra schematic ID: $ID"
+
+      - name: Download kernel + initramfs
+        run: |
+          set -e
+          mkdir -p gen/infra
+          ID=$(cat gen/infra-schematic-id.txt)
+          BASE="${{ env.IMAGE_FACTORY }}/image/${ID}/${{ env.TALOS_VERSION }}"
+          curl -fL -o gen/infra/kernel-${{ env.ARCH }} \
+            "${BASE}/kernel-${{ env.ARCH }}"
+          curl -fL -o gen/infra/initramfs-${{ env.ARCH }}.xz \
+            "${BASE}/initramfs-${{ env.ARCH }}.xz"
+          sha256sum gen/infra/* > gen/infra/SHA256SUMS
+          ls -lh gen/infra/
+
+      - name: Install oras CLI
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push kernel + initramfs as OCI artifact
+        run: |
+          set -e
+          ID=$(cat gen/infra-schematic-id.txt)
+          REPO="${{ env.REGISTRY }}/${{ github.repository }}/talos-infra"
+          cd gen/infra
+          oras push \
+            "$REPO:${ID}" \
+            "$REPO:${{ env.TALOS_VERSION }}" \
+            "$REPO:latest" \
+            kernel-${{ env.ARCH }}:application/vnd.talos.kernel \
+            initramfs-${{ env.ARCH }}.xz:application/vnd.talos.initramfs \
+            SHA256SUMS:text/plain
+          echo "Pushed: $REPO:${ID}"
+
+      - name: Upload infra artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: talos-infra-images
+          path: |
+            gen/infra/
+            gen/infra-schematic-id.txt
+            bootstrap/talos/infra/schematic.yaml
+          retention-days: 90

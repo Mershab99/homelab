@@ -3,20 +3,22 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu-22.04
 ARG TASK_VERSION=3.40.1
 ARG FLUX_VERSION=2.4.0
 ARG CLUSTERCTL_VERSION=1.9.0
-ARG SVELTOS_VERSION=4.2.0
+ARG TALOS_VERSION=1.9.1
 ARG SOPS_VERSION=3.9.2
 ARG AGE_VERSION=1.2.0
 ARG K9S_VERSION=0.32.7
 ARG YQ_VERSION=4.44.6
+ARG KUSTOMIZE_VERSION=5.5.0
+ARG KUBECONFORM_VERSION=0.6.7
+ARG GITLEAKS_VERSION=8.21.2
+ARG ORAS_VERSION=1.2.0
+ARG KYVERNO_VERSION=1.13.2
 
-# System packages: image building, virtualization, networking tools
+# System packages — devcontainer baseline + network/diag tools.
+# Removed: qemu-utils, libguestfs-tools, linux-image-generic (no more local
+# image building of guest disks — Talos via Image Factory replaces all of it).
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get install -y --no-install-recommends \
-        # Image build tools
-        qemu-utils \
-        libguestfs-tools \
-        linux-image-generic \
-        # General utilities
         ca-certificates \
         curl \
         git \
@@ -30,11 +32,12 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         wget \
         xz-utils \
         zsh \
-        # Network utilities
         dnsutils \
         iputils-ping \
         iproute2 \
         nmap \
+        ipmitool \
+    && pip3 install --no-cache-dir yamllint==1.35.1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,10 +54,30 @@ RUN curl -fsSL -o /usr/local/bin/clusterctl \
     "https://github.com/kubernetes-sigs/cluster-api/releases/download/v${CLUSTERCTL_VERSION}/clusterctl-linux-amd64" \
     && chmod +x /usr/local/bin/clusterctl
 
-# sveltosctl
-RUN curl -fsSL -o /usr/local/bin/sveltosctl \
-    "https://github.com/projectsveltos/sveltosctl/releases/download/v${SVELTOS_VERSION}/sveltosctl_linux_amd64" \
-    && chmod +x /usr/local/bin/sveltosctl
+# talosctl
+RUN curl -fsSL -o /usr/local/bin/talosctl \
+    "https://github.com/siderolabs/talos/releases/download/v${TALOS_VERSION}/talosctl-linux-amd64" \
+    && chmod +x /usr/local/bin/talosctl
+
+# kustomize
+RUN curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+    | tar -xz -C /usr/local/bin kustomize
+
+# kubeconform (CI manifest validation)
+RUN curl -fsSL "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+    | tar -xz -C /usr/local/bin kubeconform
+
+# gitleaks
+RUN curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+    | tar -xz -C /usr/local/bin gitleaks
+
+# oras (OCI artifact push for Talos infra images)
+RUN curl -fsSL "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz" \
+    | tar -xz -C /usr/local/bin oras
+
+# kyverno CLI (policy tests in CI + locally)
+RUN curl -fsSL "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz" \
+    | tar -xz -C /usr/local/bin kyverno
 
 # SOPS (secret encryption)
 RUN curl -fsSL -o /usr/local/bin/sops \
@@ -73,10 +96,6 @@ RUN curl -fsSL "https://github.com/derailed/k9s/releases/download/v${K9S_VERSION
 RUN curl -fsSL -o /usr/local/bin/yq \
     "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
     && chmod +x /usr/local/bin/yq
-
-# ipmitool (BMC management)
-RUN apt-get update && apt-get install -y --no-install-recommends ipmitool \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Set zsh as default for vscode user
 USER vscode

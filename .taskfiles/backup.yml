@@ -1,0 +1,33 @@
+# Velero backup operations (Phase 9+).
+# https://taskfile.dev
+version: '3'
+
+tasks:
+  trigger:
+    desc: 'Trigger an ad-hoc backup from a Velero schedule (SCHEDULE=<name>)'
+    preconditions:
+      - sh: test -n "$SCHEDULE"
+        msg: 'SCHEDULE=<name> required'
+    cmds:
+      - velero backup create --from-schedule "$SCHEDULE" --wait
+
+  list:
+    desc: List Velero backups
+    cmds:
+      - velero backup get
+
+  describe:
+    desc: 'Describe a backup (NAME=<backup>)'
+    preconditions:
+      - sh: test -n "$NAME"
+        msg: 'NAME=<backup> required'
+    cmds:
+      - velero backup describe "$NAME" --details
+
+  restore:
+    desc: 'Restore from a backup (FROM=<backup-name>)'
+    preconditions:
+      - sh: test -n "$FROM"
+        msg: 'FROM=<backup-name> required'
+    cmds:
+      - velero restore create --from-backup "$FROM" --wait

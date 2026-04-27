@@ -1,0 +1,21 @@
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: workload-certmanager
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster-type: workload
+  helmCharts:
+    - repositoryURL: https://charts.jetstack.io
+      chartName: cert-manager
+      chartVersion: "1.19.x"
+      releaseName: cert-manager
+      releaseNamespace: cert-manager
+      values: |
+        installCRDs: true
+  policyRefs:
+    - name: workload-certmanager-resources
+      namespace: projectsveltos
+      kind: ConfigMap
+      deploymentType: Remote
