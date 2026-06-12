@@ -1,0 +1,18 @@
+# OLM OperatorGroup — scopes the HCO operator to a single namespace.
+# An OperatorGroup is required before a Subscription in the same namespace
+# can install.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt-hyperconverged
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: kubevirt-hyperconverged
+spec:
+  targetNamespaces:
+    - kubevirt-hyperconverged

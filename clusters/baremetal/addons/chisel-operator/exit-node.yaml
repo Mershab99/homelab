@@ -1,0 +1,28 @@
+# Chisel-operator ExitNode — fill in the host/port/auth once the VPS is
+# provisioned. Until then, ingress-nginx-external's LoadBalancer Service
+# stays Pending an external IP.
+#
+# Auth: the value of `spec.auth` is the NAME of a Secret in the same
+# namespace (chisel-operator-system) holding the chisel auth token under
+# key `auth`. Seal that Secret with kubeseal — example flow:
+#
+#   read -rs TOKEN
+#   kubectl create secret generic chisel-exit-credentials \
+#     --namespace=chisel-operator-system \
+#     --from-literal=auth="$TOKEN" \
+#     --dry-run=client -o yaml \
+#   | kubeseal --controller-namespace=sealed-secrets \
+#       --controller-name=sealed-secrets-controller --scope cluster-wide -o yaml \
+#   > secrets/infrastructure/chisel-operator/exit-credentials.sealedsecret.yaml
+#
+# On the VPS side, run chisel-server with `--auth "user:$TOKEN"` and bind
+# 80 + 443 to the public interface.
+apiVersion: chisel-operator.io/v1
+kind: ExitNode
+metadata:
+  name: vps-exit
+  namespace: chisel-operator-system
+spec:
+  host: ""              # TODO: VPS public IPv4
+  port: 9090            # chisel control port; match what's running on the VPS
+  auth: ""              # TODO: name of sealed Secret (e.g. chisel-exit-credentials)

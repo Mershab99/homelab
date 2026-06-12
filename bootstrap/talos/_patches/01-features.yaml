@@ -1,0 +1,10 @@
+# Talos feature flags — mirrors the working arrakis config.
+#
+# Cilium's kube-proxy replacement points at the control-plane endpoint
+# directly (k8sServiceHost in helm values), so KubePrism is not needed.
+machine:
+  features:
+    rbac: true                  # Talos API RBAC (separate from K8s RBAC)
+    stableHostname: true
+    apidCheckExtKeyUsage: true
+    diskQuotaSupport: true

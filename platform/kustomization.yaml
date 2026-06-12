@@ -1,8 +1,0 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-# Phase 2+ — CRs that depend on operators in infrastructure/:
-#   capi-providers, kubevirt (HCO + KubeVirt + CDI), vrouter (VRouterTemplate),
-#   cilium (LoadBalancerIPPool, L2AnnouncementPolicy), multus (NADs),
-#   gateway-api (GatewayClass + Gateway), cert-manager (ClusterIssuers),
-#   rook (CephCluster), observability instances.
-resources: []

@@ -1,0 +1,12 @@
+# Kubelet hardening — matches the working arrakis config.
+#
+# rotate-server-certificates pairs with the kubelet-serving-cert-approver
+# manifest (cluster.extraManifests in 04-extra-manifests.yaml) so kubelet
+# CSRs are auto-approved instead of stuck Pending.
+machine:
+  kubelet:
+    defaultRuntimeSeccompProfileEnabled: true
+    disableManifestsDirectory: true
+    extraArgs:
+      rotate-server-certificates: "true"
+      max-pods: "250"

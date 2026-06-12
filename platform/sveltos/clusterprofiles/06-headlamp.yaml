@@ -1,0 +1,72 @@
+# headlamp — cluster admin UI gated by Dex OAuth2. Served at
+# headlamp.mershab.com on the INTERNAL Ingress class (on-LAN admin tool).
+#
+# OIDC flow: user hits headlamp.mershab.com → redirected to Dex (external,
+# off-LAN reachable) → enters password → Dex returns to Headlamp → Headlamp
+# uses the embedded admin ServiceAccount kubeconfig for cluster ops.
+#
+# The bare-metal kube-apiserver does NOT validate OIDC tokens — Headlamp's
+# Dex auth gates UI access only. Cluster operations happen as a single SA
+# principal (degraded RBAC, acceptable for one-admin homelab).
+#
+# OAuth2 client secret comes from sealed Secret `headlamp-oidc` in the
+# headlamp namespace.
+#
+# mgmt-only.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: headlamp
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - auth-stack
+    - ingress-internal
+  helmCharts:
+    - repositoryURL: https://kubernetes-sigs.github.io/headlamp/
+      repositoryName: headlamp
+      chartName: headlamp/headlamp
+      chartVersion: 0.30.x
+      releaseName: headlamp
+      releaseNamespace: headlamp
+      helmChartAction: Install
+      values: |
+        config:
+          oidc:
+            issuerURL: https://auth.mershab.com
+            clientID: headlamp
+            # Client secret comes from the headlamp-oidc Secret.
+            clientSecretRef:
+              name: headlamp-oidc
+              key: clientSecret
+            scopes: openid,profile,email,groups
+        # The Headlamp Pod runs with this SA — gives it admin in the bare-metal
+        # cluster. (For multi-cluster Headlamp later, additional kubeconfigs
+        # mounted from Secrets.)
+        serviceAccount:
+          create: true
+          name: headlamp-admin
+        # Make the SA cluster-admin by also creating a ClusterRoleBinding.
+        rbac:
+          create: true
+          clusterRoleBinding:
+            create: true
+            roleName: cluster-admin
+        ingress:
+          enabled: true
+          className: internal
+          hosts:
+            - host: headlamp.mershab.com
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - hosts: [headlamp.mershab.com]
+              secretName: headlamp-tls
+          annotations:
+            cert-manager.io/cluster-issuer: selfsigned-ca
+            external-dns.alpha.kubernetes.io/hostname: headlamp.mershab.com

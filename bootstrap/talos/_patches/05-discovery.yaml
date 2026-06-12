@@ -1,0 +1,11 @@
+# Cluster member discovery — explicitly OFF.
+#
+# Discovery exists for KubeSpan (WireGuard mesh across NAT) and for re-IP'd
+# nodes finding each other via discovery.talos.dev. Neither applies here:
+# we have 1–2 nodes on a flat LAN with static IPs. Disabling removes the
+# phone-home to Sidero's hosted discovery service.
+#
+# Re-enable when KubeSpan or many-node ever lands.
+cluster:
+  discovery:
+    enabled: false

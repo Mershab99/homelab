@@ -1,0 +1,42 @@
+# dns — external-dns, reading Ingress/Service hostnames and publishing
+# Cloudflare records.
+#
+# Same cluster-wide CF token Secret as tls-stack.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: dns
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.dns: "true"
+  dependsOn:
+    - sealed-secrets
+  helmCharts:
+    - repositoryURL: https://kubernetes-sigs.github.io/external-dns
+      repositoryName: external-dns
+      chartName: external-dns/external-dns
+      chartVersion: 1.15.x
+      releaseName: external-dns
+      releaseNamespace: external-dns
+      helmChartAction: Install
+      values: |
+        provider:
+          name: cloudflare
+        env:
+          - name: CF_API_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: cloudflare-api-token
+                key: api-token
+        domainFilters:
+          - mershab.com
+        sources:
+          - ingress
+          - service
+        txtOwnerId: homelab-mgmt
+        txtPrefix: "edns-"
+        policy: sync
+        registry: txt
+        serviceMonitor:
+          enabled: false

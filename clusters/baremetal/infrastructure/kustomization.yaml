@@ -1,0 +1,17 @@
+# Infrastructure layer — Flux installs ONLY what Sveltos cannot bootstrap
+# itself:
+#
+#   - Cilium runtime CRs (LB pool + L2 announce) — bare-metal LAN topology,
+#     not deliverable via Helm
+#   - Namespaces every subsystem will eventually need
+#
+# Sveltos itself is installed by the platform layer (one layer up).
+# Everything that fans out — including sealed-secrets, cert-manager,
+# Rook/Ceph, KubeVirt HCO, CAPI providers, ingress, Dex, observability,
+# tenant + vCluster scaffolding — is a ClusterProfile in
+# platform/sveltos/clusterprofiles/.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - cilium-ks.yaml

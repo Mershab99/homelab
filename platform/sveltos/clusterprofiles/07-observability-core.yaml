@@ -1,0 +1,55 @@
+# observability-core — prometheus-operator CRDs + OpenTelemetry operator
+# + OTel Collector DaemonSet on every cluster with metrics/logs.
+#
+# Why this split (no Prometheus controller, just CRDs):
+#   - Many community Helm charts ship ServiceMonitor/PodMonitor manifests
+#     that hard-reference the CRDs from prometheus-operator. We install the
+#     CRDs alone so those work.
+#   - OTel Collector replaces Prometheus as the scraper. It reads
+#     ServiceMonitors via the targetallocator and ships metrics elsewhere
+#     (Loki, eventually a managed Mimir/Tempo, etc.).
+#
+# Selector: needs.observability-core=true — fans out to mgmt + tenant
+# + (optionally) vClusters that opt in.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: observability-core
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.observability-core: "true"
+  dependsOn:
+    - tls-stack   # OTel collector wants TLS certs for OTLP receivers
+  helmCharts:
+    - repositoryURL: https://prometheus-community.github.io/helm-charts
+      repositoryName: prometheus-community
+      chartName: prometheus-community/prometheus-operator-crds
+      chartVersion: 14.0.x
+      releaseName: prometheus-operator-crds
+      releaseNamespace: monitoring
+      helmChartAction: Install
+      values: |
+        # CRDs only; no controller, no Prometheus server.
+    - repositoryURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      repositoryName: open-telemetry
+      chartName: open-telemetry/opentelemetry-operator
+      chartVersion: 0.69.x
+      releaseName: otel-operator
+      releaseNamespace: monitoring
+      helmChartAction: Install
+      values: |
+        manager:
+          collectorImage:
+            repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib
+        admissionWebhooks:
+          certManager:
+            enabled: true   # uses our cert-manager from tls-stack
+  policyRefs:
+    # OpenTelemetryCollector CR + targetallocator config delivered by
+    # GitRepository policyRef (per the no-inline-ConfigMap pattern).
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/observability-core

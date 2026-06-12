@@ -1,0 +1,67 @@
+# ingress-external — bundle: chisel-operator + ExitNode CR + nginx with
+# ingressClassName=external and loadBalancerClass=chisel.mershab.com/external.
+#
+# chisel-operator and nginx-external are inseparable: nginx-external's
+# Service stays Pending until chisel-operator claims it via its LB class,
+# and the chisel-operator needs an ExitNode to tunnel through.
+#
+# Day-1: ExitNode is a placeholder (no VPS yet). nginx-external installs;
+# its Service sits Pending an external IP until the ExitNode is wired —
+# see clusters/baremetal/addons/chisel-operator/README.md.
+#
+# mgmt-only by clusterRefs (no other cluster needs to expose to internet
+# directly; tenant + vClusters route through the bare-metal chisel tunnel).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: ingress-external
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - tls-stack
+    - sealed-secrets
+  helmCharts:
+    - repositoryURL: oci://ghcr.io/fyralabs/chisel-operator
+      repositoryName: chisel-operator
+      chartName: chisel-operator/chisel-operator
+      chartVersion: 0.4.x
+      releaseName: chisel-operator
+      releaseNamespace: chisel-operator-system
+      helmChartAction: Install
+      values: |
+        loadBalancerClass: chisel.mershab.com/external
+    - repositoryURL: https://kubernetes.github.io/ingress-nginx
+      repositoryName: ingress-nginx
+      chartName: ingress-nginx/ingress-nginx
+      chartVersion: 4.11.x
+      releaseName: ingress-nginx-external
+      releaseNamespace: ingress-nginx-external
+      helmChartAction: Install
+      values: |
+        controller:
+          ingressClassResource:
+            name: external
+            enabled: true
+            default: false
+            controllerValue: "k8s.io/ingress-nginx-external"
+          ingressClass: external
+          service:
+            type: LoadBalancer
+            loadBalancerClass: chisel.mershab.com/external
+            externalTrafficPolicy: Local
+          metrics:
+            enabled: false
+            serviceMonitor:
+              enabled: false
+          electionID: ingress-controller-leader-external
+          allowSnippetAnnotations: false
+  policyRefs:
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./clusters/baremetal/addons/chisel-operator

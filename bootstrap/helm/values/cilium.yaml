@@ -1,0 +1,99 @@
+# Cilium bootstrap values — Talos-compatible.
+#
+# Most knobs here are required for Cilium to come up on Talos at all (cgroup,
+# securityContext, kubeProxyReplacement). The rest enables LB IPAM + L2
+# announcer (MetalLB replacement) and Hubble.
+#
+# LB IPAM pools, L2AnnouncementPolicy, and the Hubble UI Ingress live in
+# `clusters/baremetal/infrastructure/cilium/` and arrive via Flux later.
+
+# Cilium replaces kube-proxy entirely (cluster.proxy.disabled: true in Talos
+# machineconfig). Cilium needs to know where the apiserver is, since
+# kube-proxy isn't there to proxy 10.96.0.1.
+kubeProxyReplacement: true
+k8sServiceHost: 192.168.2.70   # R730 CP node — pin to a Cilium LB VIP when R820 joins
+k8sServicePort: 6443
+
+# Talos-specific cgroup wiring. Cilium expects to mount its own cgroup root;
+# Talos has already set it up.
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+# Talos drops most capabilities by default — Cilium's agent + clean-state
+# init container need a small set re-added.
+securityContext:
+  capabilities:
+    ciliumAgent:
+      - CHOWN
+      - KILL
+      - NET_ADMIN
+      - NET_RAW
+      - IPC_LOCK
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - PERFMON
+      - BPF
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    cleanCiliumState:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_RESOURCE
+
+# IPAM in kubernetes mode (per IPAM design decision — simple single pod CIDR,
+# revisit multi-pool if/when we segregate tenants at the bare-metal layer).
+ipam:
+  mode: kubernetes
+
+# Pod CIDR matches Talos default. Adjust if you override it in the
+# machineconfig.
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+
+# Routing — tunnel (vxlan) keeps the flat-LAN host network untouched.
+# Switching to native routing is a Phase-N optimization, not a bootstrap need.
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+# LB IPAM + L2 announcer — replaces MetalLB. Specific pools + announcement
+# policies arrive via Flux at clusters/baremetal/infrastructure/cilium/.
+l2announcements:
+  enabled: true
+externalIPs:
+  enabled: true
+loadBalancer:
+  algorithm: maglev
+
+# Don't claim CNI exclusivity — Multus installs a thick CNI later that
+# delegates to Cilium for the default network, and that needs the directory
+# writable.
+cni:
+  exclusive: false
+
+# Hubble + UI. Ingress for the UI lands later via Flux.
+hubble:
+  enabled: true
+  metrics:
+    enableOpenMetrics: true
+    enabled:
+      - dns
+      - drop
+      - tcp
+      - flow
+      - port-distribution
+      - icmp
+      - httpV2
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# Standard operator settings; left at chart defaults except for pod CIDR.
+operator:
+  replicas: 1   # single node; bump when R820 joins

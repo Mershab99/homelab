@@ -1,0 +1,28 @@
+# HyperConverged CR — activates HCO's bundled sub-operators with our
+# customizations:
+#
+# - PCI passthrough devices for the K80 + P2000. pciDeviceSelector format
+#   is `vendor:device` hex uppercase. Vendor 10DE = NVIDIA. Devices: K80
+#   GK210B = 102D, P2000 GP106GL = 1C30. resourceNames must match what
+#   tenant KubevirtMachineTemplates reference via `gpus[].deviceName`.
+# - CDI scratch space on ceph-block-rbd.
+# - VMs see the host CPU 1:1 (required for GPU passthrough).
+apiVersion: hco.kubevirt.io/v1
+kind: HyperConverged
+metadata:
+  name: kubevirt-hyperconverged
+  namespace: kubevirt-hyperconverged
+spec:
+  virtualization:
+    permittedHostDevices:
+      pciHostDevices:
+        - pciDeviceSelector: "10DE:102D"
+          resourceName: nvidia.com/GK210GL_TESLA_K80
+        - pciDeviceSelector: "10DE:1C30"
+          resourceName: nvidia.com/GP106GL_QUADRO_P2000
+    virtualMachineOptions:
+      defaultCPUModel: host-passthrough
+  storage:
+    scratchSpaceStorageClass: ceph-block-rbd
+  infra: {}
+  workloads: {}

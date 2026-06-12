@@ -1,0 +1,11 @@
+# Flux Operator bootstrap values.
+#
+# The Operator itself is small — most config moves to the `FluxInstance` CR
+# applied via bootstrap/flux/fluxinstance.yaml. Keep this minimal.
+
+# Default namespace flux-system; bumped replica count not needed for single-node.
+replicaCount: 1
+
+# Restrict the Operator's reconciliation scope to flux-system + downstream
+# namespaces it manages. (Default is cluster-wide which is fine; leave as-is
+# unless we want to tighten later.)

@@ -1,0 +1,72 @@
+# cluster-autoscaler — runs on the BARE-METAL (mgmt) cluster.
+#
+# Per CAPI's autoscaling guide
+# (https://cluster-api.sigs.k8s.io/tasks/automated-machine-management/autoscaling),
+# the simpler topology is to run CAS on the management cluster where the
+# CAPI MachineDeployments live. CAS reads tenant pending pods via the
+# kubeconfig CAPI auto-creates at `<cluster>-kubeconfig` Secret in the
+# tenant namespace (here: `home-kubeconfig` in `tenants` ns) — no manual
+# Secret seal needed.
+#
+# CAS only scales MachineDeployments annotated with:
+#   cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size
+#   cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size
+# The `home-general` MachineDeployment has these set.
+#
+# mgmt-only.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: cluster-autoscaler
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - capi-stack   # CAPI providers must be Running
+  helmCharts:
+    - repositoryURL: https://kubernetes.github.io/autoscaler
+      repositoryName: autoscaler
+      chartName: autoscaler/cluster-autoscaler
+      chartVersion: 9.43.x
+      releaseName: cluster-autoscaler
+      releaseNamespace: cluster-autoscaler
+      helmChartAction: Install
+      values: |
+        cloudProvider: clusterapi
+        # Run on mgmt; talk to tenant via the CAPI-generated kubeconfig
+        # Secret in the tenants namespace.
+        autoDiscovery:
+          clusterName: home
+        clusterAPIMode: incluster-kubeconfig
+        clusterAPICloudConfigPath: /etc/kubernetes/mgmt-kubeconfig
+        clusterAPIWorkloadKubeconfigPath: /etc/kubernetes/workload-kubeconfig
+        # The CAPI provider reads the workload kubeconfig from this Secret;
+        # CAPI itself creates it as `home-kubeconfig` in the tenants ns.
+        extraVolumes:
+          - name: workload-kubeconfig
+            secret:
+              secretName: home-kubeconfig
+              defaultMode: 416
+        extraVolumeMounts:
+          - name: workload-kubeconfig
+            mountPath: /etc/kubernetes
+            readOnly: true
+        extraArgs:
+          balance-similar-node-groups: true
+          scale-down-utilization-threshold: 0.5
+          scale-down-unneeded-time: 10m
+          skip-nodes-with-local-storage: false
+          skip-nodes-with-system-pods: false
+        # ServiceMonitor flips on once prom-CRDs land.
+        serviceMonitor:
+          enabled: false
+        # CAS needs RBAC on the mgmt cluster for cluster.x-k8s.io
+        # MachineDeployments and on the tenant cluster (via kubeconfig)
+        # for pods/nodes — the chart's clusterapi mode handles both.
+        rbac:
+          create: true
+          serviceAccount:
+            create: true

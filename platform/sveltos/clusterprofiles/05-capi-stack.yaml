@@ -1,0 +1,67 @@
+# capi-stack — cluster-api-operator + Kamaji controller.
+#
+# cluster-api-operator installs ALL providers via its Helm values structure
+# (no separate Provider CRs needed). Providers we enable:
+#   core              — core CAPI controllers
+#   bootstrap/kubeadm — CABPK
+#   controlPlane/kamaji — bridges CAPI to Kamaji TenantControlPlane CRs
+#   infrastructure/kubevirt — CAPK (VM workers)
+#   addon/helm        — CAPI HelmChartProxy CRs (delivers Helm charts INTO
+#                       tenant clusters, used for tenant CNI bootstrap)
+#
+# Kamaji's own controller installs separately (it's not a CAPI provider —
+# it's the underlying engine the controlPlane/kamaji provider talks to).
+#
+# mgmt-only.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: capi-stack
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - tls-stack   # cluster-api-operator's webhooks need cert-manager
+    - virt-host   # CAPK validates against KubeVirt CRDs
+  helmCharts:
+    - repositoryURL: https://kubernetes-sigs.github.io/cluster-api-operator
+      repositoryName: capi-operator
+      chartName: capi-operator/cluster-api-operator
+      chartVersion: 0.19.x
+      releaseName: capi-operator
+      releaseNamespace: capi-operator-system
+      helmChartAction: Install
+      values: |
+        enableHelmHook: true
+        manager:
+          featureGates:
+            core:
+              ClusterResourceSet: true
+        # Provider install via operator values — cleaner than maintaining
+        # separate CoreProvider/BootstrapProvider/etc CRs.
+        core:
+          cluster-api: {}
+        bootstrap:
+          kubeadm: {}
+        controlPlane:
+          kamaji: {}
+        infrastructure:
+          kubevirt: {}
+        addon:
+          helm: {}   # enables HelmChartProxy CRs — tenant CNI bootstrap
+        cert-manager:
+          enabled: false   # we install cert-manager separately (tls-stack)
+    - repositoryURL: https://clastix.github.io/charts
+      repositoryName: clastix
+      chartName: clastix/kamaji
+      chartVersion: 1.0.x
+      releaseName: kamaji
+      releaseNamespace: kamaji-system
+      helmChartAction: Install
+      values: |
+        # Kamaji controller — provisions tenant control planes as pods.
+        datastore:
+          driver: etcd

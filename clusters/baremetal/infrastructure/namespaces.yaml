@@ -1,0 +1,17 @@
+# Namespaces. Sveltos and its prereq sit here; the rest (cert-manager,
+# rook-ceph, kubevirt, capi-system, kamaji-system, ingress-nginx-*,
+# external-dns, chisel-operator-system, sealed-secrets) are created by the
+# Sveltos ClusterProfile that installs the corresponding chart.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: projectsveltos
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+# tenants/ holds CAPI Cluster CRs delivered by Sveltos to mgmt — keep here
+# so the namespace exists before the ClusterProfile reconciles.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenants

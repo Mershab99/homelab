@@ -1,0 +1,62 @@
+# general worker pool — autoscaled 1-5. Plain CPU, no GPU.
+#
+# Two interfaces:
+#   default — pod network via masquerade (VM behind KubeVirt NAT, one IP
+#             per VM as seen by tenant pod network)
+#   br-multus — Multus, macvlan over the host's br0; gives the VM a LAN IP
+#             so workloads that annotate
+#             `k8s.v1.cni.cncf.io/networks: br-multus` can attach.
+#
+# Two disks:
+#   containervolume — containerDisk from CAPK's pinned Ubuntu image
+#                     (ephemeral root)
+#   containerstorage — 50Gi emptyDisk, formatted ext4 by cloud-init and
+#                      mounted at /opt/vdb. Containerd state + kubelet
+#                      root-dir are relocated there so the root disk stays
+#                      lean.
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: home-general
+  namespace: tenants
+spec:
+  template:
+    spec:
+      virtualMachineBootstrapCheck:
+        checkStrategy: ssh
+      virtualMachineTemplate:
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              domain:
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 8Gi
+                devices:
+                  disks:
+                    - name: containervolume
+                      disk: {bus: virtio}
+                    - name: containerstorage
+                      disk: {bus: virtio}
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                    - name: br-multus
+                      bridge: {}
+                  networkInterfaceMultiqueue: true
+              networks:
+                - name: default
+                  pod: {}
+                - name: br-multus
+                  multus:
+                    networkName: br-multus
+              evictionStrategy: External
+              volumes:
+                - name: containervolume
+                  containerDisk:
+                    image: quay.io/capk/ubuntu-2004-container-disk:v1.35.0
+                - name: containerstorage
+                  emptyDisk:
+                    capacity: 50Gi

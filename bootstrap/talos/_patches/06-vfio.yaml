@@ -1,0 +1,24 @@
+# GPU passthrough — IOMMU on, Talos pcirebind rebinds specific PCI slots
+# from nvidia → vfio-pci early so KubeVirt can hand the devices to tenant
+# worker VMs.
+#
+# Per-slot rebind (rather than vfio-pci.ids=10de:102d) lets us pass through
+# one K80 die while leaving the other on nvidia — important if we ever want
+# a host-side GPU.
+#
+# ⚠ The PCI addresses below are templates from the existing arrakis cluster.
+# Replace each with the real address from the R730. To enumerate:
+#
+#   talosctl --insecure --nodes 192.168.2.70 get pcidevices
+#   # or in maintenance mode, from the dashboard:
+#   talosctl --insecure --nodes 192.168.2.70 read /proc/iomem | grep -i nvidia
+#
+# Expected on R730: 1× P2000 (single device) + 1× K80 (two devices, 00.0/00.1)
+# = 3 entries. Adjust the list before first apply.
+machine:
+  install:
+    extraKernelArgs:
+      - intel_iommu=on
+      - pcirebind.rebind=0000:06:00.0_nvidia+vfio-pci   # TODO: replace with real PCI BDF
+      - pcirebind.rebind=0000:82:00.0_nvidia+vfio-pci   # TODO: replace with real PCI BDF
+      - pcirebind.rebind=0000:82:00.1_nvidia+vfio-pci   # TODO: replace with real PCI BDF

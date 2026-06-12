@@ -1,0 +1,19 @@
+# Layer-level Flux Kustomization for the infrastructure tier.
+#
+# Reconciles every CNI / network / storage / virt manifest in
+# clusters/baremetal/infrastructure/. Inside that path, each subsystem has
+# its own Flux Kustomization CR with dependsOn so the order is enforced.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./clusters/baremetal/infrastructure
+  prune: true
+  wait: true
+  timeout: 15m

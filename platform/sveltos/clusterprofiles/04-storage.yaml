@@ -1,0 +1,152 @@
+# storage — Rook/Ceph (operator + cluster + pools + StorageClasses + RGW for S3).
+#
+# Bundle layout:
+#   1. rook-ceph (operator chart)         — controllers, CRDs
+#   2. rook-ceph-cluster (cluster chart)  — CephCluster, CephBlockPool,
+#      CephFilesystem, CephObjectStore, StorageClasses for block/fs/object
+#
+# Day-1 sizing: single R730 node, so monCount=1, mgrCount=1, replica=1 on
+# pools. When R820 joins, bump monCount to 3 and pool replicas to 2.
+#
+# OSD topology: Rook auto-discovers any unclaimed disk via useAllNodes +
+# useAllDevices. Talos installs to /dev/sdb (see bootstrap/talos/r730.yaml)
+# so any OTHER attached disk gets consumed. ⚠ Verify with
+# `talosctl --nodes 192.168.2.70 get disks` before applying — if there's no
+# spare disk, you must add `nodes: [{name: r730, devices: [...]}]` explicitly.
+#
+# mgmt-only — Ceph runs only on the bare-metal cluster. Tenant workloads
+# consume Ceph via kubevirt-csi (delivered to tenant by the tenant-baseline
+# bundle).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: storage
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  helmCharts:
+    - repositoryURL: https://charts.rook.io/release
+      repositoryName: rook-release
+      chartName: rook-release/rook-ceph
+      chartVersion: v1.15.x
+      releaseName: rook-ceph
+      releaseNamespace: rook-ceph
+      helmChartAction: Install
+      values: |
+        # Operator-only chart. CSI drivers + controllers come up; no
+        # CephCluster yet (that's the cluster chart below).
+        crds:
+          enabled: true
+        # The operator needs to run on the node where OSDs live.
+        nodeSelector: {}
+        tolerations: []
+    - repositoryURL: https://charts.rook.io/release
+      repositoryName: rook-release
+      chartName: rook-release/rook-ceph-cluster
+      chartVersion: v1.15.x
+      releaseName: rook-ceph-cluster
+      releaseNamespace: rook-ceph
+      helmChartAction: Install
+      # Use chart's built-in CephCluster + pools + storageclass templating.
+      values: |
+        operatorNamespace: rook-ceph
+        cephClusterSpec:
+          mon:
+            count: 1   # bump to 3 when R820 joins
+            allowMultiplePerNode: true
+          mgr:
+            count: 1
+          dashboard:
+            enabled: true
+            ssl: false        # served via ingress-internal w/ TLS upstream
+          storage:
+            useAllNodes: true
+            useAllDevices: true
+            # ⚠ TODO: if /dev/sdb is the only disk, add explicit nodes:[] here
+            # listing extra device paths.
+          resources:
+            mon:
+              requests: {cpu: 250m, memory: 1Gi}
+              limits:   {memory: 2Gi}
+            mgr:
+              requests: {cpu: 250m, memory: 1Gi}
+              limits:   {memory: 2Gi}
+            osd:
+              requests: {cpu: 500m, memory: 2Gi}
+              limits:   {memory: 4Gi}
+        # Default block pool + StorageClass.
+        cephBlockPools:
+          - name: ceph-blockpool
+            spec:
+              failureDomain: host
+              replicated:
+                size: 1   # bump to 2 when R820 joins
+            storageClass:
+              enabled: true
+              name: ceph-block-rbd
+              isDefault: true
+              reclaimPolicy: Delete
+              allowVolumeExpansion: true
+        # CephFS for RWX volumes (vCluster shared PVCs etc.)
+        cephFileSystems:
+          - name: ceph-filesystem
+            spec:
+              metadataPool:
+                replicated:
+                  size: 1
+              dataPools:
+                - name: data0
+                  failureDomain: host
+                  replicated:
+                    size: 1
+            storageClass:
+              enabled: true
+              name: ceph-fs-rwx
+              isDefault: false
+              reclaimPolicy: Delete
+              allowVolumeExpansion: true
+        # Object store for Loki S3 backend.
+        cephObjectStores:
+          - name: ceph-objectstore
+            spec:
+              metadataPool:
+                replicated:
+                  size: 1
+              dataPool:
+                failureDomain: host
+                replicated:
+                  size: 1
+              preservePoolsOnDelete: true
+              gateway:
+                port: 80
+                instances: 1
+            storageClass:
+              enabled: true
+              name: ceph-bucket
+              reclaimPolicy: Delete
+  policyRefs:
+    - name: storage-quotas
+      namespace: projectsveltos
+      kind: ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storage-quotas
+  namespace: projectsveltos
+data:
+  # ResourceQuota on the tenants namespace — without this, runaway CAPI VM
+  # PVCs can starve the bare-metal cluster of Ceph capacity.
+  resource-quota.yaml: |
+    apiVersion: v1
+    kind: ResourceQuota
+    metadata:
+      name: tenants-storage
+      namespace: tenants
+    spec:
+      hard:
+        requests.storage: 2Ti          # adjust per disk capacity
+        persistentvolumeclaims: "100"

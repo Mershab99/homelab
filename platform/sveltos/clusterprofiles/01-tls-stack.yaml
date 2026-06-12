@@ -1,0 +1,103 @@
+# tls-stack — cert-manager + ClusterIssuers (letsencrypt-prod + selfsigned-ca
+# + the self-signed bootstrap chain).
+#
+# Single bundle because the ClusterIssuers have no meaning without
+# cert-manager and vice versa. Cloudflare API token is a cluster-wide
+# SealedSecret created out of band (see secrets/infrastructure/cert-manager/README.md).
+#
+# Depends on sealed-secrets so the CF token Secret can be decrypted.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tls-stack
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.tls: "true"
+  dependsOn:
+    - sealed-secrets
+  helmCharts:
+    - repositoryURL: https://charts.jetstack.io
+      repositoryName: jetstack
+      chartName: jetstack/cert-manager
+      chartVersion: v1.15.x
+      releaseName: cert-manager
+      releaseNamespace: cert-manager
+      helmChartAction: Install
+      values: |
+        crds:
+          enabled: true
+        global:
+          leaderElection:
+            namespace: cert-manager
+        prometheus:
+          enabled: false   # flips on once observability-core lands
+  policyRefs:
+    - name: tls-stack-issuers
+      namespace: projectsveltos
+      kind: ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tls-stack-issuers
+  namespace: projectsveltos
+data:
+  cluster-issuers.yaml: |
+    # Self-signed bootstrap Issuer — mints the root CA cert only.
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: selfsigned-bootstrap
+    spec:
+      selfSigned: {}
+    ---
+    # Root CA cert — long-lived, signs every internal cert.
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: homelab-ca
+      namespace: cert-manager
+    spec:
+      isCA: true
+      commonName: homelab-ca
+      secretName: homelab-ca-key-pair
+      duration: 87600h           # 10 years
+      renewBefore: 8760h         # rotate yearly
+      privateKey:
+        algorithm: ECDSA
+        size: 256
+      issuerRef:
+        name: selfsigned-bootstrap
+        kind: ClusterIssuer
+        group: cert-manager.io
+    ---
+    # The selfsigned-ca ClusterIssuer used by every internal Ingress.
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: selfsigned-ca
+    spec:
+      ca:
+        secretName: homelab-ca-key-pair
+    ---
+    # letsencrypt-prod — Cloudflare DNS-01, signs every external Ingress.
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: letsencrypt-prod
+    spec:
+      acme:
+        email: mershab@integratrace.com
+        server: https://acme-v02.api.letsencrypt.org/directory
+        privateKeySecretRef:
+          name: letsencrypt-prod-account-key
+        solvers:
+          - dns01:
+              cloudflare:
+                apiTokenSecretRef:
+                  name: cloudflare-api-token
+                  key: api-token
+            selector:
+              dnsZones:
+                - mershab.com

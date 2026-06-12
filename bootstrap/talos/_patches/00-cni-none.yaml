@@ -1,0 +1,10 @@
+# Disable Talos's built-in CNI + kube-proxy.
+#
+# Cilium replaces both: kube-proxy via KPR, and the CNI by being installed
+# externally via helm (bootstrap/helm/01-cilium.sh).
+cluster:
+  network:
+    cni:
+      name: none
+  proxy:
+    disabled: true

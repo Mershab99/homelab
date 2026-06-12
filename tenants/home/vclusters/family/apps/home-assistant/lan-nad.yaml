@@ -1,0 +1,20 @@
+# Local NAD in the home-assistant namespace (vCluster doesn't sync NADs
+# from the default namespace where 12-vcluster-baseline drops one). Pods
+# in this ns annotate `k8s.v1.cni.cncf.io/networks: lan` to attach.
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: lan
+  namespace: home-assistant
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "lan",
+      "type": "macvlan",
+      "master": "br-multus",
+      "mode": "bridge",
+      "ipam": {
+        "type": "dhcp"
+      }
+    }

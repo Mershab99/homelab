@@ -1,0 +1,26 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: sveltos
+  namespace: projectsveltos
+spec:
+  interval: 15m
+  chart:
+    spec:
+      chart: projectsveltos
+      version: 0.50.x
+      sourceRef:
+        kind: HelmRepository
+        name: projectsveltos
+        namespace: projectsveltos
+      interval: 1h
+  releaseName: projectsveltos
+  install:
+    crds: CreateReplace
+  upgrade:
+    crds: CreateReplace
+  values:
+    # Default deploy: addon-controller, classifier, sveltoscluster-manager,
+    # event-manager, healthcheck-manager. Default is what we want; no overrides.
+    dashboard:
+      enabled: true

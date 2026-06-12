@@ -1,0 +1,328 @@
+# Bootstrap
+
+Cold-start the bare-metal cluster from zero. Run top to bottom. Each section
+ends in a `Verify` block — do not move on until it passes.
+
+Reference targets:
+- Domain: `mershab.com`
+- Talos node IP: `192.168.2.70` (R730, pinned)
+- LB IPAM pool: `192.168.2.200–240`
+- Tenant cluster name: `home`
+
+## Prerequisites (workstation)
+
+```bash
+# Tools (mise / asdf / brew — whichever you use)
+brew install talosctl helm cilium-cli flux sops age yq kubectl kustomize
+brew install fluxcd/tap/flux  # operator-aware client
+brew install go-task/tap/go-task
+```
+
+- A Cloudflare API token with DNS edit permission on the `mershab.com` zone
+  (for cert-manager DNS-01 + ExternalDNS).
+- A GitHub PAT with repo+workflow scope (used only if/when adopting Flux
+  bootstrap-via-CLI; for Flux Operator we use SSH or HTTPS deploy keys instead).
+- An age private key for SOPS:
+  ```bash
+  age-keygen -o ~/.config/sops/age/keys.txt
+  export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
+  ```
+  Paste the resulting `age1...` public key into `.sops.yaml`.
+
+## 1. Network
+
+- Bell Hub 3000: DHCP enabled on `192.168.2.0/24`. Carve out the LB pool by
+  configuring DHCP to **exclude** `192.168.2.200–240`.
+- Aruba S2500: L2-only; no VLAN config required. Confirm all interfaces in
+  the default VLAN.
+- Reserve `192.168.2.70` for the R730 in Bell Hub's DHCP, but Talos will
+  static-config the address regardless — the reservation is belt-and-braces.
+
+**Verify**: from your workstation, `arp -a` shows the R730 mgmt iDRAC and
+the switch, and you can `ping 192.168.2.1` (Bell Hub).
+
+## 2. Talos on the R730
+
+```bash
+# Generate machineconfig secrets (encrypts to .sops)
+task talos:secrets
+
+# Build R730 ISO via Talos Image Factory
+task talos:r730:schematic
+task talos:r730:iso
+
+# Generate the machineconfig from bootstrap/talos/r730.yaml + patches
+task talos:r730:config
+
+# Flash + boot the R730 from the ISO (use IPMI virtual media or USB)
+# Apply the machineconfig in maintenance mode:
+talosctl apply-config --insecure \
+  --nodes 192.168.2.70 \
+  --file gen/talos-r730-machineconfig.yaml
+
+# Bootstrap etcd (only on the FIRST control-plane node, ever)
+talosctl --nodes 192.168.2.70 --endpoints 192.168.2.70 bootstrap
+
+# Pull the kubeconfig out
+talosctl --nodes 192.168.2.70 --endpoints 192.168.2.70 kubeconfig ./.kubeconfig
+export KUBECONFIG=$PWD/.kubeconfig
+```
+
+**Verify**:
+```bash
+kubectl get nodes -o wide        # Ready, internal IP on br0
+talosctl --nodes 192.168.2.70 dmesg | grep -i iommu   # IOMMU enabled
+talosctl --nodes 192.168.2.70 read /proc/cmdline       # pcirebind.rebind=... present
+```
+
+## 3. Cilium
+
+```bash
+bootstrap/helm/01-cilium.sh
+```
+
+This installs Cilium with kube-proxy replacement, L2 announcer, LB IPAM, and
+Hubble enabled. The IPAM pool + L2AnnouncementPolicy CRs are applied by Flux
+later — for bootstrap, Cilium itself is enough.
+
+**Verify**:
+```bash
+cilium status --wait
+cilium connectivity test --test no-policies   # subset; full suite optional
+kubectl -n kube-system get pods -l k8s-app=cilium
+```
+
+## 4. Flux Operator
+
+```bash
+bootstrap/helm/02-flux-operator.sh
+```
+
+Flux Operator manages Flux declaratively via the `FluxInstance` CR. The
+controller comes up in `flux-system`.
+
+**Verify**:
+```bash
+kubectl -n flux-system get pods    # flux-operator-... Running
+kubectl get crd fluxinstances.fluxcd.controlplane.io  # CRD present
+```
+
+## 5. Flux root
+
+```bash
+# The git URL/branch/path point Flux at this repo.
+kubectl apply -f bootstrap/flux/gitrepository.yaml
+kubectl apply -f bootstrap/flux/fluxinstance.yaml
+kubectl apply -f bootstrap/flux/root-kustomization.yaml
+```
+
+The root Kustomization is `clusters/baremetal/` — Flux now owns reconciliation
+of everything downstream.
+
+**Verify**:
+```bash
+flux get sources git
+flux get kustomizations
+# Watch the layers come up:
+watch -n 2 'flux get kustomizations'
+```
+
+## 6. Infrastructure layer comes up (bare-metal bootstrap minimum)
+
+Flux reconciles `clusters/baremetal/infrastructure/` — only what Sveltos
+cannot bootstrap itself:
+
+1. cilium runtime CRs (LB IPAM pool + L2AnnouncementPolicy)
+2. namespaces (projectsveltos, tenants)
+
+**Verify**:
+```bash
+flux get kustomizations                 # infrastructure Ready
+kubectl get ciliumloadbalancerippool
+```
+
+## 6.5. Sveltos controller + label the mgmt cluster
+
+Flux reconciles `clusters/baremetal/platform/` — Sveltos itself, as a
+HelmRelease. After this is Ready, the bare-metal cluster auto-registers as
+a `SveltosCluster` named `mgmt` in the `projectsveltos` namespace.
+
+Apply labels to `mgmt` so the cross-cluster ClusterProfiles target it. This
+is a one-time imperative step — Sveltos owns the SveltosCluster CR's spec,
+but we own its labels:
+
+```bash
+kubectl -n projectsveltos label sveltoscluster mgmt \
+  sveltos.projectsveltos.io/type=mgmt \
+  tier=platform \
+  needs.sealed-secrets=true \
+  needs.tls=true \
+  needs.dns=true \
+  needs.ingress-internal=true \
+  needs.ingress-external=true \
+  needs.storage=true \
+  needs.virt-host=true \
+  needs.capi=true \
+  needs.auth=true \
+  needs.headlamp=true \
+  needs.observability-core=true \
+  needs.observability-backend=true
+
+# Also label the tenant home Cluster CR (after it lands) so observability-core
+# fans into the tenant too:
+#   kubectl label cluster -n tenants home needs.observability-core=true
+```
+
+Then `sveltos-fanout-ks` reconciles `platform/sveltos/clusterprofiles/` and
+the cluster lights up: sealed-secrets first (no deps), then cert-manager,
+external-dns, ingress-nginx (×2), chisel-operator, Multus, Dex, Headlamp,
+Rook/Ceph, KubeVirt HCO, CAPI + Kamaji, observability stack.
+
+**Verify**:
+```bash
+kubectl -n projectsveltos get pods                  # controller Running
+kubectl get sveltoscluster -n projectsveltos        # mgmt registered + labeled
+kubectl get clusterprofiles                         # all matched
+kubectl get clustersummaries -A                     # one per (profile, cluster) — all Provisioned
+kubectl -n cert-manager get clusterissuer letsencrypt-prod
+kubectl -n rook-ceph get cephcluster                # HEALTH_OK
+kubectl get hyperconverged -n kubevirt              # Deployed
+kubectl get providers -A                            # core, capk, cabpk, kamaji
+```
+
+## 7. Verify Dex + OAuth2Clients
+
+```bash
+curl -sI https://auth.mershab.com/.well-known/openid-configuration   # 200
+kubectl get oauth2clients -A                                         # all sync
+# Headlamp UI → Dex login → lands on the cluster dashboard via the
+# headlamp-admin ServiceAccount token configured at install time.
+```
+
+OAuth2Client CRs (per-UI) are part of the `dex` ClusterProfile — they ship
+inline with the Helm release so each UI's client_id + redirect URIs land
+the moment Dex comes up.
+
+## 8. Observability layer
+
+Flux reconciles `clusters/baremetal/observability/`:
+
+1. otel-operator (Operator + TargetAllocator CRs)
+2. prometheus-operator-crds (ServiceMonitor/PodMonitor; no Prometheus controller)
+3. otel-agent (DaemonSet, per-node TA) + otel-gateway (Deployment, exports
+   metrics/logs to Loki + traces wherever)
+4. loki (single-binary, Ceph S3 backend via Rook RGW)
+5. grafana-operator + Grafana CR
+6. Datasources + dashboards (all `GrafanaDashboard` CRs from Git)
+
+**Verify**:
+```bash
+kubectl -n observability get pods                  # all Running
+# Grafana → Datasources → Loki + Prometheus(OTel) both OK
+# Explore: see node + cluster metrics flowing
+```
+
+## 9. Tenant cluster
+
+```bash
+# Flux already reconciles tenants/home/infra/ — confirm CAPI sees it
+kubectl get cluster -A
+clusterctl describe cluster home -n tenants
+```
+
+CAPI's chain:
+- `Cluster home` references a `KamajiControlPlane` (pods on bare-metal) + a
+  `KubeVirtCluster` (infrastructure).
+- `KamajiControlPlane` provisions a tenant kube-apiserver (OIDC against Dex —
+  the `kubernetes` OAuth2Client), etcd (StatefulSet on `ceph-block-rbd`), and
+  a Cilium LB Service for the API.
+- `MachineDeployment`s (general / gpu-k80 / gpu-p2000) → CAPK creates
+  `KubeVirtMachine`s → KubeVirt boots Ubuntu VMs with 2 NICs (pod + lan).
+- CABPK supplies cloud-init that runs `kubeadm join` against the Kamaji-hosted
+  CP. New nodes appear in the tenant cluster.
+
+**Verify**:
+```bash
+TKUBECONFIG=tenant.kubeconfig
+clusterctl get kubeconfig home -n tenants > $TKUBECONFIG
+kubectl --kubeconfig=$TKUBECONFIG get nodes
+# expect: 1 general + 2 gpu-k80 + 1 gpu-p2000 Ready
+
+# OIDC: after `kubectl oidc-login` (or kubelogin) is wired in your kubeconfig,
+# the tenant apiserver accepts your Dex-issued token:
+kubectl --kubeconfig=$TKUBECONFIG auth whoami
+# → Username: oidc:<email>, Groups: [oidc:platform-admins]
+```
+
+## 10. Tenant platform (Sveltos fan-out)
+
+Sveltos auto-registered the tenant via the CAPI integration (the `Cluster`
+CR's labels). ClusterProfiles in `tenants/home/platform/clusterprofiles/`
+should already be matching.
+
+**Verify**:
+```bash
+kubectl get clusterprofiles
+kubectl get clustersummaries -A    # one per matched (profile, cluster) pair
+kubectl --kubeconfig=$TKUBECONFIG get crd | grep network-attachment   # Multus
+kubectl --kubeconfig=$TKUBECONFIG -n kube-system get ds nvidia-device-plugin-daemonset
+# scale a Deployment past pool capacity → cluster-autoscaler bumps replicas:
+kubectl --kubeconfig=$TKUBECONFIG run scaletest --image=pause --replicas=20
+kubectl get machinedeployment -A -w     # general replicas climb
+```
+
+## 11. First vCluster — home-assistant
+
+```bash
+# tenants/home/vclusters/home-assistant/tenant-side/ — Flux Kustomization
+# targets the tenant kubeconfig (via Secret). Bundled sveltos-applier dials
+# the bare-metal Sveltos controller. Slot SveltosCluster on bare-metal
+# completes the registration.
+kubectl get sveltoscluster -n vclusters home-assistant
+```
+
+Once registered, matching ClusterProfiles fire into the vCluster (Multus NAD,
+OIDC RBAC bindings — the vCluster apiserver federates to Dex using the same
+`kubernetes` OAuth2Client, prometheus annotations). The `apps/` Flux
+Kustomization (targeting the vCluster kubeconfig) deploys HA.
+
+**Verify**:
+```bash
+VKC=vc-home-assistant.kubeconfig
+# pull from the vCluster's auto-generated Secret in the tenant
+kubectl --kubeconfig=$TKUBECONFIG -n vclusters get secret vc-home-assistant-kubeconfig \
+  -o jsonpath='{.data.config}' | base64 -d > $VKC
+kubectl --kubeconfig=$VKC get nodes
+kubectl --kubeconfig=$VKC -n projectsveltos get pod   # sveltos-applier Running
+# HA pod has two interfaces:
+kubectl --kubeconfig=$VKC -n home-assistant exec -it home-assistant-0 -- ip a
+# expect eth0 (pod CIDR) + net1 (LAN, 192.168.2.x)
+```
+
+## 12. Remaining vClusters
+
+Repeat step 11 for `frigate`, `jellyfin`, `ollama` (their manifests already
+live in `tenants/home/vclusters/`). Each adds an `OAuth2Client` CR for its UI.
+
+## 13. etcd backup
+
+Verify the etcd-backup CronJob fires on its first schedule:
+
+```bash
+kubectl -n etcd-backup get cronjob
+kubectl -n etcd-backup get jobs --sort-by=.metadata.creationTimestamp
+# Confirm the off-box destination (Hetzner storage box / B2) has the file.
+```
+
+## 14. R820 (later)
+
+When the R820 arrives:
+
+1. Write `bootstrap/talos/r820.yaml` (copy r730 + adjust hardware specifics).
+2. Build ISO, flash, boot, `talosctl apply-config`.
+3. The node joins as a worker (or control plane joiner if scaling CP to 3).
+4. If the R820 brings new GPUs, extend `permittedHostDevices` in
+   `clusters/baremetal/infrastructure/kubevirt-hco/hyperconverged.yaml`.
+5. Ceph picks up free disks automatically.
+
+See `docs/runbooks/adding-a-bare-metal-node.md` for the full procedure.

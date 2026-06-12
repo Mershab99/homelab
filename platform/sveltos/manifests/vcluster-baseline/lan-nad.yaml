@@ -1,0 +1,24 @@
+# Baseline `lan` NAD in the default namespace of every vCluster.
+#
+# Pods that need a LAN attach annotate
+# `k8s.v1.cni.cncf.io/networks: lan`. NADs are namespace-scoped so if the
+# workload runs in a non-default ns, the workload's own apps/ tree should
+# include a copy of this NAD in that ns (see
+# tenants/home/vclusters/home-assistant/apps/lan-nad.yaml for the pattern).
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: lan
+  namespace: default
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "lan",
+      "type": "macvlan",
+      "master": "br-multus",
+      "mode": "bridge",
+      "ipam": {
+        "type": "dhcp"
+      }
+    }

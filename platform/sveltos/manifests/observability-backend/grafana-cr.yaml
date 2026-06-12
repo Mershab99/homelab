@@ -1,0 +1,62 @@
+# Grafana CR managed by grafana-operator. Dex OIDC via generic_oauth.
+# Client secret comes from `grafana-oidc` SealedSecret.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    dashboards: "grafana"
+spec:
+  config:
+    log:
+      mode: console
+    auth:
+      disable_login_form: "false"
+    auth.generic_oauth:
+      enabled: "true"
+      name: Dex
+      client_id: grafana
+      client_secret: $__file{/etc/secrets/grafana-oidc/clientSecret}
+      scopes: openid profile email groups
+      auth_url: https://auth.mershab.com/auth
+      token_url: https://auth.mershab.com/token
+      api_url: https://auth.mershab.com/userinfo
+      role_attribute_path: "contains(groups[*], 'oidc:platform-admins') && 'GrafanaAdmin' || contains(groups[*], 'oidc:viewers') && 'Viewer' || 'Viewer'"
+      allow_assign_grafana_admin: "true"
+    server:
+      domain: grafana.mershab.com
+      root_url: https://grafana.mershab.com
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: grafana
+              volumeMounts:
+                - mountPath: /etc/secrets/grafana-oidc
+                  name: grafana-oidc
+          volumes:
+            - name: grafana-oidc
+              secret:
+                secretName: grafana-oidc
+  ingress:
+    spec:
+      ingressClassName: internal
+      tls:
+        - hosts: [grafana.mershab.com]
+          secretName: grafana-tls
+      rules:
+        - host: grafana.mershab.com
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: grafana-service
+                    port: {number: 3000}
+    metadata:
+      annotations:
+        cert-manager.io/cluster-issuer: selfsigned-ca
+        external-dns.alpha.kubernetes.io/hostname: grafana.mershab.com

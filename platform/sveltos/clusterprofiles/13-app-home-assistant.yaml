@@ -1,0 +1,62 @@
+# Home Assistant — installed INSIDE the `family` vCluster.
+#
+# Two delivery channels:
+#   1. helmCharts — pajikos/home-assistant (the most actively maintained
+#      community chart). Handles the namespace, PVC, Deployment, Service,
+#      and Ingress with our values. Pod annotated with Multus to attach to
+#      the LAN.
+#   2. policyRefs — a GitRepository ref pointing at
+#      tenants/home/vclusters/family/apps/home-assistant/ for the things
+#      the chart doesn't manage (the `lan` NAD in the home-assistant ns).
+#
+# Selector: clusterRefs by name targets the family SveltosCluster
+# registered when the vCluster's bundled sveltos-applier connects.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: app-home-assistant
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: family
+      namespace: vclusters
+  dependsOn:
+    - vcluster-baseline   # need the lan NAD baseline before HA's NAD copy lands
+  helmCharts:
+    - repositoryURL: https://pajikos.github.io/home-assistant-helm-chart/
+      repositoryName: pajikos
+      chartName: pajikos/home-assistant
+      chartVersion: 0.2.x
+      releaseName: home-assistant
+      releaseNamespace: home-assistant
+      helmChartAction: Install
+      values: |
+        persistence:
+          enabled: true
+          storageClass: kubevirt   # routes via kubevirt-csi to bare-metal ceph
+          size: 10Gi
+        ingress:
+          enabled: true
+          className: internal
+          hosts:
+            - host: home.mershab.com
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - secretName: home-assistant-tls
+              hosts:
+                - home.mershab.com
+          annotations:
+            cert-manager.io/cluster-issuer: selfsigned-ca
+            external-dns.alpha.kubernetes.io/hostname: home.mershab.com
+        # Multus LAN attach — HA needs LAN for mDNS / zwave coordinator / etc.
+        podAnnotations:
+          k8s.v1.cni.cncf.io/networks: lan
+  policyRefs:
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./tenants/home/vclusters/family/apps/home-assistant

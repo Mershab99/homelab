@@ -1,0 +1,99 @@
+# observability-backend — Loki (Ceph S3 backend) + Grafana operator +
+# Grafana CR with Dex OIDC.
+#
+# Loki S3 credentials come from a Rook-generated Secret backing an
+# ObjectBucketClaim (no manual seal needed — Rook manages the creds).
+#
+# Grafana auth via Dex generic_oauth. Client_secret comes from a sealed
+# Secret named `grafana-oidc` in the monitoring ns (see
+# secrets/infrastructure/grafana/README.md).
+#
+# mgmt-only — single observability backend for the whole homelab.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: observability-backend
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - observability-core   # prom-CRDs + OTel must be up first
+    - storage              # Ceph RGW provides Loki's S3 backend
+    - auth-stack           # Grafana OIDC client lives in dex-config
+    - sealed-secrets       # for grafana-oidc Secret
+  helmCharts:
+    - repositoryURL: https://grafana.github.io/helm-charts
+      repositoryName: grafana
+      chartName: grafana/loki
+      chartVersion: 6.x
+      releaseName: loki
+      releaseNamespace: monitoring
+      helmChartAction: Install
+      values: |
+        deploymentMode: SingleBinary
+        loki:
+          auth_enabled: false
+          schemaConfig:
+            configs:
+              - from: "2024-04-01"
+                store: tsdb
+                object_store: s3
+                schema: v13
+                index:
+                  prefix: index_
+                  period: 24h
+          storage:
+            type: s3
+            bucketNames:
+              chunks: loki-chunks
+              ruler: loki-ruler
+              admin: loki-admin
+            s3:
+              endpoint: rook-ceph-rgw-ceph-objectstore.rook-ceph.svc.cluster.local:80
+              s3ForcePathStyle: true
+              insecure: true
+              # Access keys come from the ObjectBucketClaim's generated
+              # Secret — env vars pick them up at runtime.
+        singleBinary:
+          replicas: 1
+          persistence:
+            enabled: true
+            storageClass: ceph-block-rbd
+            size: 10Gi
+          extraEnvFrom:
+            - secretRef:
+                name: loki-bucket
+        # Disable the chart's read/write/backend split (single-binary mode).
+        backend:
+          replicas: 0
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        chunksCache:
+          enabled: false
+        resultsCache:
+          enabled: false
+        lokiCanary:
+          enabled: false
+        test:
+          enabled: false
+    - repositoryURL: https://grafana.github.io/helm-charts
+      repositoryName: grafana
+      chartName: grafana/grafana-operator
+      chartVersion: 5.x
+      releaseName: grafana-operator
+      releaseNamespace: monitoring
+      helmChartAction: Install
+      values: |
+        # Watch the monitoring namespace only — Grafana CR lives there.
+        namespaceScope: false
+  policyRefs:
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/observability-backend

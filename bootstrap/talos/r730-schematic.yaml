@@ -1,0 +1,19 @@
+# Talos Image Factory schematic for the R730.
+#
+# POST this YAML to https://factory.talos.dev/schematics to get a schematic ID,
+# then build the ISO at
+#   https://factory.talos.dev/image/<schematic-id>/<talos-version>/metal-amd64.iso
+#
+# Extensions:
+#   - util-linux-tools — host shell utilities (debug)
+#   - drbd             — optional, for future replicated storage (cheap to include)
+#   - i915-ucode       — Intel iGPU microcode (R730 has Matrox; harmless)
+#   - amdgpu-firmware  — harmless on Intel hosts; future-proof
+#   - intel-ucode      — Xeon microcode updates
+#
+# vfio-pci is part of the base kernel — no extension needed for GPU passthrough.
+customization:
+  systemExtensions:
+    officialExtensions:
+      - siderolabs/intel-ucode
+      - siderolabs/util-linux-tools

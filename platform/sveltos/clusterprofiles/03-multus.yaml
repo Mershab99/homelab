@@ -1,0 +1,41 @@
+# Multus thick-DaemonSet — Sveltos-delivered. Secondary-CNI plugin that
+# lets KubeVirt VMs attach additional NICs (e.g. a host-bridge macvlan into
+# br0 so VMs land on the LAN).
+#
+# Multus auto-detects the default CNI from /etc/cni/net.d — Cilium installs
+# first, so Multus delegates pod-network traffic to Cilium and overlays
+# secondary attachments from NetworkAttachmentDefinitions.
+#
+# Fans out to every cluster with needs.multus=true. Today: mgmt only. The
+# tenant cluster will carry the same label so vCluster pods can attach to
+# the LAN bridge too.
+#
+# Chart URL is the k8snetworkplumbingwg organization Helm repo. If the
+# Pages publish ever changes, swap to a community-maintained chart
+# (bjw-s-labs/multus is a common alternative).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: multus
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.multus: "true"
+  helmCharts:
+    - repositoryURL: https://k8snetworkplumbingwg.github.io/helm-charts
+      repositoryName: multus
+      chartName: multus/multus
+      chartVersion: 4.2.x
+      releaseName: multus
+      releaseNamespace: kube-system
+      helmChartAction: Install
+      values: |
+        # Thick daemonset variant — runs a per-node daemon that listens for
+        # pod additions instead of a CNI binary spawn per pod. More robust
+        # under load.
+        cni:
+          plugin: multus
+          # Multus auto-detects the master CNI config from this dir.
+          confDir: /etc/cni/net.d
+          binDir: /opt/cni/bin
+        # The NetworkAttachmentDefinition CRD ships with the chart.

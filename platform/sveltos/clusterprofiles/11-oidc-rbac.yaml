@@ -1,0 +1,54 @@
+# oidc-rbac — ClusterRoleBindings that map Dex groups to Kubernetes RBAC.
+# Applied to every cluster whose apiserver federates to Dex (tenant +
+# every vCluster). The bare-metal apiserver is excluded (no OIDC).
+#
+# Group taxonomy:
+#   oidc:platform-admins — full cluster-admin
+#   oidc:viewers         — read-only across all resources
+#
+# Selector: oidc.enabled=true on the SveltosCluster.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: oidc-rbac
+spec:
+  clusterSelector:
+    matchLabels:
+      oidc.enabled: "true"
+  policyRefs:
+    - name: oidc-rbac-bindings
+      namespace: projectsveltos
+      kind: ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oidc-rbac-bindings
+  namespace: projectsveltos
+data:
+  bindings.yaml: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: oidc-platform-admins
+    subjects:
+      - kind: Group
+        name: oidc:platform-admins
+        apiGroup: rbac.authorization.k8s.io
+    roleRef:
+      kind: ClusterRole
+      name: cluster-admin
+      apiGroup: rbac.authorization.k8s.io
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: oidc-viewers
+    subjects:
+      - kind: Group
+        name: oidc:viewers
+        apiGroup: rbac.authorization.k8s.io
+    roleRef:
+      kind: ClusterRole
+      name: view
+      apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,40 @@
+# olm — Operator Lifecycle Manager bootstrap via sikalabs Helm charts.
+#
+# Two charts in order (Sveltos installs helmCharts top-to-bottom):
+#   1. olm-crds — CRDs only. Separated so upgrades manage CRD lifecycle.
+#   2. olm      — controllers + operatorhubio CatalogSource.
+#
+# Once Running, future operator installs (HCO, future cert-manager-olm,
+# etc.) drop a Subscription + OperatorGroup into their own namespace and
+# OLM handles the rest.
+#
+# mgmt-only.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: olm
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  helmCharts:
+    - repositoryURL: https://helm.sikalabs.io
+      repositoryName: sikalabs
+      chartName: sikalabs/olm-crds
+      chartVersion: 0.3.0
+      releaseName: olm-crds
+      releaseNamespace: olm-system
+      helmChartAction: Install
+      values: |
+        # Default values are fine — chart installs only the OLM CRDs.
+    - repositoryURL: https://helm.sikalabs.io
+      repositoryName: sikalabs
+      chartName: sikalabs/olm
+      chartVersion: 0.3.0
+      releaseName: olm
+      releaseNamespace: olm-system
+      helmChartAction: Install
+      values: |
+        # Default values — controllers + operatorhubio CatalogSource.

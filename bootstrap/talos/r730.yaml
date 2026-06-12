@@ -1,0 +1,42 @@
+# Host-specific patch for the R730.
+#
+# - hostname: r730.mershab.com
+# - primary NIC: eno1 (R730's first onboard 1GbE; verify in maintenance mode)
+# - host bridge br0 over eno1, STP enabled (matches the working arrakis
+#   config — cheap insurance against loops if eno2 is ever bridged in)
+# - static IP 192.168.2.70/24, gateway 192.168.2.1
+# - install disk /dev/sdb (verify with `talosctl --insecure get disks`)
+# - control-plane endpoint pins to this node's IP for now; flip to a Cilium
+#   LB VIP when R820 joins as the second CP node.
+machine:
+  network:
+    hostname: r730.mershab.com
+    nameservers:
+      - 1.1.1.1
+      - 9.9.9.9
+    interfaces:
+      - interface: br0
+        addresses:
+          - 192.168.2.70/24
+        bridge:
+          stp:
+            enabled: true
+          interfaces:
+            - eno1
+        routes:
+          - network: 0.0.0.0/0
+            gateway: 192.168.2.1
+            metric: 1024
+        mtu: 1500
+
+  install:
+    disk: /dev/sdb
+    wipe: true
+    image: ghcr.io/siderolabs/installer:v1.10.6
+
+cluster:
+  controlPlane:
+    endpoint: https://192.168.2.70:6443
+  # Single-node CP day-1; KamajiControlPlane handles tenant CP HA. Bare-metal
+  # CP becomes HA when the R820 joins.
+  allowSchedulingOnControlPlanes: true

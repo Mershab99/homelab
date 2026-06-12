@@ -1,0 +1,8 @@
+# kubevirt-csi controller + node DaemonSet (tenant-side).
+#
+# ⚠ PLACEHOLDER — replace with the contents of
+# https://github.com/kubevirt/csi-driver/blob/main/deploy/controller-tenant.yaml
+# pinned to a release tag (e.g. v0.6.x).
+#
+# Until populated, this file is a no-op; the tenant-baseline ClusterProfile
+# applies an empty resource set for this path.

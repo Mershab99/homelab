@@ -1,0 +1,78 @@
+# OpenTelemetryCollector — DaemonSet mode. One collector per node, scrapes
+# kubelet metrics + reads ServiceMonitors via the OTel operator's
+# targetallocator, ships everything to the observability-backend.
+#
+# The exporter endpoint points at the LAN-resolvable Loki + future Mimir/
+# Tempo services on mgmt. Tenant + vClusters reach them via the
+# `loki-gateway.monitoring.svc` and analogous service URLs, BUT cross-cluster
+# routing is a separate problem — for now this only really works on the
+# mgmt cluster.
+#
+# Cross-cluster routing (tenant → mgmt) lands later via a chisel-operator
+# exit on the mgmt cluster exposing the OTel OTLP receiver on the LAN.
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  name: agent
+  namespace: monitoring
+spec:
+  mode: daemonset
+  serviceAccount: opentelemetry-collector
+  targetAllocator:
+    enabled: true
+    serviceAccount: opentelemetry-collector-targetallocator
+    prometheusCR:
+      enabled: true
+      serviceMonitorSelector: {}
+      podMonitorSelector: {}
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      kubeletstats:
+        collection_interval: 30s
+        auth_type: serviceAccount
+        endpoint: ${env:HOST_IP}:10250
+        insecure_skip_verify: true
+        metric_groups: [node, pod, container, volume]
+      prometheus:
+        config:
+          scrape_configs: []   # targetallocator hydrates this
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      k8sattributes: {}
+    exporters:
+      # Logs → Loki. The loki exporter takes OTel log data and pushes to
+      # Loki's HTTP push endpoint. Endpoint resolves via in-cluster DNS on
+      # mgmt; cross-cluster Loki ingestion needs a different exporter.
+      otlphttp/loki:
+        endpoint: http://loki-write.monitoring.svc:3100/otlp
+        tls:
+          insecure: true
+      # Metrics → for now, log them at debug (no Prometheus server). Swap
+      # the exporter to prometheusremotewrite + a Mimir/Cortex/Thanos
+      # backend once that lands.
+      debug:
+        verbosity: basic
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp, kubeletstats, prometheus]
+          processors: [k8sattributes, memory_limiter, batch]
+          exporters: [debug]
+        logs:
+          receivers: [otlp]
+          processors: [k8sattributes, memory_limiter, batch]
+          exporters: [otlphttp/loki]
+        traces:
+          receivers: [otlp]
+          processors: [k8sattributes, memory_limiter, batch]
+          exporters: [debug]

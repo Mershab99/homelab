@@ -1,0 +1,42 @@
+# ingress-internal — nginx with ingressClassName=internal, Service handed
+# an IP by Cilium L2 announcer (no loadBalancerClass on the Service).
+# Internal Ingresses use the selfsigned-ca ClusterIssuer for TLS.
+#
+# Fans out: any cluster with needs.ingress-internal=true. Today: mgmt only.
+# When the tenant cluster lands, label it the same way and a second nginx
+# comes up there.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: ingress-internal
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.ingress-internal: "true"
+  dependsOn:
+    - tls-stack
+  helmCharts:
+    - repositoryURL: https://kubernetes.github.io/ingress-nginx
+      repositoryName: ingress-nginx
+      chartName: ingress-nginx/ingress-nginx
+      chartVersion: 4.11.x
+      releaseName: ingress-nginx-internal
+      releaseNamespace: ingress-nginx-internal
+      helmChartAction: Install
+      values: |
+        controller:
+          ingressClassResource:
+            name: internal
+            enabled: true
+            default: false
+            controllerValue: "k8s.io/ingress-nginx-internal"
+          ingressClass: internal
+          service:
+            type: LoadBalancer
+            externalTrafficPolicy: Cluster
+          metrics:
+            enabled: false
+            serviceMonitor:
+              enabled: false
+          electionID: ingress-controller-leader-internal
+          allowSnippetAnnotations: false

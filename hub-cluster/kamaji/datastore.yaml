@@ -1,8 +1,0 @@
-apiVersion: kamaji.clastix.io/v1alpha1
-kind: DataStore
-metadata:
-  name: default
-spec:
-  driver: etcd
-  # Uses Kamaji's built-in etcd — no external etcd required.
-  # Kamaji automatically provisions an etcd instance for tenant control planes.

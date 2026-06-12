@@ -1,0 +1,21 @@
+# Root Kustomization — Flux's entry point into the repo. Points at
+# clusters/baremetal/, which has its own kustomization.yaml listing the
+# infrastructure / platform / observability / tenants layers as nested
+# Kustomizations with `dependsOn` ordering.
+#
+# SOPS decryption is applied globally via the FluxInstance's kustomize.patches
+# (see fluxinstance.yaml) so downstream Kustomizations don't need to repeat it.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: clusters-baremetal
+  namespace: flux-system
+spec:
+  interval: 10m
+  sourceRef:
+    kind: GitRepository
+    name: homelab
+  path: ./clusters/baremetal
+  prune: true
+  wait: true
+  timeout: 5m

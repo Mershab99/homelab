@@ -1,0 +1,16 @@
+# Source of truth — this repo, master branch.
+#
+# Auth: HTTPS + PAT via the flux-repo-pat Secret (created manually during
+# bootstrap; see bootstrap/flux/README.md).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: homelab
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/mershab/homelab
+  ref:
+    branch: master
+  secretRef:
+    name: flux-repo-pat

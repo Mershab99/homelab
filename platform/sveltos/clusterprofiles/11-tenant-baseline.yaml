@@ -1,0 +1,33 @@
+# tenant-baseline — addons that EVERY tenant cluster needs inside itself.
+# Today: just kubevirt-csi (passthrough CSI so tenant PVCs land on the
+# bare-metal Ceph storage classes).
+#
+# What's NOT here:
+#   - Cilium  — delivered via CAPI HelmChartProxy
+#     (tenants/home/infra/cilium-hcp.yaml). CAPI's helm addon handles tenant
+#     CNI bootstrap which has a chicken-and-egg story Sveltos can't solve.
+#   - cluster-autoscaler — runs on the BARE-METAL cluster, not on tenant
+#     (see 05b-cluster-autoscaler.yaml). Per
+#     https://cluster-api.sigs.k8s.io/tasks/automated-machine-management/autoscaling
+#     — CAS on mgmt is the simpler topology (no cross-cluster kubeconfig
+#     seal, CAPI auto-creates the tenant kubeconfig Secret CAS reads).
+#
+# Selector: tenant cluster type.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tenant-baseline
+spec:
+  clusterSelector:
+    matchLabels:
+      sveltos.projectsveltos.io/type: tenant
+  policyRefs:
+    # kubevirt-csi — vendored manifest + StorageClass. No tenant-side Helm
+    # chart exists upstream; the appscode chart is the infra-side install.
+    # See tenants/home/addons/kubevirt-csi/README.md for the one-liner curl
+    # to populate the placeholder.
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./tenants/home/addons/kubevirt-csi

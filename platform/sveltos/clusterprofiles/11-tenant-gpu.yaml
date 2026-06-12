@@ -1,0 +1,135 @@
+# tenant-gpu — GPU stack inside the tenant cluster:
+#
+#   1. node-feature-discovery (NFD) — labels nodes with hardware features
+#      (PCI device IDs, CPU model, etc.) so the GPU operator can target the
+#      right pools.
+#   2. NVIDIA GPU operator — device plugin, container toolkit, DCGM exporter.
+#      Driver install is DISABLED in the chart — we deliver drivers via
+#      NVIDIADriver CRs below so K80 and P2000 get different versions.
+#   3. Two NVIDIADriver CRs — K80 pinned to 470.141.10 (CUDA 11.4 ceiling),
+#      P2000 on current LTS. Each has nodeSelector matching the relevant
+#      pool label set by the KubeadmConfigTemplate.
+#
+# Selector: needs.gpu=true on the tenant SveltosCluster.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tenant-gpu
+spec:
+  clusterSelector:
+    matchLabels:
+      needs.gpu: "true"
+  dependsOn:
+    - tenant-baseline   # CSI + autoscaler should be up first
+  helmCharts:
+    - repositoryURL: https://kubernetes-sigs.github.io/node-feature-discovery/charts
+      repositoryName: nfd
+      chartName: nfd/node-feature-discovery
+      chartVersion: 0.16.x
+      releaseName: nfd
+      releaseNamespace: node-feature-discovery
+      helmChartAction: Install
+      values: |
+        master:
+          replicaCount: 1
+        worker:
+          tolerations: []
+    - repositoryURL: https://helm.ngc.nvidia.com/nvidia
+      repositoryName: nvidia
+      chartName: nvidia/gpu-operator
+      chartVersion: v24.6.x
+      releaseName: gpu-operator
+      releaseNamespace: gpu-operator
+      helmChartAction: Install
+      values: |
+        driver:
+          enabled: false   # we deliver NVIDIADriver CRs separately (below)
+        toolkit:
+          enabled: true
+        nfd:
+          enabled: false   # NFD installed standalone above
+        devicePlugin:
+          enabled: true
+        dcgmExporter:
+          enabled: true
+        validator:
+          plugin:
+            env:
+              - name: WITH_WORKLOAD
+                value: "false"
+  policyRefs:
+    - name: tenant-gpu-drivers
+      namespace: projectsveltos
+      kind: ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-gpu-drivers
+  namespace: projectsveltos
+data:
+  nvidia-drivers.yaml: |
+    # K80 driver — pinned to 470.141.10 (last CUDA 11.4 driver supporting
+    # Kepler GK210). nodeSelector targets nodes labeled nvidia.com/gpu=k80
+    # by the gpu-k80 KubeadmConfigTemplate.
+    apiVersion: nvidia.com/v1alpha1
+    kind: NVIDIADriver
+    metadata:
+      name: k80
+    spec:
+      driverType: gpu
+      image: driver
+      imagePullPolicy: IfNotPresent
+      imagePullSecrets: []
+      manager: {}
+      rdma:
+        enabled: false
+        useHostMofed: false
+      gds:
+        enabled: false
+      repository: nvcr.io/nvidia
+      startupProbe:
+        failureThreshold: 120
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 60
+      usePrecompiled: false
+      version: "470.141.10"
+      nodeSelector:
+        nvidia.com/gpu: k80
+      resources:
+        requests:
+          ephemeral-storage: "4Gi"
+        limits:
+          ephemeral-storage: "4Gi"
+    ---
+    apiVersion: nvidia.com/v1alpha1
+    kind: NVIDIADriver
+    metadata:
+      name: p2000
+    spec:
+      driverType: gpu
+      image: driver
+      imagePullPolicy: IfNotPresent
+      imagePullSecrets: []
+      manager: {}
+      rdma:
+        enabled: false
+        useHostMofed: false
+      gds:
+        enabled: false
+      repository: nvcr.io/nvidia
+      startupProbe:
+        failureThreshold: 120
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 60
+      usePrecompiled: false
+      version: "535.183.06"
+      nodeSelector:
+        nvidia.com/gpu: p2000
+      resources:
+        requests:
+          ephemeral-storage: "4Gi"
+        limits:
+          ephemeral-storage: "4Gi"

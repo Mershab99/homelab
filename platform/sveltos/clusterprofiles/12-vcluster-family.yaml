@@ -1,0 +1,63 @@
+# vcluster-family — installs the `family` vCluster on the tenant cluster.
+#
+# This profile ONLY handles the vCluster install. The apps that run inside
+# (Home Assistant + future ones) are delivered by separate per-app
+# ClusterProfiles in the 13-app-*.yaml family, each using clusterRefs to
+# target the resulting family SveltosCluster.
+#
+# Sveltos's helmCharts.values is inline-only — the canonical copy of these
+# values lives at tenants/home/vclusters/family/vcluster-values.yaml. Edit
+# both when changing.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: vcluster-family
+spec:
+  clusterSelector:
+    matchLabels:
+      sveltos.projectsveltos.io/type: tenant
+  dependsOn:
+    - tenant-baseline
+  helmCharts:
+    - repositoryURL: https://charts.loft.sh
+      repositoryName: loft
+      chartName: loft/vcluster
+      chartVersion: 0.21.x
+      releaseName: family
+      releaseNamespace: vc-family
+      helmChartAction: Install
+      values: |
+        controlPlane:
+          distro:
+            k8s:
+              apiServer:
+                extraArgs:
+                  - --oidc-issuer-url=https://auth.mershab.com
+                  - --oidc-client-id=kubernetes
+                  - --oidc-username-claim=email
+                  - --oidc-username-prefix=oidc:
+                  - --oidc-groups-claim=groups
+                  - --oidc-groups-prefix=oidc:
+        integrations:
+          metricsServer:
+            enabled: true
+        experimental:
+          deploy:
+            vcluster:
+              helm:
+                - chart:
+                    name: sveltos-applier
+                    repo: https://projectsveltos.github.io/helm-charts
+                  release:
+                    name: sveltos-applier
+                    namespace: projectsveltos
+                  values: |
+                    managementClusterAPI: https://192.168.2.70:6443
+                    sveltosCluster:
+                      name: family
+                      namespace: vclusters
+                      labels:
+                        sveltos.projectsveltos.io/type: vcluster
+                        workload: family
+                        needs.lan: "true"
+                        oidc.enabled: "true"

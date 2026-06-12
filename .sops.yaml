@@ -1,13 +1,20 @@
+# SOPS encryption rules.
+#
+# Every file matching `path_regex` is encrypted by sops using the listed age
+# recipients. The age public keys live here; the matching private keys are
+# stored on each operator's workstation (export SOPS_AGE_KEY_FILE) and inside
+# the cluster (in the `sops-age` Secret consumed by Flux's kustomize-controller).
+#
+# Sensitive Kubernetes manifests are encrypted at the `data` / `stringData`
+# field level so kubectl/kustomize see structured YAML; non-K8s files are
+# encrypted whole.
 creation_rules:
-  - path_regex: ^secrets/.*\.ya?ml$
-    encrypted_regex: ^(data|stringData|password|token|api[Kk]ey|secret|.*[Pp]assword|.*[Tt]oken)$
+  - path_regex: secrets/.*\.yaml$
+    encrypted_regex: ^(data|stringData)$
     age: >-
-      age1placeholder000000000000000000000000000000000000000000000000000
-
-  - path_regex: ^bootstrap/talos/.*/secrets\.yaml\.sops$
+      # TODO: replace with the operator's actual age public key (run
+      # `age-keygen -o ~/.config/sops/age/keys.txt` and paste the public key here).
+      age1placeholderreplaceaftergeneratingthisrepoageabsentdonotcommit
+  - path_regex: bootstrap/talos/.*secrets.*
     age: >-
-      age1placeholder000000000000000000000000000000000000000000000000000
-
-  - path_regex: ^.*\.sops\.ya?ml$
-    age: >-
-      age1placeholder000000000000000000000000000000000000000000000000000
+      age1placeholderreplaceaftergeneratingthisrepoageabsentdonotcommit
