@@ -31,7 +31,7 @@ spec:
   dependsOn:
     - capi-stack    # CAPI + Kamaji + providers must be Running
     - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine
-    - storage       # Ceph for Kamaji etcd PVCs + KubeVirt CDI
+    - storage       # longhorn for Kamaji etcd PVCs + KubeVirt CDI
     - multus        # bare-metal Multus for the br-multus NAD
   policyRefs:
     - kind: GitRepository

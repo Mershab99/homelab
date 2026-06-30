@@ -7,15 +7,15 @@ sealed-secret encryption key (unless backed up separately).
 ## Backups (running)
 
 - **etcd snapshot CronJob** on the bare-metal cluster runs
-  `talosctl etcd snapshot` daily, writes to a Ceph RBD PVC, then
+  `talosctl etcd snapshot` daily, writes to a `zfs` PVC, then
   `rclone copy` to an off-box destination (configured in
   `clusters/baremetal/infrastructure/etcd-backup/`).
 - **Sealed-secrets controller key** is exported nightly and stored alongside
   the etcd snapshot. Without it, restoring Git is useless — the cluster
   cannot decrypt any sealed secret.
 - **Kamaji tenant etcd snapshots** (each tenant has its own etcd, run by
-  Kamaji as a StatefulSet on `ceph-block-rbd`). Snapshots taken by Kamaji's
-  built-in snapshot job into the same Ceph pool, and shipped off-box.
+  Kamaji as a StatefulSet on `zfs`). Snapshots taken by Kamaji's
+  built-in snapshot job onto a `zfs` PVC, and shipped off-box.
 
 ## Restore order
 
@@ -35,12 +35,15 @@ sealed-secret encryption key (unless backed up separately).
    ```
 5. **Reconcile Flux** — Flux re-pulls Git, re-applies everything, every Helm
    release re-installs, every CR re-creates.
-6. **Verify Rook/Ceph health.** Ceph survives the host rebuild because OSDs
-   were on data disks Talos doesn't touch. `ceph status` should be HEALTH_OK
-   once the mons rejoin.
+6. **Verify the `tank` ZFS pool imported.** The pool survives the host rebuild
+   because the data disks (sdc–sdq) are untouched — `install.wipe` only clears
+   the boot disk `/dev/sdb`. The zfs extension auto-imports `tank` on boot;
+   `task zfs:status` should show ONLINE. (If it didn't import, re-run the
+   zpool-create Job — it's a no-op import when the pool already exists. Never
+   re-run a bare `zpool create` against populated disks.)
 7. **Tenant CP comes back.** Kamaji recreates the StatefulSet from the
    `KamajiControlPlane` CR; etcd PVCs reattach with prior state.
-8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (Ceph PVCs
+8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (`zfs` PVCs
    intact); they boot, `kubeadm join`-ed nodes show up.
 9. **vClusters come back** when the tenant cluster's HelmReleases reconcile.
    Bundled `sveltos-applier` reconnects to the bare-metal Sveltos controller;

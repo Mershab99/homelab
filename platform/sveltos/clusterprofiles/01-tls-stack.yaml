@@ -101,3 +101,4 @@ data:
             selector:
               dnsZones:
                 - mershab.com
+                - *.mershab.com

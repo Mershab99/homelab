@@ -176,7 +176,7 @@ kubectl -n projectsveltos label sveltoscluster mgmt \
 Then `sveltos-fanout-ks` reconciles `platform/sveltos/clusterprofiles/` and
 the cluster lights up: sealed-secrets first (no deps), then cert-manager,
 external-dns, ingress-nginx (×2), chisel-operator, Multus, Dex, Headlamp,
-Rook/Ceph, KubeVirt HCO, CAPI + Kamaji, observability stack.
+ZFS LocalPV, KubeVirt HCO, CAPI + Kamaji, observability stack.
 
 **Verify**:
 ```bash
@@ -185,7 +185,8 @@ kubectl get sveltoscluster -n projectsveltos        # mgmt registered + labeled
 kubectl get clusterprofiles                         # all matched
 kubectl get clustersummaries -A                     # one per (profile, cluster) — all Provisioned
 kubectl -n cert-manager get clusterissuer letsencrypt-prod
-kubectl -n rook-ceph get cephcluster                # HEALTH_OK
+kubectl -n openebs get pods -l role=openebs-zfs     # csi controller + node Ready
+kubectl get sc zfs                                  # default StorageClass
 kubectl get hyperconverged -n kubevirt              # Deployed
 kubectl get providers -A                            # core, capk, cabpk, kamaji
 ```
@@ -211,7 +212,7 @@ Flux reconciles `clusters/baremetal/observability/`:
 2. prometheus-operator-crds (ServiceMonitor/PodMonitor; no Prometheus controller)
 3. otel-agent (DaemonSet, per-node TA) + otel-gateway (Deployment, exports
    metrics/logs to Loki + traces wherever)
-4. loki (single-binary, Ceph S3 backend via Rook RGW)
+4. loki (single-binary, MinIO S3 backend)
 5. grafana-operator + Grafana CR
 6. Datasources + dashboards (all `GrafanaDashboard` CRs from Git)
 
@@ -234,7 +235,7 @@ CAPI's chain:
 - `Cluster home` references a `KamajiControlPlane` (pods on bare-metal) + a
   `KubeVirtCluster` (infrastructure).
 - `KamajiControlPlane` provisions a tenant kube-apiserver (OIDC against Dex —
-  the `kubernetes` OAuth2Client), etcd (StatefulSet on `ceph-block-rbd`), and
+  the `kubernetes` OAuth2Client), etcd (StatefulSet on `zfs`), and
   a Cilium LB Service for the API.
 - `MachineDeployment`s (general / gpu-k80 / gpu-p2000) → CAPK creates
   `KubeVirtMachine`s → KubeVirt boots Ubuntu VMs with 2 NICs (pod + lan).
@@ -323,6 +324,7 @@ When the R820 arrives:
 3. The node joins as a worker (or control plane joiner if scaling CP to 3).
 4. If the R820 brings new GPUs, extend `permittedHostDevices` in
    `clusters/baremetal/infrastructure/kubevirt-hco/hyperconverged.yaml`.
-5. Ceph picks up free disks automatically.
+5. The R820 is HDD — give it its own zpool + StorageClass (e.g. `zfs-hdd`);
+   do NOT extend `tank` across nodes (ZFS LocalPV is node-local).
 
 See `docs/runbooks/adding-a-bare-metal-node.md` for the full procedure.

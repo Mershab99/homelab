@@ -30,10 +30,11 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
         domainFilters:
-          - mershab.com
+          - mershab.com          # matches mershab.com + all subdomains (incl. *.homelab.mershab.com)
         sources:
-          - ingress
+          - ingress              # Dex (legacy external class via Traefik)
           - service
+          - gateway-httproute    # homelab services on the Traefik Gateway
         txtOwnerId: homelab-mgmt
         txtPrefix: "edns-"
         policy: sync

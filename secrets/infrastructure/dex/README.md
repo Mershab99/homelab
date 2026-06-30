@@ -6,15 +6,18 @@ secrets all live there. The Secret is sealed cluster-wide before commit.
 
 ## Generate users + clients
 
-1. **bcrypt the admin password** (Dex requires bcrypt for `staticPasswords`):
+1. **bcrypt the admin password** (Dex requires bcrypt for `staticPasswords`).
+   The day-1 login is `mershab` / `mershab` — change it later:
    ```bash
-   read -rs ADMIN_PASSWORD     # type the password; not echoed
+   ADMIN_PASSWORD=mershab
    ADMIN_BCRYPT=$(htpasswd -bnBC 10 "" "$ADMIN_PASSWORD" | tr -d ':\n')
    ```
 2. **Generate client secrets** (one per OAuth2 client):
    ```bash
    K8S_CLIENT_SECRET=$(openssl rand -base64 32)
    HEADLAMP_CLIENT_SECRET=$(openssl rand -base64 32)
+   GRAFANA_CLIENT_SECRET=$(openssl rand -base64 32)
+   OAUTH2_PROXY_CLIENT_SECRET=$(openssl rand -base64 32)
    ```
    Note these — they'll also need to land in their respective consumer
    configs (e.g. Headlamp's own Helm values reference `headlamp` client
@@ -71,15 +74,23 @@ secrets all live there. The Secret is sealed cluster-wide before commit.
          name: Headlamp
          secret: "$HEADLAMP_CLIENT_SECRET"
          redirectURIs:
-           - https://headlamp.mershab.com/oauth-callback
-       # Future apps (one block each, added when the app's ClusterProfile
-       # lands):
-       # - id: grafana
-       #   secret: $GRAFANA_CLIENT_SECRET
-       #   redirectURIs: [https://grafana.mershab.com/login/generic_oauth]
+           - https://headlamp.homelab.mershab.com/oauth-callback
+       - id: grafana
+         name: Grafana
+         secret: "$GRAFANA_CLIENT_SECRET"
+         redirectURIs:
+           - https://grafana.homelab.mershab.com/login/generic_oauth
+       # oauth2-proxy — the forwardAuth gate for services without native OIDC
+       # (longhorn, hubble, traefik dashboard). One client covers all of them.
+       - id: oauth2-proxy
+         name: oauth2-proxy
+         secret: "$OAUTH2_PROXY_CLIENT_SECRET"
+         redirectURIs:
+           - https://oauth2.homelab.mershab.com/oauth2/callback
+       # Future apps: one block each.
        # - id: home-assistant
        #   secret: $HA_CLIENT_SECRET
-       #   redirectURIs: [https://home.mershab.com/auth/oauth2_response]
+       #   redirectURIs: [https://home.homelab.mershab.com/auth/oauth2_response]
    ```
 
 ## Seal + commit

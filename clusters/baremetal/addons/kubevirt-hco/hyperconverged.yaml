@@ -5,7 +5,7 @@
 #   is `vendor:device` hex uppercase. Vendor 10DE = NVIDIA. Devices: K80
 #   GK210B = 102D, P2000 GP106GL = 1C30. resourceNames must match what
 #   tenant KubevirtMachineTemplates reference via `gpus[].deviceName`.
-# - CDI scratch space on ceph-block-rbd.
+# - CDI scratch space on the longhorn StorageClass.
 # - VMs see the host CPU 1:1 (required for GPU passthrough).
 apiVersion: hco.kubevirt.io/v1
 kind: HyperConverged
@@ -23,6 +23,6 @@ spec:
     virtualMachineOptions:
       defaultCPUModel: host-passthrough
   storage:
-    scratchSpaceStorageClass: ceph-block-rbd
+    scratchSpaceStorageClass: longhorn
   infra: {}
   workloads: {}

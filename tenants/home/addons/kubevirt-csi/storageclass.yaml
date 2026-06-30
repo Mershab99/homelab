@@ -1,13 +1,13 @@
-# Tenant StorageClass — `kubevirt` — backed by the bare-metal `ceph-block-rbd`
+# Tenant StorageClass — `kubevirt` — backed by the bare-metal `longhorn`
 # StorageClass. PVCs that request this class get a KubeVirt DataVolume that
-# wraps a Ceph PVC on bare-metal.
+# wraps a Longhorn volume on bare-metal.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: kubevirt
 provisioner: csi.kubevirt.io
 parameters:
-  infraStorageClassName: ceph-block-rbd
+  infraStorageClassName: longhorn
   bus: scsi
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete

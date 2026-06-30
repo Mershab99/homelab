@@ -28,7 +28,7 @@ spec:
       namespace: projectsveltos
   dependsOn:
     - olm         # need OLM CRDs (Subscription/OperatorGroup) before we apply Subscription
-    - storage     # CDI scratchSpace lands on ceph-block-rbd
+    - storage     # CDI scratchSpace lands on the longhorn StorageClass
   policyRefs:
     - kind: GitRepository
       apiVersion: source.toolkit.fluxcd.io/v1

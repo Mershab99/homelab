@@ -6,7 +6,7 @@ Procedure for adding the R820 (or any future bare-metal node) to the cluster.
 
 - Node hardware racked, networked into the Aruba S2500.
 - IPMI / iDRAC accessible from the LAN (note its IP and credentials).
-- Node has at least one disk free for Ceph OSD (in addition to the boot disk).
+- Node has data disks free for its ZFS pool (in addition to the boot disk).
 
 ## Steps
 
@@ -35,5 +35,9 @@ Procedure for adding the R820 (or any future bare-metal node) to the cluster.
 7. **Update KubeVirt**: edit
    `clusters/baremetal/infrastructure/kubevirt-hco/hyperconverged.yaml` to
    include any GPUs new to this host under `permittedHostDevices`.
-8. **Ceph picks up the disk**: Rook/Ceph operator auto-discovers the new node
-   and consumes empty disks. Verify with `ceph status` and `ceph osd tree`.
+8. **Create the node's ZFS pool**: ZFS LocalPV is node-local — each node owns
+   its own pool. Add a `zpool-create` Job (copy
+   `platform/sveltos/manifests/storage/zpool-create-job.yaml`, adjust the disk
+   list/vdev layout) and a matching StorageClass (e.g. `zfs-hdd` for the R820's
+   spinning disks). Don't extend `tank` across nodes. Verify with
+   `task zfs:status`.

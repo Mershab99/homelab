@@ -1,6 +1,6 @@
 # tenant-baseline — addons that EVERY tenant cluster needs inside itself.
 # Today: just kubevirt-csi (passthrough CSI so tenant PVCs land on the
-# bare-metal Ceph storage classes).
+# bare-metal longhorn storage class).
 #
 # What's NOT here:
 #   - Cilium  — delivered via CAPI HelmChartProxy

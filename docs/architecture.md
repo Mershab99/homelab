@@ -8,11 +8,11 @@ Kamaji + vCluster. One Dex federates OIDC across every kube-apiserver and UI.
 ```
 Bare-metal Talos cluster (R730 → +R820)
 ├── Infra: Cilium, Multus, ingress-nginx (internal+external), chisel-operator,
-│   cert-manager, external-dns, Rook/Ceph, KubeVirt HCO,
+│   cert-manager, external-dns, ZFS LocalPV, KubeVirt HCO,
 │   CAPI core + CAPK + CABPK + kamaji-operator
 ├── Platform: Sveltos, Dex, sealed-secrets, Headlamp
 ├── Observability: OTel Operator + TargetAllocator, prometheus-operator CRDs,
-│   Loki (single-binary, Ceph S3 backend), Grafana Operator, Grafana
+│   Loki (single-binary, MinIO S3 backend), Grafana Operator, Grafana
 │
 └── Tenant cluster "home"
     ├── Control plane: KamajiControlPlane (pods on bare-metal, OIDC to Dex)
@@ -41,7 +41,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | Domain                      | `mershab.com` |
 | Sveltos registration        | CAPI integration (push) for tenant; agent mode (pull) for vClusters |
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
-| Storage                     | Rook/Ceph on bare-metal; kubevirt-csi passthrough in tenant |
+| Storage                     | ZFS LocalPV (zpool `tank`, 7 mirrors) on bare-metal; kubevirt-csi passthrough in tenant |
 | GitOps                      | Flux Operator → Flux on bare-metal only. **No Flux in tenant or vClusters.** |
 | Secrets                     | sealed-secrets for v1 (SOPS still configured) |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
@@ -69,7 +69,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | `workload`                               | `home-assistant`, `frigate`, ... | per-vCluster overrides |
 | `needs.lan`                              | `"true"` / `"false"`             | Multus + NAD           |
 | `needs.gpu`                              | `"k80"`, `"p2000"`, `"false"`    | GPU plugin tweaks      |
-| `needs.storage`                          | `ceph-rbd`, `ceph-fs`            | StorageClass plumbing  |
+| `needs.storage`                          | `zfs`                            | StorageClass plumbing  |
 | `oidc.enabled`                           | `"true"`                         | OIDC RBAC              |
 
 Per-instance config lives in `tenants/home/vclusters/<name>/apps/`.
@@ -96,7 +96,7 @@ Sveltos is for **capability fanout**, not per-instance config.
   (`oidc:platform-admins`, `oidc:viewers`). One kubeconfig with N contexts.
 - **Sveltos delivers everything that fans out, including to bare-metal.**
   Flux installs only the bare-metal bootstrap minimum (Cilium runtime CRs,
-  sealed-secrets, Sveltos itself, CAPI/Kamaji, KubeVirt HCO, Rook/Ceph).
+  sealed-secrets, Sveltos itself, CAPI/Kamaji, KubeVirt HCO, ZFS LocalPV).
   Everything else — cert-manager, external-dns, ingress-nginx, chisel-operator,
   Multus, Dex, Headlamp, OTel, Loki, Grafana — is a `ClusterProfile` in
   `platform/sveltos/clusterprofiles/` selected by label. The bare-metal

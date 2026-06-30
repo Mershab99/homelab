@@ -18,13 +18,24 @@ machine:
 
     # Used to provide additional options to the kubelet.
     kubelet:
-        image: ghcr.io/siderolabs/kubelet:v1.35.0 # The `image` field is an optional reference to an alternative kubelet image.
+        image: ghcr.io/siderolabs/kubelet:v1.36.2 # The `image` field is an optional reference to an alternative kubelet image.
         defaultRuntimeSeccompProfileEnabled: true # Enable container runtime default Seccomp profile.
         disableManifestsDirectory: true # The `disableManifestsDirectory` field configures the kubelet to get static pod manifests from the /etc/kubernetes/manifests directory.
         extraArgs:
             rotate-server-certificates: "true"   # paired with kubelet-serving-cert-approver in cluster.extraManifests
             max-pods: "250"
-        
+        # Longhorn stores data under /var/lib/longhorn; Talos must pass it (and the
+        # 15 data disks mounted beneath it) through to containers. rshared so the
+        # kubelet propagates the per-disk submounts to Longhorn pods.
+        extraMounts:
+            - destination: /var/lib/longhorn
+              type: bind
+              source: /var/lib/longhorn
+              options:
+                - bind
+                - rshared
+                - rw
+
         # # The `ClusterDNS` field is an optional reference to an alternative kubelet clusterDNS ip list.
         # clusterDNS:
         #     - 10.96.0.10
@@ -77,7 +88,7 @@ machine:
     #   - eno1       — 1GbE onboard, MGMT PLANE. Node IP lives here; Talos
     #                  API, kubelet, kube-apiserver, Cilium control all use
     #                  this interface.
-    #   - enp4s0f0   — 10GbE ConnectX, WORKLOAD PLANE. Member of br0 — no IP.
+    #   - enp129s0   — 10GbE ConnectX, WORKLOAD PLANE. Member of br0 — no IP.
     #                  KubeVirt VMs macvlan into br0 over the 10G link to
     #                  land on the LAN at full bandwidth.
     network:
@@ -97,7 +108,7 @@ machine:
               mtu: 1500
             # Workload plane — ConnectX 10G as a physical port (no IP), to be
             # bridged into br0 below.
-            - interface: enp4s0f0
+            - interface: enp129s0
               dhcp: false
               mtu: 9000
             # Host bridge over the ConnectX. UNADDRESSED — exists purely so
@@ -110,7 +121,7 @@ machine:
                 stp:
                     enabled: true
                 interfaces:
-                    - enp4s0f0
+                    - enp129s0
               mtu: 9000
     # # Configures KubeSpan feature.
     # kubespan:
@@ -118,10 +129,17 @@ machine:
 
     # Used to provide instructions for installations.
     install:
-        disk: /dev/sda # The disk used for installations.
-        image: ghcr.io/siderolabs/installer:v1.12.4 # Allows for supplying the image used to perform the installation.
-        wipe: false # Indicates if the installation disk should be wiped at installation time.
-        grubUseUKICmdline: true # Indicates if legacy GRUB bootloader should use kernel cmdline from the UKI instead of building it on the host.
+        # Select the boot disk by MODEL, not /dev/sdX — this node has no
+        # /dev/sda; the 500GB WD Blue enumerates as sdb today but megaraid_sas
+        # ordering isn't guaranteed. Only the boot disk is "WDC*"; the 15 data
+        # data disks (the Longhorn SSDs) are "Samsung SSD 850".
+        diskSelector:
+            model: WDC*
+        image: factory.talos.dev/metal-installer/36cd6536eaec8ba802be2d38974108359069cedba8857302f69792b26b87c010:v1.13.5 # Factory image: intel-ucode + iscsi-tools + util-linux-tools (Longhorn). Regenerate after editing r730-schematic.yaml.
+        wipe: true # Wipe the boot disk on this fresh install (data disks untouched).
+        # NOTE: grubUseUKICmdline must stay OFF — it's mutually exclusive with
+        # extraKernelArgs below (GRUB must build the cmdline on the host to
+        # apply the vfio args).
         # GPU passthrough — IOMMU on, Talos pcirebind binds specific PCI
         # slots from nvidia → vfio-pci early so KubeVirt can hand them to
         # tenant worker VMs. ⚠ Replace the PCI BDFs below with the real
@@ -138,6 +156,42 @@ machine:
         #     size: 4GB # Disk size.
         #     model: WDC* # Disk model `/sys/block/<dev>/device/model`.
         #     busPath: /pci0000:00/0000:00:17.0/ata1/host0/target0:0:0/0:0:0:0 # Disk bus path.
+
+    # Data disks — the 15x 2TB Samsung 850 SSDs (sdc-sdq). Talos formats + mounts
+    # each beneath /var/lib/longhorn/disks/ so the kubelet rshared extraMount above
+    # propagates them to Longhorn. The boot disk (WD Blue) is the install.diskSelector.
+    disks:
+        - device: /dev/sdc
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk01}]
+        - device: /dev/sdd
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk02}]
+        - device: /dev/sde
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk03}]
+        - device: /dev/sdf
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk04}]
+        - device: /dev/sdg
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk05}]
+        - device: /dev/sdh
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk06}]
+        - device: /dev/sdi
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk07}]
+        - device: /dev/sdj
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk08}]
+        - device: /dev/sdk
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk09}]
+        - device: /dev/sdl
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk10}]
+        - device: /dev/sdm
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk11}]
+        - device: /dev/sdn
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk12}]
+        - device: /dev/sdo
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk13}]
+        - device: /dev/sdp
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk14}]
+        - device: /dev/sdq
+          partitions: [{mountpoint: /var/lib/longhorn/disks/disk15}]
+
     # Features describe individual Talos features that can be switched on or off.
     features:
         rbac: true                  # Talos API RBAC
@@ -165,6 +219,10 @@ machine:
     # Configures the node labels for the machine.
     nodeLabels:
         node.kubernetes.io/exclude-from-external-load-balancers: ""
+        # Longhorn reads default-disks-config and registers all 15 mounted disks.
+        node.longhorn.io/create-default-disk: "config"
+    nodeAnnotations:
+        node.longhorn.io/default-disks-config: '[{"path":"/var/lib/longhorn/disks/disk01","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk02","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk03","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk04","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk05","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk06","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk07","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk08","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk09","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk10","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk11","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk12","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk13","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk14","allowScheduling":true,"tags":["ssd"]},{"path":"/var/lib/longhorn/disks/disk15","allowScheduling":true,"tags":["ssd"]}]'
     
     # # Provides machine specific control plane configuration options.
 
@@ -309,7 +367,7 @@ cluster:
         key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlKSndJQkFBS0NBZ0VBcGxoOE84Mk9QaHhtelZEVUZlM2RCN1hvWFBMLzV1eHZYbGNFcXkreHV2eXMreW85CmhyYllScGNUWnNHNW5oSTk3ZUovOTlycnF1R1Q5eGZvRlUrSUsxTDFUOEZjMnA1NEViOWtLQUVRakQvTHZ5dkMKZ3pyU1pIM0FwR1hJaTgvRitEZVFpMytwTG1vR2pzL0pkODdvYVM3aE00dTVybG5lVGdlb2xETnRIMkJpM2pjVQpvMWorT2YxSEo4Ty9Gd0p4RWllM0JzVXF6ajBSb0hxWkpMYWE4eGZHVEpuUjNDVjVhU0JMcGVCRG9CaFJHcW1WCjVNM0FVSWdlcG8zYWV1NVpNclZtaUJ0Uit1UVppSkxKWlRNUkJ0R20yZTBNWDUvR2tUcGtVdmZpa2Mvb3ZhQjIKV2pJeE5yZjIxY05kUVdydFovdHhNNm94SEFpTzhBSjRzRDJlRHRxUHk4clZpc3NoVGEvY1Rka1BDRThNNFN0bQphc1VCeHZkbmI0UFRPTWoxMXpTM1MvS1pjZjFmMVdSc2dnNUpXbWkrK1RkK1IzSCtoOGxseldiZlgxNXp2eGc3ClVQT3FpVUlxenZiL3QwS0JBTWVEWFhiN2JzTk9KUDRDcjQyenl6UEU3aUcydTE0YWxqQWRZZkozMGxxWkV1M04KcVVrUzJCNVEzblZtTVU5Y21tRmlZVlprZXBmdmRUdGlrOWZWczJPT2pnRTVGS0RNK2JiaHNkVERoTDNlT0tvYQpUSzJpK2k5NHpqWHR0OGUvL3dNVWVYNWJYd3ZRdUNWQmtoVjRqYThvOGgvQnJVdG0rSmtCRzlvVUs0WE5aUllwCm52UXFrWjBlR2ord2FxcHFsc2h5QkcvMjFjcnIrZzN2c3l2ODU1R3htS2FTaFM5T3RHampCcC9OeGkwQ0F3RUEKQVFLQ0FnQURFL2E5M0lzdlFiTkg3L1pIV1psbmFuUkc2VnJXMlFwNUxSUmNYb3VPc1llUE5qUTJrK3pqUENtOQp2YTZZNnRsK2dnY1ZmUUF6V2UwMCswVHVHcTlOcmV2MWNvSFhWeFg5cmhSRkJwQUVmYXhnSXpKOE5Ic1pla0kxCm5kOHlIR3diV3dhRkE1MjJkWHZJUDJGZVRYNTdibTlOckRPSlhiR3NCcDdyUkhCV2VQVnd0ZHJmUFpHbXNtQm8KcjBubE84UlZMbFdkVXg5UnBhRDMzb3pnT0Y0Y1NyK3BRZHkza3NkR1YxOU8rSEZkT3dDZjJsZDRYbDVGU2QrQgovQjlPSmE3bmcwMGNZNSt4WVhCMDJIMGxoRHUzd1VBSEh2TWEvektHRkJYYkpkUnBiUGJFMjMwL3oxZEljMEJSClZadHZlY2UwSkREdllIZDhLZm0xeUl0QjBrSVBHS2IwQlVkOUJFeFZ0TW9YMVMvZzhDWWtxMDB1RFRRYUJ0RWMKMzNZWnhIZ2VKMjJHLzg2c1RrdWpIRHQ0c09OUGpxUDd6aXRYZXY0UWNGS1hxT0tuMnMxZjFsWk9qaGR2cGVZTwpTZ09uZzY4T2VZbzJBTW9DdHJQNnJBNFpnMWVWZTBmZTgvZ1dwQ2E1VmpidFpYcXhxa2x3cVhWMXMySjJWM2QvCmpNR3U0ZGtFQUIxc21TaXdJOXZQY0dNdW5ZWWtDNmxzcGh3blhkMm9DYlN1WWkyclpBV0MycmZrM0hFWGplbGoKL2NXRW1rL3BPOVo1Z3NqVkI0UDBMSjhYMUczVEVEVWdIZE5FcWdaYXFudVBxNGVNN3FMalZsQ3FOMVR1eWhSeQpYRjFFcGlzOXErb2N3Q1lYUC9XQ0UwZ0JHMmVYRnJ0VENYYVpSQ01oVzNlYnZNTXFPUUtDQVFFQXdrY3l1NGU1CkpjUURjV0htZ0RzWE1qOStFdjlVUkZ4SWFlRm1jZWgybzVKdTdyOEZsWW9MWE9RdEtid2ZLeXVRaGlUM1lWYXUKNHlPRHVJeGJvQ1J0b0xiSE9vK3IwNkpRMFMwUFZ4aEJoSVFPOXhGeW44c1lRUTJyZWV2aU1helA3cWNpNTJxMwpBY0w5OFo5RXpOVC9ncmxsNGN3bEhjTUk1cVVHbUhOcy9TaFJYOUQ4bTFRYlBaWjMvNE93Zk95UFMrVFl6cTFXCmxzTTB0MGV4OG8zZ0VwWDN2NXcvMSs2VWkrRWlNWGJqclRYK0xBSTh2NlNXdmtsejFLWEdFQ2Mzd1lZNktyWVQKNVdMSGtyVmZaQXdvN3V4UEwwQnUxVzA1emEzeHZUUm9zNlpBQ1l5cDUyRW94WGdWMTFwTGp4Sk0rVmw3bHUraAovditZL2xiVGlxTUJOd0tDQVFFQTJ6R0VDbnRhNk1YL1JvcmhHRzV4dlcrZjNydUdscld6YXFsdEF6Y3pVWnFWCjA4SklWV09KbTBtdUt2SEdUK2ZLNFc2UTd2YXhpZUtZVWhNQ2JFK0w5bFlZYjkyUEZncXJBQzdUZENXZjBrWTgKSTFXNXl6a3JKdWlCWTlhVG9uSU1pZTY5REE1aTRwa2xOSEhQcC9Cb3pWM2JjT052Y1lGRUN6dDJJMVo4Rk4xWAppM2g1SjdqN2RJajg2U0NLaXI0R2xGT204TXNMS0tTOXJJNU1yMlIxY2wvK2NKamcvcXMvL2I3MVBKUzU5bWJxClBBcCtXQXRuaXhxdkF6ZWpUdHJ4UzNlVnNyOWJlNTJXNGN3T1I4Q3pMS2szL04ySkVQeUNHVmhyNUYvdGlRUDgKU2lGT3pCbjBYVURMK3drQ0lEZWZsL202WVE4Wng2aHcyNk1HckNDMXV3S0NBUUJtOUNnVWJRWlcxeHNqK01lWAo2TGlRTGtsM2M4dUtOb1ZCWnV0TkxlM0JIUmFnZXFaUTZzaSt2MFNYdTFPaEl3TUJzNUZOQ2d5LzNkQXQrbU9MCjZBSVlpd1BsS3NIWjgwaDBzVFpSNTA3QkZPS0JWOE93bm9ZSjQxNmR5NzBncWYyKzhOOTBWMzhIOWZkeEZmLzEKdEdKN09oaWRvZnVCWEJ2WmJsYWliM2l3WjY5SDRZNGNHbVFkTFNJR1RCazQrbnV0c21hYWtBMDA4OWw1endxawpDVDlYV2hYaWVzRHlnMEpCSmx0aWJ5aVVYK3FFRStOeGc1MUcxZElHUEp0TGNCMEI5MG5YM0ltS28rQXpCTjY2ClBCOXREZG1ncHJxVmE3NllHcmZpbG1WdDNvcE5CVGY4bitabFR3LzBBYXZNODl2S3YvcllyOERmUzBBZWVKQysKQlVmZEFvSUJBRHduMExjWHQ1RmVsWHFFcnRZSHFZdDEwUWhOcXRnOXNhbTZLY0xTS1hGaDNYQ3FSek80QjVIbwpuTFlJZUlhQmRMcDluNlVWYXhBT2NnTkVXRXZsWU9JUUt0QzRtNFpQRXpNUHB0U2Zac2RNbzBDSFRHQXJwbDRkClBUVnJORVZHeTQ0blNSYS84LytBVENlaWZIejRpNnFnOFpKL3VKd0wvK0tkUlFUWnZWLzBod3d0MmdJKzBEUGgKVEplbWFKOC9HNHNsa2hGUGlCWjFiK0NsaFFJMXJjM2Y3bkowWW50Q0FHUGhQbWlMNEtWeEJTUEpOWGR3V2RCaApXRnFuc0ZmNTJuTDl0TVhEb3BYQVlDSkQ0RDlzOFQ5MmlYa0tTNDJ2M3Z5WnViS0phU1ZMUkxnTGdCYWZvT0xlCjM1eGJrb3ZJK0RHN1JaMVJpWit6NkpVK25wd3F0ZlVDZ2dFQURuSm53QnE2aFFXaEcxNW1acFd2cjMyajdZcEIKeXdoZTJRNFRYWndIbHVieWJwNnhiZWdKVWw3VHJaL0ZCSWh1TW8vZDNJUFp6cldKSnZ1WWgzQkl0RWpHTmtlawpZRGhpV1doenRzU1g4NzF1T1hyKzNPQXpYV2xwaXRpNG9FSnRsbTJTbUdpZ2RRRm4rL2RIejhqQ3ZsKzV4Q2F6CjEyVVN0MVhxUHJlZ0pYcE1mYTRzSEZkbWtTSGFCc3p0N0JPV1dMNWlNRzBqeWh3QWNJSWxBOFc2WkZFZ2RnWUgKN0NqRGRoVVl1Qk5FRlR3azdBbWI1VU1WU1N0d056RWs2ZmtVWnF4TDFXeGV1bUpxd0k5OGxhbGNWeGVVOTNlbwpZaWQrcDNmM2xRekNUU1NiNUswVWFVVEVhcnZTdmtYYjA3OXBoOEhkdXlaazJEZ1dIL1VzdDZkYWZnPT0KLS0tLS1FTkQgUlNBIFBSSVZBVEUgS0VZLS0tLS0K
     # API server specific configuration options.
     apiServer:
-        image: registry.k8s.io/kube-apiserver:v1.35.0 # The container image used in the API server manifest.
+        image: registry.k8s.io/kube-apiserver:v1.36.2 # The container image used in the API server manifest.
         # Configure the API server admission plugins.
         admissionControl:
             - name: PodSecurity # Name is the name of the admission controller.
@@ -363,14 +421,14 @@ cluster:
         #         timeout: 3s
     # Controller manager server specific configuration options.
     controllerManager:
-        image: registry.k8s.io/kube-controller-manager:v1.35.0 # The container image used in the controller manager manifest.
+        image: registry.k8s.io/kube-controller-manager:v1.36.2 # The container image used in the controller manager manifest.
     # Kube-proxy server-specific configuration options. Disabled — Cilium
     # provides kube-proxy replacement (KPR).
     proxy:
         disabled: true
     # Scheduler server specific configuration options.
     scheduler:
-        image: registry.k8s.io/kube-scheduler:v1.35.0 # The container image used in the scheduler manifest.
+        image: registry.k8s.io/kube-scheduler:v1.36.2 # The container image used in the scheduler manifest.
     # Discovery — explicitly OFF. No phone-home to discovery.talos.dev.
     # Re-enable when KubeSpan or many-node ever lands.
     discovery:
@@ -383,7 +441,7 @@ cluster:
             key: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IY0NBUUVFSUx4NEpSN3dJcE5oS3E3NzRhOUR2NWpjZ25YWm9QU28rSktyOEFqd2VPb0xvQW9HQ0NxR1NNNDkKQXdFSG9VUURRZ0FFZGhVSGtuWkw0QkpMa2ViV1JFckJKQ2IvRWhHQ3ZDVU10RC9EcUJaTFdSY3JoQmZKa0hpVwpzRUk5R3dkT1VCQ1A1VE94MWcyS1pVN0xnbGxHYUFIWElRPT0KLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
         
         # # The container image used to create the etcd service.
-        # image: registry.k8s.io/etcd:v3.6.7
+        # image: registry.k8s.io/etcd:v3.6.12
 
         # # The `advertisedSubnets` field configures the networks to pick etcd advertised IP from.
         # advertisedSubnets:
@@ -413,7 +471,7 @@ cluster:
 
     # # Core DNS specific configuration options.
     # coreDNS:
-    #     image: registry.k8s.io/coredns/coredns:v1.13.2 # The `image` field is an override to the default coredns image.
+    #     image: registry.k8s.io/coredns/coredns:v1.14.2 # The `image` field is an override to the default coredns image.
 
     # # External cloud provider configuration.
     # externalCloudProvider:
@@ -435,11 +493,6 @@ cluster:
     # Allows running workload on control-plane nodes — required since this
     # is a single-node cluster day-1.
     allowSchedulingOnControlPlanes: true
----
-apiVersion: v1alpha1
-kind: HostnameConfig
-auto: stable # A method to automatically generate a hostname for the machine.
-
-# # A static hostname to set for the machine.
-# hostname: controlplane1
-# hostname: controlplane1.example.org
+# NOTE: no HostnameConfig doc — the static hostname is set via
+# machine.network.hostname (r730.mershab.com). Talos 1.13 rejects setting the
+# hostname in both places ("static hostname is already set").

@@ -1,8 +1,9 @@
-# observability-backend — Loki (Ceph S3 backend) + Grafana operator +
+# observability-backend — Loki (MinIO S3 backend) + Grafana operator +
 # Grafana CR with Dex OIDC.
 #
-# Loki S3 credentials come from a Rook-generated Secret backing an
-# ObjectBucketClaim (no manual seal needed — Rook manages the creds).
+# Loki S3 credentials come from the `loki-minio` Secret (SOPS, delivered by
+# Flux from secrets/infrastructure/minio/) — the same keypair MinIO uses as
+# its root creds. MinIO itself is delivered by the `storage` bundle.
 #
 # Grafana auth via Dex generic_oauth. Client_secret comes from a sealed
 # Secret named `grafana-oidc` in the monitoring ns (see
@@ -21,7 +22,7 @@ spec:
       namespace: projectsveltos
   dependsOn:
     - observability-core   # prom-CRDs + OTel must be up first
-    - storage              # Ceph RGW provides Loki's S3 backend
+    - storage              # MinIO (S3 backend) + longhorn StorageClass
     - auth-stack           # Grafana OIDC client lives in dex-config
     - sealed-secrets       # for grafana-oidc Secret
   helmCharts:
@@ -52,20 +53,20 @@ spec:
               ruler: loki-ruler
               admin: loki-admin
             s3:
-              endpoint: rook-ceph-rgw-ceph-objectstore.rook-ceph.svc.cluster.local:80
+              endpoint: minio.monitoring.svc.cluster.local:9000
               s3ForcePathStyle: true
               insecure: true
-              # Access keys come from the ObjectBucketClaim's generated
-              # Secret — env vars pick them up at runtime.
+              # AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY come from the
+              # loki-minio Secret via extraEnvFrom below.
         singleBinary:
           replicas: 1
           persistence:
             enabled: true
-            storageClass: ceph-block-rbd
+            storageClass: longhorn
             size: 10Gi
           extraEnvFrom:
             - secretRef:
-                name: loki-bucket
+                name: loki-minio
         # Disable the chart's read/write/backend split (single-binary mode).
         backend:
           replicas: 0

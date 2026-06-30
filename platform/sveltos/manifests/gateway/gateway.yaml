@@ -1,0 +1,47 @@
+# Shared internal Gateway — Traefik Gateway API. One VIP (chisel-tunnelled),
+# one wildcard listener; every homelab service attaches an HTTPRoute for
+# <svc>.homelab.mershab.com. External reachability is via chisel-operator
+# (Traefik's Service has the chisel loadBalancerClass — see 02-ingress-external).
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: traefik
+spec:
+  controllerName: traefik.io/gateway-controller
+---
+# Wildcard TLS for *.homelab.mershab.com via letsencrypt-prod (Cloudflare DNS-01,
+# already configured in 01-tls-stack). DNS-01 is required for wildcards.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-wildcard
+  namespace: traefik
+spec:
+  secretName: homelab-wildcard-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.homelab.mershab.com"
+  dnsNames:
+    - "*.homelab.mershab.com"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shared
+  namespace: traefik
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.homelab.mershab.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: homelab-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All        # routes live in the traefik ns; backends cross-ns via ReferenceGrant

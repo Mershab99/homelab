@@ -1,42 +1,14 @@
-# Bootstrap orchestration — render Cilium, generate Talos secrets, build hub from zero.
+# Bootstrap helpers.
 # https://taskfile.dev
+#
+# Cilium is bootstrapped by bootstrap/helm/01-cilium.sh (NOT rendered into Talos
+# inlineManifests) — the old `render`/`hub` ISO flow was removed.
 version: '3'
 
 vars:
-  CILIUM_CHART_VERSION: '{{.CILIUM_CHART_VERSION | default "1.16.5"}}'
-  CILIUM_VALUES: '{{.ROOT_DIR}}/infrastructure/cilium/values.yaml'
-  CILIUM_BOOTSTRAP_OUT: '{{.ROOT_DIR}}/gen/cilium-bootstrap.yaml'
-  TALOS_HUB_DIR: '{{.ROOT_DIR}}/bootstrap/talos/hub'
+  TALOS_SECRETS_DIR: '{{.ROOT_DIR}}/bootstrap/talos'
 
 tasks:
-  render:
-    desc: Render Cilium bootstrap manifest for Talos inlineManifests
-    preconditions:
-      - sh: test -f {{.CILIUM_VALUES}}
-        msg: 'Cilium values not found at {{.CILIUM_VALUES}}'
-      - sh: command -v helm
-        msg: 'helm not installed (mise install)'
-    cmds:
-      - mkdir -p {{.ROOT_DIR}}/gen
-      - helm repo add cilium https://helm.cilium.io --force-update
-      - helm repo update cilium
-      - |
-        helm template cilium cilium/cilium \
-          --version {{.CILIUM_CHART_VERSION}} \
-          --namespace kube-system \
-          --values {{.CILIUM_VALUES}} \
-          --set kubeProxyReplacement=true \
-          --set k8sServiceHost=localhost \
-          --set k8sServicePort=7445 \
-          --set cgroup.autoMount.enabled=false \
-          --set cgroup.hostRoot=/sys/fs/cgroup \
-          > {{.CILIUM_BOOTSTRAP_OUT}}
-      - 'echo "Wrote {{.CILIUM_BOOTSTRAP_OUT}}"'
-    sources:
-      - '{{.CILIUM_VALUES}}'
-    generates:
-      - '{{.CILIUM_BOOTSTRAP_OUT}}'
-
   secrets:
     desc: Generate Talos secrets bundle and SOPS-encrypt it
     preconditions:
@@ -47,35 +19,7 @@ tasks:
       - sh: test -n "$SOPS_AGE_KEY_FILE"
         msg: 'SOPS_AGE_KEY_FILE not set (export it or add to mise env)'
     cmds:
-      - mkdir -p {{.TALOS_HUB_DIR}}
-      - talosctl gen secrets -o {{.TALOS_HUB_DIR}}/secrets.yaml
-      - sops --encrypt --in-place {{.TALOS_HUB_DIR}}/secrets.yaml
-      - mv {{.TALOS_HUB_DIR}}/secrets.yaml {{.TALOS_HUB_DIR}}/secrets.yaml.sops
-      - 'echo "Encrypted secrets at {{.TALOS_HUB_DIR}}/secrets.yaml.sops"'
-
-  hub:
-    desc: Full hub bootstrap chain — render Cilium, build ISO, generate machineconfig
-    deps:
-      - render
-    cmds:
-      - task: talos:hub:schematic
-      - task: talos:hub:iso
-      - task: talos:hub:config
-      - |
-        cat <<EOF
-
-        ============================================================
-         Hub ISO ready: {{.ROOT_DIR}}/gen/iso/talos-hub.iso
-         Machineconfig: {{.ROOT_DIR}}/gen/talos-hub-machineconfig.yaml
-
-         Next steps:
-           1. Flash ISO to USB:
-                sudo dd if=gen/iso/talos-hub.iso of=/dev/diskN bs=4M status=progress
-           2. Boot Supermicro from USB
-           3. talosctl apply-config --insecure --nodes <ip> \\
-                --file gen/talos-hub-machineconfig.yaml
-           4. talosctl --nodes <ip> --endpoints <ip> bootstrap
-           5. task flux:bootstrap
-        ============================================================
-
-        EOF
+      - talosctl gen secrets -o {{.TALOS_SECRETS_DIR}}/secrets.yaml
+      - sops --encrypt --in-place {{.TALOS_SECRETS_DIR}}/secrets.yaml
+      - mv {{.TALOS_SECRETS_DIR}}/secrets.yaml {{.TALOS_SECRETS_DIR}}/secrets.yaml.sops
+      - 'echo "Encrypted secrets at {{.TALOS_SECRETS_DIR}}/secrets.yaml.sops"'

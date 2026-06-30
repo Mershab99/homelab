@@ -8,18 +8,17 @@ resources:
   - 00-sealed-secrets.yaml      # cert-issuance prereq + many bundles
   - 01-tls-stack.yaml           # cert-manager + ClusterIssuers
   - 01-dns.yaml                 # external-dns
-  - 02-ingress-internal.yaml    # nginx + Cilium LB
-  - 02-ingress-external.yaml    # nginx + chisel-operator + ExitNode placeholder
+  - 02-ingress-external.yaml    # Traefik (Gateway API) + chisel-operator + ExitNode
   - 03-multus.yaml              # secondary CNI (tenant-only; HCO gives mgmt Multus)
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
-  - 04-storage.yaml             # rook-ceph operator + cluster + storageclasses
+  - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + Kamaji + provider CRs
   - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads home-kubeconfig auto-created by CAPI
   - 06-auth-stack.yaml          # Dex with password-db connector
   - 06-headlamp.yaml            # cluster admin UI gated by Dex
   - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
-  - 07-observability-backend.yaml  # Loki (Ceph S3) + Grafana operator + CR
+  - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
   - 10-tenant-home.yaml         # delivers CAPI resources for tenant cluster
   - 11-tenant-baseline.yaml     # tenant kubevirt-csi + cluster-autoscaler
                                 # (Cilium delivered via CAPI HelmChartProxy)

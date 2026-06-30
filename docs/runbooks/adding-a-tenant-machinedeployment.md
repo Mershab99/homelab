@@ -9,7 +9,7 @@ type, an ARM pool, a high-memory pool).
    `tenants/home/infra/kubevirtmachinetemplates/<pool>.yaml`. Copy the closest
    existing template. Define:
    - vCPU + memory request
-   - root disk size (PVC dataVolume on `ceph-block-rbd`)
+   - root disk size (PVC dataVolume on `zfs`)
    - GPU `hostDevices` entry (must match `permittedHostDevices` on the
      HyperConverged) — if applicable
    - Two interfaces: `pod` (default) + `lan` (NAD `lan-bridge` for LAN attach)

@@ -1,19 +1,19 @@
 # Talos Image Factory schematic for the R730.
 #
 # POST this YAML to https://factory.talos.dev/schematics to get a schematic ID,
-# then build the ISO at
-#   https://factory.talos.dev/image/<schematic-id>/<talos-version>/metal-amd64.iso
+# then set controlplane.yaml install.image to
+#   factory.talos.dev/metal-installer/<schematic-id>:v1.13.5
 #
-# Extensions:
-#   - util-linux-tools — host shell utilities (debug)
-#   - drbd             — optional, for future replicated storage (cheap to include)
-#   - i915-ucode       — Intel iGPU microcode (R730 has Matrox; harmless)
-#   - amdgpu-firmware  — harmless on Intel hosts; future-proof
+# Extensions (trimmed to Longhorn's needs):
 #   - intel-ucode      — Xeon microcode updates
+#   - iscsi-tools      — REQUIRED by Longhorn (iscsid/iscsiadm for volume attach)
+#   - util-linux-tools — fstrim (Longhorn volume trim) + host debug utils
 #
 # vfio-pci is part of the base kernel — no extension needed for GPU passthrough.
+# (Dropped zfs/kata-containers/gvisor/chelsio-drivers/nfsd/nfs-utils — not used.)
 customization:
   systemExtensions:
     officialExtensions:
       - siderolabs/intel-ucode
+      - siderolabs/iscsi-tools
       - siderolabs/util-linux-tools

@@ -1,9 +1,10 @@
 # headlamp — cluster admin UI gated by Dex OAuth2. Served at
-# headlamp.mershab.com on the INTERNAL Ingress class (on-LAN admin tool).
+# headlamp.homelab.mershab.com via the Traefik Gateway (HTTPRoute in
+# manifests/gateway). Headlamp runs its own Dex OIDC, so no oauth2-proxy.
 #
-# OIDC flow: user hits headlamp.mershab.com → redirected to Dex (external,
-# off-LAN reachable) → enters password → Dex returns to Headlamp → Headlamp
-# uses the embedded admin ServiceAccount kubeconfig for cluster ops.
+# OIDC flow: user hits headlamp.homelab.mershab.com → redirected to Dex →
+# enters password → Dex returns to Headlamp → Headlamp uses the embedded
+# admin ServiceAccount kubeconfig for cluster ops.
 #
 # The bare-metal kube-apiserver does NOT validate OIDC tokens — Headlamp's
 # Dex auth gates UI access only. Cluster operations happen as a single SA
@@ -25,7 +26,7 @@ spec:
       namespace: projectsveltos
   dependsOn:
     - auth-stack
-    - ingress-internal
+    - ingress-external   # Traefik Gateway serves the HTTPRoute
   helmCharts:
     - repositoryURL: https://kubernetes-sigs.github.io/headlamp/
       repositoryName: headlamp
@@ -56,17 +57,7 @@ spec:
           clusterRoleBinding:
             create: true
             roleName: cluster-admin
+        # No chart Ingress — exposed via the Traefik Gateway HTTPRoute
+        # (headlamp.homelab.mershab.com) in platform/sveltos/manifests/gateway.
         ingress:
-          enabled: true
-          className: internal
-          hosts:
-            - host: headlamp.mershab.com
-              paths:
-                - path: /
-                  pathType: Prefix
-          tls:
-            - hosts: [headlamp.mershab.com]
-              secretName: headlamp-tls
-          annotations:
-            cert-manager.io/cluster-issuer: selfsigned-ca
-            external-dns.alpha.kubernetes.io/hostname: headlamp.mershab.com
+          enabled: false

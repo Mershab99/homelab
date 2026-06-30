@@ -1,0 +1,106 @@
+# HTTPRoutes for every homelab service (*.homelab.mershab.com) on the shared
+# Gateway. All routes live in the traefik ns; cross-ns backends are unlocked by
+# a ReferenceGrant in each app ns. forwardAuth (oauth2-proxy) is applied ONLY to
+# services without native OIDC (longhorn, hubble, traefik dashboard); grafana +
+# headlamp authenticate against Dex themselves.
+#
+# ponytail: service ports for headlamp/hubble/longhorn are the chart defaults —
+# verify with `kubectl get svc -A` after deploy if a route 404s.
+
+# --- grafana (native OIDC) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: grafana, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["grafana.homelab.mershab.com"]
+  rules:
+    - backendRefs: [{name: grafana-service, namespace: monitoring, port: 3000}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: monitoring}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- headlamp (native OIDC) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: headlamp, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["headlamp.homelab.mershab.com"]
+  rules:
+    - backendRefs: [{name: headlamp, namespace: headlamp, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: headlamp}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- longhorn UI (forwardAuth via oauth2-proxy) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: longhorn, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["longhorn.homelab.mershab.com"]
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef: {group: traefik.io, kind: Middleware, name: oauth2-forwardauth}
+      backendRefs: [{name: longhorn-frontend, namespace: longhorn-system, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: longhorn-system}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- hubble UI (forwardAuth via oauth2-proxy) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: hubble, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["hubble.homelab.mershab.com"]
+  rules:
+    - filters:
+        - type: ExtensionRef
+          extensionRef: {group: traefik.io, kind: Middleware, name: oauth2-forwardauth}
+      backendRefs: [{name: hubble-ui, namespace: kube-system, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: kube-system}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- oauth2-proxy itself (sign-in/callback, NO auth) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: oauth2-proxy, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["oauth2.homelab.mershab.com"]
+  rules:
+    - backendRefs: [{name: oauth2-proxy, port: 4180}]
+---
+# --- Traefik dashboard (forwardAuth) — IngressRoute to the internal API ---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata: {name: traefik-dashboard, namespace: traefik}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`traefik.homelab.mershab.com`)
+      kind: Rule
+      services: [{name: api@internal, kind: TraefikService}]
+      middlewares: [{name: oauth2-forwardauth}]
+  tls:
+    secretName: homelab-wildcard-tls

@@ -29,9 +29,9 @@ Same `curl` at a newer tag, re-commit.
 - The CSI talks back to KubeVirt on the bare-metal (infra) cluster to
   attach/detach KubeVirt DataVolumes to the worker VMs
 - Tenant PVCs that request the `kubevirt` storageClass route through this
-  CSI to a backing Ceph PVC on bare-metal
+  CSI to a backing Longhorn PVC on the bare-metal (infra) cluster
 
 ## StorageClass
 
 `storageclass.yaml` (already committed) defines a `kubevirt` StorageClass
-on the tenant pointing at the bare-metal `ceph-block-rbd`.
+on the tenant pointing at the bare-metal `longhorn` StorageClass.

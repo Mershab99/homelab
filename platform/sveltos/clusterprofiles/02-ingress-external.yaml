@@ -1,16 +1,16 @@
-# ingress-external — bundle: chisel-operator + ExitNode CR + nginx with
-# ingressClassName=external and loadBalancerClass=chisel.mershab.com/external.
+# ingress-external — chisel-operator + ExitNode + Traefik v3 (Gateway API).
 #
-# chisel-operator and nginx-external are inseparable: nginx-external's
-# Service stays Pending until chisel-operator claims it via its LB class,
-# and the chisel-operator needs an ExitNode to tunnel through.
+# Traefik is the single edge proxy: it implements Gateway API (homelab services
+# on *.homelab.mershab.com via HTTPRoute) AND still serves the legacy `external`
+# IngressClass (Dex at auth.mershab.com). Its Service carries the chisel
+# loadBalancerClass, so chisel-operator tunnels the entrypoint to the ExitNode
+# (the only path to the internet — no local LB).
 #
-# Day-1: ExitNode is a placeholder (no VPS yet). nginx-external installs;
-# its Service sits Pending an external IP until the ExitNode is wired —
-# see clusters/baremetal/addons/chisel-operator/README.md.
+# Day-1: ExitNode is a placeholder (no VPS yet); Traefik's Service sits Pending
+# an external IP until the ExitNode is wired — see
+# clusters/baremetal/addons/chisel-operator/README.md.
 #
-# mgmt-only by clusterRefs (no other cluster needs to expose to internet
-# directly; tenant + vClusters route through the bare-metal chisel tunnel).
+# mgmt-only.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -34,34 +34,48 @@ spec:
       helmChartAction: Install
       values: |
         loadBalancerClass: chisel.mershab.com/external
-    - repositoryURL: https://kubernetes.github.io/ingress-nginx
-      repositoryName: ingress-nginx
-      chartName: ingress-nginx/ingress-nginx
-      chartVersion: 4.11.x
-      releaseName: ingress-nginx-external
-      releaseNamespace: ingress-nginx-external
+    - repositoryURL: https://traefik.github.io/charts
+      repositoryName: traefik
+      chartName: traefik/traefik
+      chartVersion: 33.x
+      releaseName: traefik
+      releaseNamespace: traefik
       helmChartAction: Install
       values: |
-        controller:
-          ingressClassResource:
-            name: external
+        # Providers: Gateway API (homelab services) + CRD (Middleware/IngressRoute
+        # for forwardAuth + dashboard) + Ingress (legacy `external` class = Dex).
+        providers:
+          kubernetesGateway:
             enabled: true
-            default: false
-            controllerValue: "k8s.io/ingress-nginx-external"
-          ingressClass: external
-          service:
-            type: LoadBalancer
+          kubernetesCRD:
+            enabled: true
+          kubernetesIngress:
+            enabled: true
+            ingressClass: external
+        # We define our own GatewayClass/Gateway in manifests/gateway — don't let
+        # the chart create a default one.
+        gateway:
+          enabled: false
+        gatewayClass:
+          enabled: false
+        # The dashboard is exposed via an IngressRoute (manifests/gateway), gated
+        # by oauth2-proxy — keep the insecure API off.
+        api:
+          dashboard: true
+          insecure: false
+        service:
+          type: LoadBalancer
+          spec:
             loadBalancerClass: chisel.mershab.com/external
-            externalTrafficPolicy: Local
-          metrics:
-            enabled: false
-            serviceMonitor:
-              enabled: false
-          electionID: ingress-controller-leader-external
-          allowSnippetAnnotations: false
+          externalTrafficPolicy: Local
   policyRefs:
     - kind: GitRepository
       apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./clusters/baremetal/addons/chisel-operator
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/gateway

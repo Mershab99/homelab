@@ -34,7 +34,7 @@ spec:
       values: |
         persistence:
           enabled: true
-          storageClass: kubevirt   # routes via kubevirt-csi to bare-metal ceph
+          storageClass: kubevirt   # routes via kubevirt-csi to bare-metal longhorn
           size: 10Gi
         ingress:
           enabled: true

@@ -1,11 +1,20 @@
 # Namespaces. Sveltos and its prereq sit here; the rest (cert-manager,
-# rook-ceph, kubevirt, capi-system, kamaji-system, ingress-nginx-*,
-# external-dns, chisel-operator-system, sealed-secrets) are created by the
-# Sveltos ClusterProfile that installs the corresponding chart.
+# kubevirt, capi-system, kamaji-system, traefik, external-dns,
+# chisel-operator-system, sealed-secrets) are created by the Sveltos
+# ClusterProfile that installs the corresponding chart.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: projectsveltos
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+# Longhorn needs privileged PSA (host mounts, iscsi). Pre-created here so the
+# label is set before the storage ClusterProfile installs the chart.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: longhorn-system
   labels:
     pod-security.kubernetes.io/enforce: privileged
 ---

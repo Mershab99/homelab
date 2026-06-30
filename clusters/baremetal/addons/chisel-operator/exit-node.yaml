@@ -1,6 +1,6 @@
 # Chisel-operator ExitNode — fill in the host/port/auth once the VPS is
-# provisioned. Until then, ingress-nginx-external's LoadBalancer Service
-# stays Pending an external IP.
+# provisioned. Until then, Traefik's LoadBalancer Service (loadBalancerClass
+# chisel.mershab.com/external) stays Pending an external IP.
 #
 # Auth: the value of `spec.auth` is the NAME of a Secret in the same
 # namespace (chisel-operator-system) holding the chisel auth token under
