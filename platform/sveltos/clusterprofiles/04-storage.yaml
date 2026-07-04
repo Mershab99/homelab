@@ -47,7 +47,6 @@ spec:
   policyRefs:
     # MinIO (Loki S3) + the tenants-storage ResourceQuota as native manifests.
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/storage

@@ -56,7 +56,6 @@ spec:
           k8s.v1.cni.cncf.io/networks: lan
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./tenants/arrakis/vclusters/family/apps/home-assistant

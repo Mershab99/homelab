@@ -31,7 +31,6 @@ spec:
     - storage     # CDI scratchSpace lands on the longhorn StorageClass
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./clusters/baremetal/addons/kubevirt-hco

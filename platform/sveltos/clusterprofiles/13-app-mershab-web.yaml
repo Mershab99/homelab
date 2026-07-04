@@ -23,7 +23,6 @@ spec:
     - vcluster-baseline
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./tenants/arrakis/vclusters/mershab/apps/website

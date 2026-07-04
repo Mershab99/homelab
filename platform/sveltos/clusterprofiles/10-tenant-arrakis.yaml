@@ -35,7 +35,6 @@ spec:
     - multus        # bare-metal Multus for the br-multus NAD
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./tenants/arrakis/infra

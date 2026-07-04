@@ -49,7 +49,6 @@ spec:
     # OpenTelemetryCollector CR + targetallocator config delivered by
     # GitRepository policyRef (per the no-inline-ConfigMap pattern).
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/observability-core

@@ -27,7 +27,6 @@ spec:
     # See tenants/arrakis/addons/kubevirt-csi/README.md for the one-liner curl
     # to populate the placeholder.
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./tenants/arrakis/addons/kubevirt-csi

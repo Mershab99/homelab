@@ -14,7 +14,6 @@ spec:
     - k3k-operator
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/k3k-clusters

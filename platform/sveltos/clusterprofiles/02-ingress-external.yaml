@@ -70,12 +70,10 @@ spec:
           externalTrafficPolicy: Local
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./clusters/baremetal/addons/chisel-operator
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/gateway

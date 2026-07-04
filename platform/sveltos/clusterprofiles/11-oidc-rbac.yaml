@@ -17,7 +17,6 @@ spec:
       oidc.enabled: "true"
   policyRefs:
     - kind: GitRepository
-      apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/oidc-rbac
