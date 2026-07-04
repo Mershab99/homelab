@@ -1,0 +1,38 @@
+# Root ClusterProfile — the single bootstrap object that replaces the whole
+# Flux Kustomization tree (infrastructure-ks + platform-ks + sveltos-fanout-ks).
+#
+# Applied once by hand after Sveltos is helm-installed and `mgmt` is labeled.
+# From here it's GitOps: source-controller keeps the `homelab` GitRepository
+# fresh; this profile kustomize-builds two dirs onto mgmt and Sveltos
+# self-reconciles them:
+#
+#   ./clusters/baremetal/infrastructure  — namespaces + Cilium runtime CRs
+#                                           (things Sveltos can't bootstrap itself)
+#   ./platform/sveltos/clusterprofiles   — every OTHER ClusterProfile CR;
+#                                           Sveltos manages Sveltos from here
+#
+# Both dirs carry a kustomization.yaml, so kustomizationRefs (kustomize build)
+# is used rather than policyRefs (raw YAML). Continuous sync = adds/removes in
+# git are reconciled on the next source-controller pull.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: root
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  syncMode: Continuous
+  # deploymentType defaults to Remote → deploys to the matched cluster (mgmt),
+  # same as every other mgmt-targeted profile (olm, capi-stack, ...).
+  kustomizationRefs:
+    - namespace: flux-system
+      name: homelab
+      kind: GitRepository
+      path: ./clusters/baremetal/infrastructure
+    - namespace: flux-system
+      name: homelab
+      kind: GitRepository
+      path: ./platform/sveltos/clusterprofiles

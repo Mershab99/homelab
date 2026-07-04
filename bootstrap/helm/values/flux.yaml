@@ -1,0 +1,27 @@
+# Flux, trimmed to two controllers: source + helm.
+#
+#   source-controller — fetches the `homelab` GitRepository + the projectsveltos
+#                       HelmRepository into artifacts.
+#   helm-controller   — reconciles the Sveltos HelmRelease (installs Sveltos).
+#
+# No kustomize-controller (Sveltos does the applying), no notification/image
+# controllers, no Flux Operator, no FluxInstance, no ArgoCD. After Flux + the
+# git secret are up, `kubectl apply -f bootstrap/flux/` is the whole bootstrap.
+sourceController:
+  create: true
+helmController:
+  create: true
+
+kustomizeController:
+  create: false
+notificationController:
+  create: false
+imageAutomationController:
+  create: false
+imageReflectorController:
+  create: false
+
+installCRDs: true
+
+policies:
+  create: false   # no NetworkPolicies; Cilium governs

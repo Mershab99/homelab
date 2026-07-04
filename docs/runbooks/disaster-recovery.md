@@ -25,16 +25,20 @@ sealed-secret encryption key (unless backed up separately).
    ```bash
    talosctl --nodes <node-ip> bootstrap --recover-from=<snapshot.db>
    ```
-3. **Wait for kube-apiserver up.** Flux Operator (if previously installed by
-   Helm) auto-restarts and reconciles its `FluxInstance`. If the Helm release
-   itself is lost, re-run `bootstrap/helm/02-flux-operator.sh`.
+3. **Wait for kube-apiserver up.** Re-run the helm bootstrap to restore the
+   delivery layer (both idempotent): `bootstrap/helm/01-cilium.sh`, then
+   `bootstrap/helm/02-flux.sh` (reinstalls Flux source + helm controllers,
+   re-applies `bootstrap/flux/`, and helm-controller reinstalls Sveltos).
 4. **Restore sealed-secrets controller key** from off-box:
    ```bash
    kubectl -n sealed-secrets apply -f sealed-secrets-key-backup.yaml
    kubectl -n sealed-secrets rollout restart deployment sealed-secrets-controller
    ```
-5. **Reconcile Flux** — Flux re-pulls Git, re-applies everything, every Helm
-   release re-installs, every CR re-creates.
+5. **Re-apply the root ClusterProfile** —
+   `kubectl apply -f clusters/baremetal/sveltos-root.yaml` (after re-labeling
+   `mgmt`, see `docs/bootstrap.md` step 5). source-controller re-pulls Git,
+   Sveltos re-applies every ClusterProfile, every Helm release re-installs,
+   every CR re-creates.
 6. **Verify the `tank` ZFS pool imported.** The pool survives the host rebuild
    because the data disks (sdc–sdq) are untouched — `install.wipe` only clears
    the boot disk `/dev/sdb`. The zfs extension auto-imports `tank` on boot;
@@ -45,9 +49,10 @@ sealed-secret encryption key (unless backed up separately).
    `KamajiControlPlane` CR; etcd PVCs reattach with prior state.
 8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (`zfs` PVCs
    intact); they boot, `kubeadm join`-ed nodes show up.
-9. **vClusters come back** when the tenant cluster's HelmReleases reconcile.
-   Bundled `sveltos-applier` reconnects to the bare-metal Sveltos controller;
-   profiles re-fire.
+9. **vClusters come back** when the k3k operator reconciles their `Cluster`
+   CRs on the tenant. Re-register each with the bare-metal Sveltos controller
+   (kubeconfig Secret + SveltosCluster) per
+   `docs/runbooks/registering-a-k3k-vcluster.md`; profiles re-fire.
 
 ## Dry-run
 

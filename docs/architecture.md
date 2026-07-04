@@ -42,7 +42,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | Sveltos registration        | CAPI integration (push) for tenant; agent mode (pull) for vClusters |
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
 | Storage                     | ZFS LocalPV (zpool `tank`, 7 mirrors) on bare-metal; kubevirt-csi passthrough in tenant |
-| GitOps                      | Flux Operator → Flux on bare-metal only. **No Flux in tenant or vClusters.** |
+| GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
 | Secrets                     | sealed-secrets for v1 (SOPS still configured) |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
 | LB classes                  | `internal` (Cilium LAN IP); `external` (chisel-operator → VPS) |
@@ -94,15 +94,24 @@ Sveltos is for **capability fanout**, not per-instance config.
 - **One OIDC client (`kubernetes`) for every OIDC-enabled kube-apiserver.**
   Tenant + all vClusters share it. One group taxonomy
   (`oidc:platform-admins`, `oidc:viewers`). One kubeconfig with N contexts.
-- **Sveltos delivers everything that fans out, including to bare-metal.**
-  Flux installs only the bare-metal bootstrap minimum (Cilium runtime CRs,
-  sealed-secrets, Sveltos itself, CAPI/Kamaji, KubeVirt HCO, ZFS LocalPV).
-  Everything else — cert-manager, external-dns, ingress-nginx, chisel-operator,
-  Multus, Dex, Headlamp, OTel, Loki, Grafana — is a `ClusterProfile` in
-  `platform/sveltos/clusterprofiles/` selected by label. The bare-metal
-  cluster auto-registers as a `SveltosCluster` named `mgmt` and receives
-  profiles matching its labels. Same profiles match tenant + vClusters when
-  those come online — no rewrite needed.
+- **Sveltos delivers everything, including to bare-metal. Flux only fetches +
+  installs Sveltos.** Flux runs two controllers (helm-installed,
+  `bootstrap/helm/02-flux.sh`): source-controller reconciles the `homelab`
+  GitRepository + the Sveltos chart into artifacts; helm-controller installs
+  Sveltos from the single HelmRelease in `bootstrap/flux/`. There is no Flux
+  Operator, no `FluxInstance`, no kustomize-controller, and no ArgoCD.
+  Bootstrap is two helm installs (Cilium → Flux) plus
+  `kubectl apply -f bootstrap/flux/` (done by the script), then one imperative
+  `kubectl apply -f clusters/baremetal/sveltos-root.yaml`. That
+  **root `ClusterProfile`** kustomize-builds `clusters/baremetal/infrastructure/`
+  (namespaces + Cilium runtime CRs) and `platform/sveltos/clusterprofiles/`
+  (every other `ClusterProfile` CR) onto `mgmt` — Sveltos manages Sveltos from
+  there, replacing the old Flux Kustomization tree. Everything else —
+  cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex, Headlamp,
+  Longhorn, OLM + KubeVirt HCO, CAPI/Kamaji, OTel, Loki, Grafana — is a
+  label-selected `ClusterProfile`. The bare-metal cluster auto-registers as
+  `SveltosCluster/mgmt`; the same profiles match tenant + vClusters when they
+  come online — no rewrite needed.
 - **vCluster boundary is API-only, not data-plane.** Observability and
   networking happen at the host (tenant) layer.
 

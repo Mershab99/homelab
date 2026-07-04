@@ -1,28 +1,28 @@
-# Flux root
+# Flux (source + helm controllers)
 
-The minimum set of manifests Flux Operator needs to take over reconciliation
-of the repo.
+Flux runs only **source-controller** (git + chart fetcher) and
+**helm-controller** (reconciles the one Sveltos HelmRelease). No Flux Operator,
+no `FluxInstance`, no kustomize/notification/image controllers, no ArgoCD.
+Sveltos reads from the `homelab` GitRepository artifact and drives all delivery.
 
 ## Layout
 
 ```
 bootstrap/flux/
-├── fluxinstance.yaml         # FluxInstance CR — Operator installs Flux from this
-├── gitrepository.yaml        # source of truth (github.com/mershab/homelab @ master)
-├── root-kustomization.yaml   # entry point: clusters/baremetal/
+├── gitrepository.yaml          # source of truth (github.com/mershab/homelab @ master)
+├── sveltos-helmrepository.yaml # Sveltos chart source
+├── sveltos-helmrelease.yaml    # the ONE HelmRelease — Flux installs Sveltos
 └── README.md
 ```
 
-## Seed secrets (created manually, not in Git)
+The controllers themselves are helm-installed by `bootstrap/helm/02-flux.sh`,
+which also creates the git secret and `kubectl apply`s this whole directory.
 
-Before applying anything in this directory you must create two seed secrets
-in `flux-system`. They sit outside the GitOps loop because Flux needs them
-to enter the loop in the first place.
+## Seed secret (created manually, not in Git)
 
-### 1. GitHub PAT — for cloning the repo
-
-The PAT needs at minimum `repo:read` on this repo. (No webhook / workflow
-scope needed.)
+One secret only — the git credential source-controller uses to clone the
+private repo. `02-flux.sh` creates it if you export `FLUX_REPO_PAT` (and
+optionally `FLUX_REPO_USER`, default `mershab`). By hand:
 
 ```bash
 kubectl create namespace flux-system
@@ -31,32 +31,22 @@ kubectl -n flux-system create secret generic flux-repo-pat \
   --from-literal=password=<the-pat>
 ```
 
-### 2. SOPS age key — for decrypting downstream sealed secrets
+PAT needs `repo:read`. Referenced by name in `gitrepository.yaml`. Rotate by
+re-creating the Secret; source-controller re-reads on next reconcile.
+
+> No `sops-age` secret needed — there is no kustomize-controller doing SOPS
+> decryption. In-cluster secrets are SealedSecrets, decrypted by the
+> sealed-secrets controller (delivered by the `sealed-secrets` ClusterProfile).
+
+## Apply
+
+Handled by `02-flux.sh`. Manually:
 
 ```bash
-# Re-use the age private key you created when populating .sops.yaml.
-kubectl -n flux-system create secret generic sops-age \
-  --from-file=age.agekey=$HOME/.config/sops/age/keys.txt
+kubectl apply -f bootstrap/flux/
 ```
 
-Both are referenced by name in `gitrepository.yaml` /
-`root-kustomization.yaml`. If you ever rotate them, re-create the Secret —
-Flux re-reads on the next reconcile.
-
-## Apply order
-
-```bash
-kubectl apply -f bootstrap/flux/gitrepository.yaml
-kubectl apply -f bootstrap/flux/fluxinstance.yaml
-kubectl apply -f bootstrap/flux/root-kustomization.yaml
-```
-
-`gitrepository` first so the FluxInstance has its source ready by the time
-controllers come up. The root Kustomization reconciles `clusters/baremetal/`
-from there.
-
-## After this
-
-Everything in `clusters/baremetal/` is GitOps-managed. `bootstrap/flux/`
-itself is intentionally NOT reconciled — these manifests change rarely and
-managing them via Flux would create a dependency cycle.
+helm-controller reconciles the Sveltos HelmRelease → Sveltos installs into
+`projectsveltos` and auto-registers the cluster as `mgmt`. `bootstrap/flux/`
+itself is NOT reconciled by anything — it changes rarely and self-managing it
+would create a dependency cycle.

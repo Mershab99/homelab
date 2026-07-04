@@ -135,7 +135,7 @@ machine:
         # data disks (the Longhorn SSDs) are "Samsung SSD 850".
         diskSelector:
             model: WDC*
-        image: factory.talos.dev/metal-installer/36cd6536eaec8ba802be2d38974108359069cedba8857302f69792b26b87c010:v1.13.5 # Factory image: intel-ucode + iscsi-tools + util-linux-tools (Longhorn). Regenerate after editing r730-schematic.yaml.
+        image: factory.talos.dev/metal-installer/29ffb20b8991b157baa2915e81572d192eafcdedbba171528e9b351afc65fbbb:v1.13.5 # Factory image: intel-ucode + iscsi-tools + util-linux-tools (Longhorn). Regenerate after editing r730-schematic.yaml.
         wipe: true # Wipe the boot disk on this fresh install (data disks untouched).
         # NOTE: grubUseUKICmdline must stay OFF — it's mutually exclusive with
         # extraKernelArgs below (GRUB must build the cmdline on the host to

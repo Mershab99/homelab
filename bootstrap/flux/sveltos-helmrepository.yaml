@@ -1,8 +1,10 @@
+# Sveltos chart source. source-controller fetches it; the HelmRelease below
+# references it.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
   name: projectsveltos
-  namespace: projectsveltos
+  namespace: flux-system
 spec:
   interval: 1h
   url: https://projectsveltos.github.io/helm-charts

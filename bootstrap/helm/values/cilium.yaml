@@ -64,11 +64,11 @@ tunnelProtocol: vxlan
 # LB IPAM + L2 announcer — replaces MetalLB. Specific pools + announcement
 # policies arrive via Flux at clusters/baremetal/infrastructure/cilium/.
 l2announcements:
-  enabled: true
+  enabled: false
 externalIPs:
-  enabled: true
-loadBalancer:
-  algorithm: maglev
+  enabled: false
+#loadBalancer:
+#  algorithm: maglev
 
 # Don't claim CNI exclusivity — Multus installs a thick CNI later that
 # delegates to Cilium for the default network, and that needs the directory

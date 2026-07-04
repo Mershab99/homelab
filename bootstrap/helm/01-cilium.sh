@@ -53,6 +53,6 @@ cat <<'EOF'
 
 ============================================================
  Cilium is up. Next:
-   ./bootstrap/helm/02-flux-operator.sh
+   ./bootstrap/helm/02-flux.sh
 ============================================================
 EOF

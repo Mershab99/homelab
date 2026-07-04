@@ -82,8 +82,8 @@ bootstrap/helm/01-cilium.sh
 ```
 
 This installs Cilium with kube-proxy replacement, L2 announcer, LB IPAM, and
-Hubble enabled. The IPAM pool + L2AnnouncementPolicy CRs are applied by Flux
-later — for bootstrap, Cilium itself is enough.
+Hubble enabled. The IPAM pool + L2AnnouncementPolicy CRs are applied later by
+the root ClusterProfile (via Sveltos) — for bootstrap, Cilium itself is enough.
 
 **Verify**:
 ```bash
@@ -92,64 +92,33 @@ cilium connectivity test --test no-policies   # subset; full suite optional
 kubectl -n kube-system get pods -l k8s-app=cilium
 ```
 
-## 4. Flux Operator
+## 4. Flux (source + helm controllers) → installs Sveltos
 
 ```bash
-bootstrap/helm/02-flux-operator.sh
+export FLUX_REPO_PAT=<github-pat-with-repo-read>   # or pre-create flux-repo-pat
+bootstrap/helm/02-flux.sh
 ```
 
-Flux Operator manages Flux declaratively via the `FluxInstance` CR. The
-controller comes up in `flux-system`.
+This is the whole delivery bootstrap. It helm-installs Flux with only two
+controllers — source-controller (git + chart fetcher) and helm-controller
+(reconciles HelmReleases) — creates the git secret, then
+`kubectl apply -f bootstrap/flux/`. That directory holds the `homelab`
+GitRepository plus the Sveltos HelmRepository + HelmRelease. helm-controller
+installs Sveltos, which auto-registers the cluster as `SveltosCluster/mgmt`.
+No Flux Operator, no `FluxInstance`, no kustomize-controller, no ArgoCD.
 
 **Verify**:
 ```bash
-kubectl -n flux-system get pods    # flux-operator-... Running
-kubectl get crd fluxinstances.fluxcd.controlplane.io  # CRD present
+kubectl -n flux-system get gitrepository homelab     # Ready=True
+kubectl -n flux-system get helmrelease sveltos       # Ready=True
+kubectl -n projectsveltos get pods                   # Sveltos controllers Running
+kubectl -n projectsveltos get sveltoscluster mgmt    # registered
 ```
 
-## 5. Flux root
+## 5. Label mgmt + apply the root ClusterProfile
 
-```bash
-# The git URL/branch/path point Flux at this repo.
-kubectl apply -f bootstrap/flux/gitrepository.yaml
-kubectl apply -f bootstrap/flux/fluxinstance.yaml
-kubectl apply -f bootstrap/flux/root-kustomization.yaml
-```
-
-The root Kustomization is `clusters/baremetal/` — Flux now owns reconciliation
-of everything downstream.
-
-**Verify**:
-```bash
-flux get sources git
-flux get kustomizations
-# Watch the layers come up:
-watch -n 2 'flux get kustomizations'
-```
-
-## 6. Infrastructure layer comes up (bare-metal bootstrap minimum)
-
-Flux reconciles `clusters/baremetal/infrastructure/` — only what Sveltos
-cannot bootstrap itself:
-
-1. cilium runtime CRs (LB IPAM pool + L2AnnouncementPolicy)
-2. namespaces (projectsveltos, tenants)
-
-**Verify**:
-```bash
-flux get kustomizations                 # infrastructure Ready
-kubectl get ciliumloadbalancerippool
-```
-
-## 6.5. Sveltos controller + label the mgmt cluster
-
-Flux reconciles `clusters/baremetal/platform/` — Sveltos itself, as a
-HelmRelease. After this is Ready, the bare-metal cluster auto-registers as
-a `SveltosCluster` named `mgmt` in the `projectsveltos` namespace.
-
-Apply labels to `mgmt` so the cross-cluster ClusterProfiles target it. This
-is a one-time imperative step — Sveltos owns the SveltosCluster CR's spec,
-but we own its labels:
+Label `mgmt` so the cross-cluster ClusterProfiles target it (Sveltos owns the
+SveltosCluster spec; we own its labels):
 
 ```bash
 kubectl -n projectsveltos label sveltoscluster mgmt \
@@ -168,30 +137,37 @@ kubectl -n projectsveltos label sveltoscluster mgmt \
   needs.observability-core=true \
   needs.observability-backend=true
 
-# Also label the tenant home Cluster CR (after it lands) so observability-core
+# Also label the tenant Cluster CR (after it lands) so observability-core
 # fans into the tenant too:
-#   kubectl label cluster -n tenants home needs.observability-core=true
+#   kubectl label cluster -n tenants arrakis needs.observability-core=true
 ```
 
-Then `sveltos-fanout-ks` reconciles `platform/sveltos/clusterprofiles/` and
-the cluster lights up: sealed-secrets first (no deps), then cert-manager,
-external-dns, ingress-nginx (×2), chisel-operator, Multus, Dex, Headlamp,
-ZFS LocalPV, KubeVirt HCO, CAPI + Kamaji, observability stack.
+Then apply the **root ClusterProfile** — the single object that replaces the
+old Flux Kustomization tree:
+
+```bash
+kubectl apply -f clusters/baremetal/sveltos-root.yaml
+```
+
+It kustomize-builds two dirs from the `homelab` GitRepository onto mgmt:
+`clusters/baremetal/infrastructure/` (namespaces + Cilium runtime CRs) and
+`platform/sveltos/clusterprofiles/` (every other ClusterProfile CR — Sveltos
+manages Sveltos from here). The cluster then lights up in dependency order:
+sealed-secrets → cert-manager, external-dns, Traefik, chisel-operator, Multus,
+Dex, Headlamp, Longhorn, OLM + KubeVirt HCO, CAPI + Kamaji, observability.
 
 **Verify**:
 ```bash
-kubectl -n projectsveltos get pods                  # controller Running
-kubectl get sveltoscluster -n projectsveltos        # mgmt registered + labeled
-kubectl get clusterprofiles                         # all matched
+kubectl get clusterprofiles                         # root + all others present
 kubectl get clustersummaries -A                     # one per (profile, cluster) — all Provisioned
+kubectl get ciliumloadbalancerippool                # infra dir applied
 kubectl -n cert-manager get clusterissuer letsencrypt-prod
-kubectl -n openebs get pods -l role=openebs-zfs     # csi controller + node Ready
-kubectl get sc zfs                                  # default StorageClass
-kubectl get hyperconverged -n kubevirt              # Deployed
+kubectl -n longhorn-system get pods                 # storage up
+kubectl get hyperconverged -n kubevirt-hyperconverged  # Deployed
 kubectl get providers -A                            # core, capk, cabpk, kamaji
 ```
 
-## 7. Verify Dex + OAuth2Clients
+## 6. Verify Dex + OAuth2Clients
 
 ```bash
 curl -sI https://auth.mershab.com/.well-known/openid-configuration   # 200
@@ -204,9 +180,10 @@ OAuth2Client CRs (per-UI) are part of the `dex` ClusterProfile — they ship
 inline with the Helm release so each UI's client_id + redirect URIs land
 the moment Dex comes up.
 
-## 8. Observability layer
+## 7. Observability layer
 
-Flux reconciles `clusters/baremetal/observability/`:
+The observability ClusterProfiles (`07-observability-*`) deliver the stack
+(this comes up as part of step 5; the checks below confirm it):
 
 1. otel-operator (Operator + TargetAllocator CRs)
 2. prometheus-operator-crds (ServiceMonitor/PodMonitor; no Prometheus controller)
@@ -223,10 +200,10 @@ kubectl -n observability get pods                  # all Running
 # Explore: see node + cluster metrics flowing
 ```
 
-## 9. Tenant cluster
+## 8. Tenant cluster
 
 ```bash
-# Flux already reconciles tenants/arrakis/infra/ — confirm CAPI sees it
+# The tenant-arrakis ClusterProfile delivers tenants/arrakis/infra/ — confirm CAPI sees it
 kubectl get cluster -A
 clusterctl describe cluster home -n tenants
 ```
@@ -255,7 +232,7 @@ kubectl --kubeconfig=$TKUBECONFIG auth whoami
 # → Username: oidc:<email>, Groups: [oidc:platform-admins]
 ```
 
-## 10. Tenant platform (Sveltos fan-out)
+## 9. Tenant platform (Sveltos fan-out)
 
 Sveltos auto-registered the tenant via the CAPI integration (the `Cluster`
 CR's labels). ClusterProfiles in `tenants/arrakis/platform/clusterprofiles/`
@@ -272,13 +249,13 @@ kubectl --kubeconfig=$TKUBECONFIG run scaletest --image=pause --replicas=20
 kubectl get machinedeployment -A -w     # general replicas climb
 ```
 
-## 11. First vCluster — home-assistant
+## 10. First vCluster — home-assistant
 
 ```bash
-# tenants/arrakis/vclusters/home-assistant/tenant-side/ — Flux Kustomization
-# targets the tenant kubeconfig (via Secret). Bundled sveltos-applier dials
-# the bare-metal Sveltos controller. Slot SveltosCluster on bare-metal
-# completes the registration.
+# k3k creates the vCluster on the tenant; register it with the bare-metal
+# Sveltos controller by hand (kubeconfig Secret + SveltosCluster) — see
+# docs/runbooks/registering-a-k3k-vcluster.md. Matching ClusterProfiles then
+# fan in.
 kubectl get sveltoscluster -n vclusters home-assistant
 ```
 
@@ -300,12 +277,12 @@ kubectl --kubeconfig=$VKC -n home-assistant exec -it home-assistant-0 -- ip a
 # expect eth0 (pod CIDR) + net1 (LAN, 192.168.2.x)
 ```
 
-## 12. Remaining vClusters
+## 11. Remaining vClusters
 
 Repeat step 11 for `frigate`, `jellyfin`, `ollama` (their manifests already
 live in `tenants/arrakis/vclusters/`). Each adds an `OAuth2Client` CR for its UI.
 
-## 13. etcd backup
+## 12. etcd backup
 
 Verify the etcd-backup CronJob fires on its first schedule:
 
@@ -315,7 +292,7 @@ kubectl -n etcd-backup get jobs --sort-by=.metadata.creationTimestamp
 # Confirm the off-box destination (Hetzner storage box / B2) has the file.
 ```
 
-## 14. R820 (later)
+## 13. R820 (later)
 
 When the R820 arrives:
 
