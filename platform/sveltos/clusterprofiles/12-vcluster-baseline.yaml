@@ -1,9 +1,10 @@
 # vcluster-baseline — runs INSIDE every vCluster (selected by the
-# sveltos.projectsveltos.io/type=vcluster label set when the vCluster's
-# bundled sveltos-applier registers it back to mgmt in agent pull mode).
+# sveltos.projectsveltos.io/type=vcluster label set when the k3k vCluster is
+# registered with the hub from its kubeconfig — see
+# docs/runbooks/registering-a-k3k-vcluster.md).
 #
 # Manifests delivered via GitRepository policyRef (consistent with
-# tenant-home, virt-host, etc. — no inline ConfigMap wrangling).
+# tenant-arrakis, virt-host, etc. — no inline ConfigMap wrangling).
 #
 # OIDC RBAC (cluster-admin → oidc:platform-admins, view → oidc:viewers) is
 # delivered by the separate 11-oidc-rbac ClusterProfile, which also matches

@@ -1,0 +1,41 @@
+# tenant-arrakis — delivers the entire CAPI definition for the `arrakis` tenant
+# cluster (Cluster + KamajiControlPlane + KubevirtCluster + 3 ×
+# KubeVirtMachineTemplate + 3 × KubeadmConfigTemplate + 3 × MachineDeployment
+# + MHC + br-multus NAD + Cilium HelmChartProxy) to mgmt.
+#
+# Sveltos reads from the Flux GitRepository directly — no ConfigMap wrangling.
+#
+# After this profile reconciles:
+#   1. KamajiControlPlane spins up tenant kube-apiserver as pods on mgmt.
+#   2. CAPK creates KubeVirt VMs per MachineDeployment.
+#   3. CABPK supplies cloud-init that runs `kubeadm join` against Kamaji.
+#   4. CAPI helm addon provider sees the cilium-tenant-cni HelmChartProxy
+#      and installs Cilium into the tenant cluster (so the VMs' pods can
+#      actually run).
+#   5. The tenant cluster auto-registers as a SveltosCluster via CAPI
+#      integration. Its CAPI Cluster CR labels propagate.
+#   6. tenant-baseline + tenant-gpu + oidc-rbac ClusterProfiles match it
+#      via labels and fan out the rest of the tenant addons.
+#
+# mgmt-only — these are CAPI CRs reconciled by the CAPI providers on mgmt.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tenant-arrakis
+spec:
+  clusterRefs:
+    - kind: SveltosCluster
+      apiVersion: lib.projectsveltos.io/v1beta1
+      name: mgmt
+      namespace: projectsveltos
+  dependsOn:
+    - capi-stack    # CAPI + Kamaji + providers must be Running
+    - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine
+    - storage       # longhorn for Kamaji etcd PVCs + KubeVirt CDI
+    - multus        # bare-metal Multus for the br-multus NAD
+  policyRefs:
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./tenants/arrakis/infra

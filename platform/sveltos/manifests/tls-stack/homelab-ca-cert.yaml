@@ -1,0 +1,21 @@
+# Root CA cert — long-lived, signs every internal cert. Minted by the
+# selfsigned-bootstrap ClusterIssuer (see clusterissuers.yaml); its key pair
+# (secret homelab-ca-key-pair) backs the selfsigned-ca ClusterIssuer.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: homelab-ca
+  secretName: homelab-ca-key-pair
+  duration: 87600h           # 10 years
+  renewBefore: 8760h         # rotate yearly
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io

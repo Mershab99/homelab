@@ -1,0 +1,11 @@
+# ResourceQuota on the tenants namespace — guard against runaway CAPI VM PVCs.
+# Delivered by the storage ClusterProfile (GitRepository policyRef).
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenants-storage
+  namespace: tenants
+spec:
+  hard:
+    requests.storage: 2Ti
+    persistentvolumeclaims: "100"

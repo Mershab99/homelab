@@ -1,0 +1,17 @@
+# Static site content for mershab.com — placeholder. Replace index.html with the
+# real site (or switch the Deployment to a built image) later.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: website-content
+  namespace: website
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="en">
+      <head><meta charset="utf-8"><title>mershab.com</title></head>
+      <body style="font-family: system-ui; max-width: 40rem; margin: 4rem auto;">
+        <h1>mershab.com</h1>
+        <p>Served by nginx in the <code>mershab</code> k3k shared vCluster on arrakis.</p>
+      </body>
+    </html>

@@ -1,0 +1,103 @@
+# CAPI Cluster CR + KubevirtCluster + KamajiControlPlane for the `arrakis`
+# tenant. Lives in `default` namespace (matches working convention).
+#
+# Labels are load-bearing — they're what Sveltos selectors on the tenant
+# ClusterProfiles match against. The tenant cluster auto-registers with
+# Sveltos via CAPI integration; the labels here propagate to the resulting
+# SveltosCluster.
+#
+# OIDC: tenant kube-apiserver federates to Dex at auth.mershab.com using
+# the shared `kubernetes` OAuth2 client (bare-metal apiserver is the OIDC
+# exception — see docs/architecture.md).
+#
+# Networking: pods 10.243.0.0/16 (distinct from bare-metal's 10.244.0.0/16),
+# services 10.96.0.0/16. KubeVirt masquerade isolates the tenant network
+# from bare-metal's matching service CIDR.
+#
+# Single-cluster setup: KubevirtCluster has no infraClusterSecretRef, so
+# CAPK provisions VMs on the SAME cluster CAPI runs on. If/when we ever
+# split mgmt and infra, add a Secret with the infra cluster's kubeconfig.
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: arrakis
+  namespace: tenants
+  labels:
+    sveltos.projectsveltos.io/type: tenant
+    tier: workload
+    # Capability labels — ClusterProfile selectors match these.
+    needs.tls: "true"
+    needs.multus: "true"
+    needs.kubevirt-csi: "true"
+    needs.gpu: "true"
+    needs.autoscaler: "true"
+    oidc.enabled: "true"
+    # CAPI HelmChartProxy selector — chooses tenant CNI. The
+    # `cilium-tenant-cni` HelmChartProxy at tenants/arrakis/infra/cilium-hcp.yaml
+    # selects on this label.
+    cniChart: cilium
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [10.243.0.0/16]
+    services:
+      cidrBlocks: [10.96.0.0/16]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+    kind: KamajiControlPlane
+    name: arrakis
+    namespace: tenants
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: KubevirtCluster
+    name: arrakis
+    namespace: tenants
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtCluster
+metadata:
+  name: arrakis
+  namespace: tenants
+  annotations:
+    cluster.x-k8s.io/managed-by: kamaji
+spec: {}
+# Day-1 single-cluster setup — CAPK uses the local cluster as infra.
+# When mgmt and infra ever split, add:
+#   infraClusterSecretRef:
+#     apiVersion: v1
+#     kind: Secret
+#     name: infra-cluster-kubeconfig
+#     namespace: capi-system
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+kind: KamajiControlPlane
+metadata:
+  name: arrakis
+  namespace: tenants
+spec:
+  dataStoreName: default
+  version: 1.35.0
+  replicas: 1   # bump to 3 once R820 lands
+  addons:
+    coreDNS: {}
+    kubeProxy: {}
+    konnectivity: {}
+  kubelet:
+    cgroupfs: systemd
+    preferredAddressTypes:
+      - InternalIP
+      - ExternalIP
+  apiServer:
+    extraArgs:
+      - --oidc-issuer-url=https://auth.mershab.com
+      - --oidc-client-id=kubernetes
+      - --oidc-username-claim=email
+      - --oidc-username-prefix=oidc:
+      - --oidc-groups-claim=groups
+      - --oidc-groups-prefix=oidc:
+  network:
+    serviceType: LoadBalancer
+    serviceAnnotations:
+      external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
+      # Day-1: internal Cilium LB. For off-LAN kubectl, replace with:
+      #   loadBalancerClass: chisel.mershab.com/external

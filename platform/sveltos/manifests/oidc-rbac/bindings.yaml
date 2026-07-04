@@ -1,0 +1,30 @@
+# ClusterRoleBindings mapping Dex groups to Kubernetes RBAC. Delivered to every
+# oidc.enabled cluster (tenant + every vCluster) by the oidc-rbac ClusterProfile.
+#   oidc:platform-admins — full cluster-admin
+#   oidc:viewers         — read-only across all resources
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-platform-admins
+subjects:
+  - kind: Group
+    name: oidc:platform-admins
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: oidc-viewers
+subjects:
+  - kind: Group
+    name: oidc:viewers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: view
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,20 @@
+# k3k-clusters — delivers the k3k Cluster CRs (family + mershab) onto the tenant.
+#
+# Split from 12-k3k-operator via dependsOn so the k3k.io CRD is registered
+# before these CRs apply. Native manifests live in manifests/k3k-clusters/.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: k3k-clusters
+spec:
+  clusterSelector:
+    matchLabels:
+      sveltos.projectsveltos.io/type: tenant
+  dependsOn:
+    - k3k-operator
+  policyRefs:
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/k3k-clusters

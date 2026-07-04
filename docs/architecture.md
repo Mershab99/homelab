@@ -72,7 +72,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | `needs.storage`                          | `zfs`                            | StorageClass plumbing  |
 | `oidc.enabled`                           | `"true"`                         | OIDC RBAC              |
 
-Per-instance config lives in `tenants/home/vclusters/<name>/apps/`.
+Per-instance config lives in `tenants/arrakis/vclusters/<name>/apps/`.
 Sveltos is for **capability fanout**, not per-instance config.
 
 ## 5. Hard rules
@@ -113,10 +113,10 @@ Sveltos is for **capability fanout**, not per-instance config.
 - **More tenant workers:** bump `replicas` in MachineDeployment (or let CAS
   do it via the autoscaler annotations).
 - **New worker pool:** add KubeVirtMachineTemplate + KubeadmConfigTemplate +
-  MachineDeployment under `tenants/home/infra/`. Label so matching
+  MachineDeployment under `tenants/arrakis/infra/`. Label so matching
   ClusterProfiles target it.
-- **New workload:** `cp -r tenants/home/vclusters/_template
-  tenants/home/vclusters/<name>`; edit labels; add `apps/`. Add `OAuth2Client`
+- **New workload:** `cp -r tenants/arrakis/vclusters/_template
+  tenants/arrakis/vclusters/<name>`; edit labels; add `apps/`. Add `OAuth2Client`
   if it has a UI.
-- **Second tenant cluster:** `cp -r tenants/home tenants/<name>`. Platform
+- **Second tenant cluster:** `cp -r tenants/arrakis tenants/<name>`. Platform
   layer (`platform/sveltos/`) unchanged.

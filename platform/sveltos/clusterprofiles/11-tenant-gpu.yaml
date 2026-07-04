@@ -58,78 +58,9 @@ spec:
               - name: WITH_WORKLOAD
                 value: "false"
   policyRefs:
-    - name: tenant-gpu-drivers
-      namespace: projectsveltos
-      kind: ConfigMap
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tenant-gpu-drivers
-  namespace: projectsveltos
-data:
-  nvidia-drivers.yaml: |
-    # K80 driver — pinned to 470.141.10 (last CUDA 11.4 driver supporting
-    # Kepler GK210). nodeSelector targets nodes labeled nvidia.com/gpu=k80
-    # by the gpu-k80 KubeadmConfigTemplate.
-    apiVersion: nvidia.com/v1alpha1
-    kind: NVIDIADriver
-    metadata:
-      name: k80
-    spec:
-      driverType: gpu
-      image: driver
-      imagePullPolicy: IfNotPresent
-      imagePullSecrets: []
-      manager: {}
-      rdma:
-        enabled: false
-        useHostMofed: false
-      gds:
-        enabled: false
-      repository: nvcr.io/nvidia
-      startupProbe:
-        failureThreshold: 120
-        initialDelaySeconds: 60
-        periodSeconds: 10
-        timeoutSeconds: 60
-      usePrecompiled: false
-      version: "470.141.10"
-      nodeSelector:
-        nvidia.com/gpu: k80
-      resources:
-        requests:
-          ephemeral-storage: "4Gi"
-        limits:
-          ephemeral-storage: "4Gi"
-    ---
-    apiVersion: nvidia.com/v1alpha1
-    kind: NVIDIADriver
-    metadata:
-      name: p2000
-    spec:
-      driverType: gpu
-      image: driver
-      imagePullPolicy: IfNotPresent
-      imagePullSecrets: []
-      manager: {}
-      rdma:
-        enabled: false
-        useHostMofed: false
-      gds:
-        enabled: false
-      repository: nvcr.io/nvidia
-      startupProbe:
-        failureThreshold: 120
-        initialDelaySeconds: 60
-        periodSeconds: 10
-        timeoutSeconds: 60
-      usePrecompiled: false
-      version: "535.183.06"
-      nodeSelector:
-        nvidia.com/gpu: p2000
-      resources:
-        requests:
-          ephemeral-storage: "4Gi"
-        limits:
-          ephemeral-storage: "4Gi"
+    # NVIDIADriver CRs (K80 + P2000) as native manifests.
+    - kind: GitRepository
+      apiVersion: source.toolkit.fluxcd.io/v1
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/tenant-gpu

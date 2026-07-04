@@ -6,11 +6,11 @@
 #      and Ingress with our values. Pod annotated with Multus to attach to
 #      the LAN.
 #   2. policyRefs — a GitRepository ref pointing at
-#      tenants/home/vclusters/family/apps/home-assistant/ for the things
+#      tenants/arrakis/vclusters/family/apps/home-assistant/ for the things
 #      the chart doesn't manage (the `lan` NAD in the home-assistant ns).
 #
-# Selector: clusterRefs by name targets the family SveltosCluster
-# registered when the vCluster's bundled sveltos-applier connects.
+# Selector: clusterRefs by name targets the family SveltosCluster registered
+# from the k3k vCluster kubeconfig (see docs/runbooks/registering-a-k3k-vcluster.md).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -59,4 +59,4 @@ spec:
       apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
-      path: ./tenants/home/vclusters/family/apps/home-assistant
+      path: ./tenants/arrakis/vclusters/family/apps/home-assistant

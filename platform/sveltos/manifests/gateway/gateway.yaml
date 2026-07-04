@@ -25,6 +25,23 @@ spec:
   dnsNames:
     - "*.homelab.mershab.com"
 ---
+# Apex TLS for mershab.com (the public website). The homelab wildcard does NOT
+# cover the apex, so it needs its own cert. letsencrypt-prod DNS-01 already lists
+# bare mershab.com in its dnsZones (01-tls-stack clusterissuers).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mershab-apex
+  namespace: traefik
+spec:
+  secretName: mershab-apex-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: mershab.com
+  dnsNames:
+    - mershab.com
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
@@ -45,3 +62,16 @@ spec:
       allowedRoutes:
         namespaces:
           from: All        # routes live in the traefik ns; backends cross-ns via ReferenceGrant
+    # Apex listener for the public website (nginx in the mershab k3k vCluster).
+    - name: apex
+      protocol: HTTPS
+      port: 443
+      hostname: mershab.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: mershab-apex-tls
+      allowedRoutes:
+        namespaces:
+          from: All

@@ -4,7 +4,7 @@
 #
 # What's NOT here:
 #   - Cilium  — delivered via CAPI HelmChartProxy
-#     (tenants/home/infra/cilium-hcp.yaml). CAPI's helm addon handles tenant
+#     (tenants/arrakis/infra/cilium-hcp.yaml). CAPI's helm addon handles tenant
 #     CNI bootstrap which has a chicken-and-egg story Sveltos can't solve.
 #   - cluster-autoscaler — runs on the BARE-METAL cluster, not on tenant
 #     (see 05b-cluster-autoscaler.yaml). Per
@@ -24,10 +24,10 @@ spec:
   policyRefs:
     # kubevirt-csi — vendored manifest + StorageClass. No tenant-side Helm
     # chart exists upstream; the appscode chart is the infra-side install.
-    # See tenants/home/addons/kubevirt-csi/README.md for the one-liner curl
+    # See tenants/arrakis/addons/kubevirt-csi/README.md for the one-liner curl
     # to populate the placeholder.
     - kind: GitRepository
       apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
-      path: ./tenants/home/addons/kubevirt-csi
+      path: ./tenants/arrakis/addons/kubevirt-csi

@@ -91,6 +91,44 @@ spec:
   rules:
     - backendRefs: [{name: oauth2-proxy, port: 4180}]
 ---
+# --- mershab.com (public website; nginx in the mershab k3k vCluster on arrakis) ---
+# The backend lives on a DIFFERENT cluster (arrakis), reachable over the LAN via
+# the website Service's LoadBalancer IP. We model it as a selectorless Service +
+# a manual EndpointSlice pointing at that LAN IP. No oauth2 (public site).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: mershab-web, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["mershab.com"]
+  rules:
+    - backendRefs: [{name: arrakis-website, port: 80}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: arrakis-website, namespace: traefik}
+spec:
+  ports:
+    - {name: http, port: 80, targetPort: 80}
+  # selectorless — endpoints supplied manually below (backend is off-cluster)
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: arrakis-website
+  namespace: traefik
+  labels:
+    kubernetes.io/service-name: arrakis-website
+addressType: IPv4
+ports:
+  - {name: http, port: 80}
+endpoints:
+  - addresses:
+      # TODO: the LAN LoadBalancer IP of the `website` Service in the mershab
+      # vCluster (arrakis). Fill after the vCluster is up: it's the EXTERNAL-IP of
+      #   kubectl --kubeconfig=mershab.kubeconfig -n website get svc website
+      - "0.0.0.0"
+---
 # --- Traefik dashboard (forwardAuth) — IngressRoute to the internal API ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute

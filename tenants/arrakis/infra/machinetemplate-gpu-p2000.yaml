@@ -1,0 +1,57 @@
+# gpu-p2000 worker pool — 1 replica, single VM with the P2000 passed through.
+#
+# P2000 is Pascal (GP106) — supports current LTS driver branch. The NVIDIA
+# GPU operator on tenant handles driver install (see `tenant-gpu`
+# ClusterProfile).
+#
+# deviceName matches HyperConverged.permittedHostDevices
+# (`nvidia.com/GP106GL_QUADRO_P2000`).
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: arrakis-gpu-p2000
+  namespace: tenants
+spec:
+  template:
+    spec:
+      virtualMachineBootstrapCheck:
+        checkStrategy: ssh
+      virtualMachineTemplate:
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              domain:
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 12Gi
+                devices:
+                  gpus:
+                    - name: gpu0
+                      deviceName: nvidia.com/GP106GL_QUADRO_P2000
+                  disks:
+                    - name: containervolume
+                      disk: {bus: virtio}
+                    - name: containerstorage
+                      disk: {bus: virtio}
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                    - name: br-multus
+                      bridge: {}
+                  networkInterfaceMultiqueue: true
+              networks:
+                - name: default
+                  pod: {}
+                - name: br-multus
+                  multus:
+                    networkName: br-multus
+              evictionStrategy: External
+              volumes:
+                - name: containervolume
+                  containerDisk:
+                    image: quay.io/capk/ubuntu-2004-container-disk:v1.35.0
+                - name: containerstorage
+                  emptyDisk:
+                    capacity: 50Gi

@@ -1,0 +1,45 @@
+# Bootstrap config for the general pool.
+#
+# Cloud-init at first boot:
+#   - bump inotify limits (vCluster + many small workloads spike watches)
+#   - format /dev/vdb (the 50Gi emptyDisk) as ext4, mount at /opt/vdb
+#   - relocate containerd root + state to /opt/vdb
+#   - point kubelet root-dir at /opt/vdb/kubelet (both initConfig + joinConfig)
+#
+# No GPU driver install here — plain CPU workers.
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: arrakis-general
+  namespace: tenants
+spec:
+  template:
+    spec:
+      preKubeadmCommands:
+        # inotify limits — many small pods (vCluster, etc.) saturate the default.
+        - echo "fs.inotify.max_user_watches=2048576" >> /etc/sysctl.conf
+        - echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
+        - sysctl -p
+
+        # Format + mount the 50Gi emptyDisk at /opt/vdb.
+        - mkfs.ext4 -F /dev/vdb
+        - mkdir -p /opt/vdb
+        - echo '/dev/vdb /opt/vdb ext4 defaults 0 0' >> /etc/fstab
+        - mount -a
+
+        # Relocate containerd state + kubelet root onto /opt/vdb.
+        - mkdir -p /opt/vdb/kubelet
+        - mkdir -p /opt/vdb/containerd/lib
+        - mkdir -p /opt/vdb/containerd/state
+        - sed -i '/^\[plugins\]/i root = "/opt/vdb/containerd/lib"\nstate = "/opt/vdb/containerd/state"' /etc/containerd/config.toml
+        - systemctl restart containerd
+      initConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            root-dir: "/opt/vdb/kubelet"
+            node-labels: node.mershab.com/pool=general
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            root-dir: "/opt/vdb/kubelet"
+            node-labels: node.mershab.com/pool=general

@@ -4,7 +4,7 @@
 # `k8s.v1.cni.cncf.io/networks: lan`. NADs are namespace-scoped so if the
 # workload runs in a non-default ns, the workload's own apps/ tree should
 # include a copy of this NAD in that ns (see
-# tenants/home/vclusters/home-assistant/apps/lan-nad.yaml for the pattern).
+# tenants/arrakis/vclusters/home-assistant/apps/lan-nad.yaml for the pattern).
 apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:

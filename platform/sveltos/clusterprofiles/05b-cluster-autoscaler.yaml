@@ -5,13 +5,13 @@
 # the simpler topology is to run CAS on the management cluster where the
 # CAPI MachineDeployments live. CAS reads tenant pending pods via the
 # kubeconfig CAPI auto-creates at `<cluster>-kubeconfig` Secret in the
-# tenant namespace (here: `home-kubeconfig` in `tenants` ns) — no manual
+# tenant namespace (here: `arrakis-kubeconfig` in `tenants` ns) — no manual
 # Secret seal needed.
 #
 # CAS only scales MachineDeployments annotated with:
 #   cluster.x-k8s.io/cluster-api-autoscaler-node-group-min-size
 #   cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size
-# The `home-general` MachineDeployment has these set.
+# The `arrakis-general` MachineDeployment has these set.
 #
 # mgmt-only.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -39,16 +39,16 @@ spec:
         # Run on mgmt; talk to tenant via the CAPI-generated kubeconfig
         # Secret in the tenants namespace.
         autoDiscovery:
-          clusterName: home
+          clusterName: arrakis
         clusterAPIMode: incluster-kubeconfig
         clusterAPICloudConfigPath: /etc/kubernetes/mgmt-kubeconfig
         clusterAPIWorkloadKubeconfigPath: /etc/kubernetes/workload-kubeconfig
         # The CAPI provider reads the workload kubeconfig from this Secret;
-        # CAPI itself creates it as `home-kubeconfig` in the tenants ns.
+        # CAPI itself creates it as `arrakis-kubeconfig` in the tenants ns.
         extraVolumes:
           - name: workload-kubeconfig
             secret:
-              secretName: home-kubeconfig
+              secretName: arrakis-kubeconfig
               defaultMode: 416
         extraVolumeMounts:
           - name: workload-kubeconfig

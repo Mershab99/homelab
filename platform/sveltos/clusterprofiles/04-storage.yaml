@@ -45,29 +45,9 @@ spec:
         longhornUI:
           replicas: 1
   policyRefs:
+    # MinIO (Loki S3) + the tenants-storage ResourceQuota as native manifests.
     - kind: GitRepository
       apiVersion: source.toolkit.fluxcd.io/v1
       name: homelab
       namespace: flux-system
       path: ./platform/sveltos/manifests/storage
-    - name: storage-quotas
-      namespace: projectsveltos
-      kind: ConfigMap
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: storage-quotas
-  namespace: projectsveltos
-data:
-  # ResourceQuota on the tenants namespace — guard against runaway CAPI VM PVCs.
-  resource-quota.yaml: |
-    apiVersion: v1
-    kind: ResourceQuota
-    metadata:
-      name: tenants-storage
-      namespace: tenants
-    spec:
-      hard:
-        requests.storage: 2Ti
-        persistentvolumeclaims: "100"

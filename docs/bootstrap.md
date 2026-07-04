@@ -226,7 +226,7 @@ kubectl -n observability get pods                  # all Running
 ## 9. Tenant cluster
 
 ```bash
-# Flux already reconciles tenants/home/infra/ — confirm CAPI sees it
+# Flux already reconciles tenants/arrakis/infra/ — confirm CAPI sees it
 kubectl get cluster -A
 clusterctl describe cluster home -n tenants
 ```
@@ -258,7 +258,7 @@ kubectl --kubeconfig=$TKUBECONFIG auth whoami
 ## 10. Tenant platform (Sveltos fan-out)
 
 Sveltos auto-registered the tenant via the CAPI integration (the `Cluster`
-CR's labels). ClusterProfiles in `tenants/home/platform/clusterprofiles/`
+CR's labels). ClusterProfiles in `tenants/arrakis/platform/clusterprofiles/`
 should already be matching.
 
 **Verify**:
@@ -275,7 +275,7 @@ kubectl get machinedeployment -A -w     # general replicas climb
 ## 11. First vCluster — home-assistant
 
 ```bash
-# tenants/home/vclusters/home-assistant/tenant-side/ — Flux Kustomization
+# tenants/arrakis/vclusters/home-assistant/tenant-side/ — Flux Kustomization
 # targets the tenant kubeconfig (via Secret). Bundled sveltos-applier dials
 # the bare-metal Sveltos controller. Slot SveltosCluster on bare-metal
 # completes the registration.
@@ -303,7 +303,7 @@ kubectl --kubeconfig=$VKC -n home-assistant exec -it home-assistant-0 -- ip a
 ## 12. Remaining vClusters
 
 Repeat step 11 for `frigate`, `jellyfin`, `ollama` (their manifests already
-live in `tenants/home/vclusters/`). Each adds an `OAuth2Client` CR for its UI.
+live in `tenants/arrakis/vclusters/`). Each adds an `OAuth2Client` CR for its UI.
 
 ## 13. etcd backup
 

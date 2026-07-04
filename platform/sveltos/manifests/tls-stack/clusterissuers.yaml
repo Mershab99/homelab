@@ -1,0 +1,42 @@
+# cert-manager ClusterIssuers — delivered to every needs.tls cluster by the
+# tls-stack ClusterProfile (GitRepository policyRef). The homelab-ca Certificate
+# that the selfsigned-ca issuer depends on lives in homelab-ca-cert.yaml.
+---
+# Self-signed bootstrap Issuer — mints the root CA cert only.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-bootstrap
+spec:
+  selfSigned: {}
+---
+# The selfsigned-ca ClusterIssuer used by every internal Ingress.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-ca
+spec:
+  ca:
+    secretName: homelab-ca-key-pair
+---
+# letsencrypt-prod — Cloudflare DNS-01, signs every external Ingress.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    email: mershab@integratrace.com
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
+        selector:
+          dnsZones:
+            - mershab.com
+            - "*.mershab.com"

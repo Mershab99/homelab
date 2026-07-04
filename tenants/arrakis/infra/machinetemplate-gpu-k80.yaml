@@ -1,0 +1,62 @@
+# gpu-k80 worker pool — 1 replica, both K80 dies passed through to a
+# single VM.
+#
+# deviceName matches the HyperConverged.permittedHostDevices entry
+# (`nvidia.com/GK210GL_TESLA_K80`). Both gpus[0] and gpus[1] claim from the
+# same pool, draining all the dies the host advertises.
+#
+# Driver install does NOT happen here — the NVIDIA GPU operator
+# (delivered to tenant by the `tenant-gpu` ClusterProfile) installs the
+# driver inside the tenant via a NVIDIADriver CR pinned to 470.141.10
+# (CUDA 11.4 ceiling for K80).
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: KubevirtMachineTemplate
+metadata:
+  name: arrakis-gpu-k80
+  namespace: tenants
+spec:
+  template:
+    spec:
+      virtualMachineBootstrapCheck:
+        checkStrategy: ssh
+      virtualMachineTemplate:
+        spec:
+          runStrategy: Always
+          template:
+            spec:
+              domain:
+                cpu:
+                  cores: 4
+                memory:
+                  guest: 16Gi   # K80 wants headroom
+                devices:
+                  gpus:
+                    - name: gpu0
+                      deviceName: nvidia.com/GK210GL_TESLA_K80
+                    - name: gpu1
+                      deviceName: nvidia.com/GK210GL_TESLA_K80
+                  disks:
+                    - name: containervolume
+                      disk: {bus: virtio}
+                    - name: containerstorage
+                      disk: {bus: virtio}
+                  interfaces:
+                    - name: default
+                      masquerade: {}
+                    - name: br-multus
+                      bridge: {}
+                  networkInterfaceMultiqueue: true
+              networks:
+                - name: default
+                  pod: {}
+                - name: br-multus
+                  multus:
+                    networkName: br-multus
+              evictionStrategy: External
+              volumes:
+                - name: containervolume
+                  containerDisk:
+                    image: quay.io/capk/ubuntu-2004-container-disk:v1.35.0
+                - name: containerstorage
+                  emptyDisk:
+                    capacity: 50Gi

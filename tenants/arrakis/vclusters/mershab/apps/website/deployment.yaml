@@ -1,0 +1,37 @@
+# nginx serving the mershab.com static site from the website-content ConfigMap.
+# Runs in the mershab k3k shared vCluster → pods reflected onto the arrakis
+# general pool (the k3k Cluster nodeSelector keeps them off the GPU VMs).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: website
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: website
+  namespace: website
+  labels: {app: website}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: website}
+  template:
+    metadata:
+      labels: {app: website}
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - {containerPort: 80, name: http}
+          volumeMounts:
+            - {name: content, mountPath: /usr/share/nginx/html, readOnly: true}
+          readinessProbe:
+            httpGet: {path: /, port: 80}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+      volumes:
+        - name: content
+          configMap: {name: website-content}

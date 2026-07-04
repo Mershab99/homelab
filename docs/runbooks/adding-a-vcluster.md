@@ -1,55 +1,48 @@
 # Adding a vCluster (new workload)
 
 Use when you want a new logically-isolated API surface for a workload
-(home-assistant, jellyfin, ollama, frigate are existing examples).
+(home-assistant, mershab.com website are existing examples). vClusters run on
+the **arrakis** tenant via **k3k in shared mode** (workloads reflected onto
+arrakis nodes; host Cilium CNI; NetworkPolicy isolation).
 
 ## Steps
 
-1. **Copy the template:**
-   ```bash
-   cp -r tenants/home/vclusters/_template tenants/home/vclusters/<name>
-   ```
-2. **`tenant-side/`** lives in the tenant cluster. The HelmRelease there spins
-   up the vCluster itself **and** bundles `sveltos-applier` via
-   `experimental.deploy.vcluster.helm` so the vCluster registers itself with
-   the bare-metal Sveltos controller. Edit:
-   - vCluster name
-   - kube-apiserver OIDC extraArgs (rarely changes — same `kubernetes`
-     OAuth2Client)
-   - `experimental.deploy.vcluster.helm[0].values.sveltosCluster.name` to the
-     vCluster name (used as the slot label key)
-3. **`baremetal-side/`** lives on the bare-metal cluster. The
-   `SveltosCluster` slot CR there has labels that decide which
-   `ClusterProfile`s fire into the vCluster:
-   ```yaml
-   metadata:
-     labels:
-       sveltos.projectsveltos.io/type: vcluster
-       workload: <name>
-       needs.lan: "true"         # if it needs a host bridge attach
-       needs.gpu: "p2000"        # or "k80" or "false"
-       oidc.enabled: "true"
-   ```
-4. **`apps/`** is what runs inside the vCluster (deployments, services, NADs,
-   ingresses, oauth2-proxy, etc.). A Flux Kustomization targeting the vCluster
-   kubeconfig deploys it.
-5. **`OAuth2Client`** if the workload has a UI: add a CR under
-   `clusters/baremetal/identity/oauth2clients/<name>.yaml`. Per-app secret,
-   per-app redirect URIs.
-6. **Push.** Flux reconciles the tenant-side HelmRelease + baremetal-side
-   SveltosCluster slot. Once the vCluster is up and the applier dials home,
-   matching ClusterProfiles fan out platform addons (Multus, OIDC RBAC,
-   prometheus annotations). Then `apps/` reconciles into the vCluster.
+1. **Add a k3k `Cluster` CR** at
+   `platform/sveltos/manifests/k3k-clusters/<name>.yaml` (model on `mershab.yaml`
+   — a `Namespace` + a `Cluster` with `mode: shared`, `nodeSelector`
+   `node.mershab.com/pool: general`, OIDC `serverArgs`). It is delivered to
+   arrakis by the existing `12-k3k-clusters` ClusterProfile (no new profile
+   needed — it applies the whole `k3k-clusters/` dir).
+
+2. **App manifests** go under `tenants/arrakis/vclusters/<name>/apps/<app>/`
+   (deployments, services, NADs, etc.) — plain native YAML.
+
+3. **App ClusterProfile** at
+   `platform/sveltos/clusterprofiles/13-app-<name>.yaml` (model on
+   `13-app-mershab-web.yaml`): `clusterRefs` the `<name>` SveltosCluster in ns
+   `vclusters`, `dependsOn: vcluster-baseline`, deliver `apps/<app>/` via a
+   GitRepository policyRef. Add it to `clusterprofiles/kustomization.yaml`.
+
+4. **`OAuth2Client`** if the workload has a gated UI: add a CR under
+   `clusters/baremetal/identity/oauth2clients/<name>.yaml`.
+
+5. **Push.** Flux reconciles → `12-k3k-clusters` creates the k3k `Cluster` on
+   arrakis.
+
+6. **Register the vCluster** with the hub Sveltos (the one runtime step) — see
+   [registering-a-k3k-vcluster.md](registering-a-k3k-vcluster.md). Once the
+   `SveltosCluster` is Ready, `12-vcluster-baseline` + `11-oidc-rbac` + your
+   `13-app-<name>` profile fan in.
 
 ## Verify
 
 ```bash
-# vCluster is up and registered
-kubectl --kubeconfig=vc-<name>.kubeconfig get nodes
-kubectl --kubeconfig=vc-<name>.kubeconfig -n projectsveltos get pod
-kubectl get sveltoscluster -n vclusters <name> -o yaml | yq .status
+# k3k Cluster is Ready on arrakis
+kubectl --context arrakis get clusters.k3k.io -n k3k-<name> <name>
 
-# Workload is reachable + observable
-kubectl --kubeconfig=vc-<name>.kubeconfig get all -A
-# Grafana shows pods tagged `vcluster=<name>`
+# vCluster registered with the hub
+kubectl --context mgmt get sveltoscluster -n vclusters <name> -o yaml | yq .status
+
+# Workload running inside (pods reflected onto arrakis general pool)
+kubectl --kubeconfig=<name>.kubeconfig get all -A
 ```

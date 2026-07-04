@@ -1,0 +1,27 @@
+# k3k-operator — installs the Rancher k3k operator on the tenant (arrakis).
+#
+# Replaces the former Loft vcluster stack. k3k runs virtual clusters in SHARED
+# mode: an agentless k3s control-plane pod whose workloads are reflected onto
+# the host (arrakis) nodes via a virtual-kubelet provider, using the host Cilium
+# CNI with NetworkPolicy isolation. The Cluster CRs themselves are delivered by
+# 12-k3k-clusters (dependsOn this, so the CRD exists first).
+#
+# Selector: runs on every tenant cluster.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: k3k-operator
+spec:
+  clusterSelector:
+    matchLabels:
+      sveltos.projectsveltos.io/type: tenant
+  dependsOn:
+    - tenant-baseline
+  helmCharts:
+    - repositoryURL: https://rancher.github.io/k3k
+      repositoryName: k3k
+      chartName: k3k/k3k
+      chartVersion: "*"          # ponytail: floating until a release is pinned; bump to a fixed tag once verified
+      releaseName: k3k
+      releaseNamespace: k3k-system
+      helmChartAction: Install

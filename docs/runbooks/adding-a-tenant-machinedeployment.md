@@ -6,7 +6,7 @@ type, an ARM pool, a high-memory pool).
 ## Steps
 
 1. **KubeVirtMachineTemplate** at
-   `tenants/home/infra/kubevirtmachinetemplates/<pool>.yaml`. Copy the closest
+   `tenants/arrakis/infra/kubevirtmachinetemplates/<pool>.yaml`. Copy the closest
    existing template. Define:
    - vCPU + memory request
    - root disk size (PVC dataVolume on `zfs`)
@@ -14,10 +14,10 @@ type, an ARM pool, a high-memory pool).
      HyperConverged) — if applicable
    - Two interfaces: `pod` (default) + `lan` (NAD `lan-bridge` for LAN attach)
 2. **KubeadmConfigTemplate** at
-   `tenants/home/infra/kubeadmconfigtemplates/<pool>.yaml`. Cloud-init for the
+   `tenants/arrakis/infra/kubeadmconfigtemplates/<pool>.yaml`. Cloud-init for the
    in-VM Ubuntu — driver install, kubelet flags, `kubeadm join` args.
 3. **MachineDeployment** at
-   `tenants/home/infra/machinedeployments/<pool>.yaml`. Set replicas, or
+   `tenants/arrakis/infra/machinedeployments/<pool>.yaml`. Set replicas, or
    annotate for autoscaling:
    ```yaml
    metadata:

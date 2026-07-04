@@ -1,0 +1,68 @@
+# NVIDIADriver CRs — delivered to needs.gpu clusters by the tenant-gpu
+# ClusterProfile. Driver install is disabled in the gpu-operator chart so K80
+# and P2000 can pin different versions. nodeSelectors match the pool labels set
+# by the gpu-k80 / gpu-p2000 KubeadmConfigTemplates.
+---
+# K80 driver — pinned to 470.141.10 (last CUDA 11.4 driver supporting Kepler
+# GK210). Targets nodes labeled nvidia.com/gpu=k80.
+apiVersion: nvidia.com/v1alpha1
+kind: NVIDIADriver
+metadata:
+  name: k80
+spec:
+  driverType: gpu
+  image: driver
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  manager: {}
+  rdma:
+    enabled: false
+    useHostMofed: false
+  gds:
+    enabled: false
+  repository: nvcr.io/nvidia
+  startupProbe:
+    failureThreshold: 120
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 60
+  usePrecompiled: false
+  version: "470.141.10"
+  nodeSelector:
+    nvidia.com/gpu: k80
+  resources:
+    requests:
+      ephemeral-storage: "4Gi"
+    limits:
+      ephemeral-storage: "4Gi"
+---
+apiVersion: nvidia.com/v1alpha1
+kind: NVIDIADriver
+metadata:
+  name: p2000
+spec:
+  driverType: gpu
+  image: driver
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+  manager: {}
+  rdma:
+    enabled: false
+    useHostMofed: false
+  gds:
+    enabled: false
+  repository: nvcr.io/nvidia
+  startupProbe:
+    failureThreshold: 120
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    timeoutSeconds: 60
+  usePrecompiled: false
+  version: "535.183.06"
+  nodeSelector:
+    nvidia.com/gpu: p2000
+  resources:
+    requests:
+      ephemeral-storage: "4Gi"
+    limits:
+      ephemeral-storage: "4Gi"
