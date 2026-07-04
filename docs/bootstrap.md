@@ -112,7 +112,7 @@ No Flux Operator, no `FluxInstance`, no kustomize-controller, no ArgoCD.
 kubectl -n flux-system get gitrepository homelab     # Ready=True
 kubectl -n flux-system get helmrelease sveltos       # Ready=True
 kubectl -n projectsveltos get pods                   # Sveltos controllers Running
-kubectl -n projectsveltos get sveltoscluster mgmt    # registered
+kubectl -n mgmt get sveltoscluster mgmt              # registered
 ```
 
 ## 5. Label mgmt + apply the root ClusterProfile
@@ -121,7 +121,7 @@ Label `mgmt` so the cross-cluster ClusterProfiles target it (Sveltos owns the
 SveltosCluster spec; we own its labels):
 
 ```bash
-kubectl -n projectsveltos label sveltoscluster mgmt \
+kubectl -n mgmt label sveltoscluster mgmt \
   sveltos.projectsveltos.io/type=mgmt \
   tier=platform \
   needs.sealed-secrets=true \

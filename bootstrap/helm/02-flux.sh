@@ -51,7 +51,7 @@ kubectl -n flux-system wait gitrepository/homelab --for=condition=Ready --timeou
   && echo "GitRepository homelab Ready"
 kubectl -n flux-system wait helmrelease/sveltos --for=condition=Ready --timeout=300s \
   && echo "Sveltos HelmRelease Ready"
-kubectl -n projectsveltos get sveltoscluster mgmt 2>/dev/null \
+kubectl -n mgmt get sveltoscluster mgmt 2>/dev/null \
   && echo "mgmt SveltosCluster registered" \
   || echo "    (mgmt not registered yet — give it a moment, then check)"
 

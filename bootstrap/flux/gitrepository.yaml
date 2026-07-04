@@ -9,8 +9,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  url: https://github.com/mershab/homelab
+  url: https://github.com/mershab99/homelab
   ref:
-    branch: master
+    branch: main
   secretRef:
     name: flux-repo-pat

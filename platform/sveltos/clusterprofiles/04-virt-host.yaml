@@ -25,7 +25,7 @@ spec:
     - kind: SveltosCluster
       apiVersion: lib.projectsveltos.io/v1beta1
       name: mgmt
-      namespace: projectsveltos
+      namespace: mgmt
   dependsOn:
     - olm         # need OLM CRDs (Subscription/OperatorGroup) before we apply Subscription
     - storage     # CDI scratchSpace lands on the longhorn StorageClass

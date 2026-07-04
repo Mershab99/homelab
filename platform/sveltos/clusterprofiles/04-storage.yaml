@@ -19,7 +19,7 @@ spec:
     - kind: SveltosCluster
       apiVersion: lib.projectsveltos.io/v1beta1
       name: mgmt
-      namespace: projectsveltos
+      namespace: mgmt
   helmCharts:
     - repositoryURL: https://charts.longhorn.io
       repositoryName: longhorn

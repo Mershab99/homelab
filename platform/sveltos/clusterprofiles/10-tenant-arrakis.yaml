@@ -27,7 +27,7 @@ spec:
     - kind: SveltosCluster
       apiVersion: lib.projectsveltos.io/v1beta1
       name: mgmt
-      namespace: projectsveltos
+      namespace: mgmt
   dependsOn:
     - capi-stack    # CAPI + Kamaji + providers must be Running
     - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine
