@@ -43,4 +43,4 @@ secrets/             SOPS-encrypted secrets (see .sops.yaml)
 See [`docs/architecture.md`](docs/architecture.md#hard-rules). Briefly:
 no inline secrets, dashboards-as-code, Dex stays on bare-metal, Sveltos =
 capability fanout / Flux = per-instance config (never blur), vCluster boundary
-is API-only.
+is API-only
