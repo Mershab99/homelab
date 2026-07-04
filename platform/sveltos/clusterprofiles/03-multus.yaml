@@ -6,13 +6,13 @@
 # first, so Multus delegates pod-network traffic to Cilium and overlays
 # secondary attachments from NetworkAttachmentDefinitions.
 #
-# Fans out to every cluster with needs.multus=true. Today: mgmt only. The
-# tenant cluster will carry the same label so vCluster pods can attach to
-# the LAN bridge too.
+# Fans out to every cluster with needs.multus=true — tenant/vClusters. NOT
+# mgmt: HCO's network-addons sub-operator installs Multus there (see
+# 04-virt-host.yaml), so mgmt is not labeled needs.multus.
 #
-# Chart URL is the k8snetworkplumbingwg organization Helm repo. If the
-# Pages publish ever changes, swap to a community-maintained chart
-# (bjw-s-labs/multus is a common alternative).
+# Delivered as a raw manifest (policyRef), not Helm: the k8snetworkplumbingwg
+# org stopped publishing a Helm index. The manifest carries a load-bearing
+# Talos netns patch — see its header.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -21,21 +21,8 @@ spec:
   clusterSelector:
     matchLabels:
       needs.multus: "true"
-  helmCharts:
-    - repositoryURL: https://k8snetworkplumbingwg.github.io/helm-charts
-      repositoryName: multus
-      chartName: multus/multus
-      chartVersion: 4.2.x
-      releaseName: multus
-      releaseNamespace: kube-system
-      helmChartAction: Install
-      values: |
-        # Thick daemonset variant — runs a per-node daemon that listens for
-        # pod additions instead of a CNI binary spawn per pod. More robust
-        # under load.
-        cni:
-          plugin: multus
-          # Multus auto-detects the master CNI config from this dir.
-          confDir: /etc/cni/net.d
-          binDir: /opt/cni/bin
-        # The NetworkAttachmentDefinition CRD ships with the chart.
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/multus
