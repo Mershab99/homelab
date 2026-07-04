@@ -124,7 +124,6 @@ SveltosCluster spec; we own its labels):
 kubectl -n mgmt label sveltoscluster mgmt \
   sveltos.projectsveltos.io/type=mgmt \
   tier=platform \
-  needs.sealed-secrets=true \
   needs.tls=true \
   needs.dns=true \
   needs.ingress-internal=true \

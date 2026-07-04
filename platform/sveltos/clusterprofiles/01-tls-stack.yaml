@@ -5,7 +5,6 @@
 # cert-manager and vice versa. Cloudflare API token is a cluster-wide
 # SealedSecret created out of band (see secrets/infrastructure/cert-manager/README.md).
 #
-# Depends on sealed-secrets so the CF token Secret can be decrypted.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -14,8 +13,6 @@ spec:
   clusterSelector:
     matchLabels:
       needs.tls: "true"
-  dependsOn:
-    - sealed-secrets
   helmCharts:
     - repositoryURL: https://charts.jetstack.io
       repositoryName: jetstack

@@ -32,7 +32,6 @@ spec:
       name: mgmt
       namespace: mgmt
   dependsOn:
-    - sealed-secrets
     - tls-stack         # letsencrypt-prod must exist before Dex's Ingress can request a cert
     - ingress-external  # the external Ingress class must be wired
   helmCharts:

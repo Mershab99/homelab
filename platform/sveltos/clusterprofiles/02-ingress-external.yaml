@@ -23,7 +23,6 @@ spec:
       namespace: mgmt
   dependsOn:
     - tls-stack
-    - sealed-secrets
   helmCharts:
     - repositoryURL: oci://ghcr.io/fyralabs/chisel-operator
       repositoryName: chisel-operator

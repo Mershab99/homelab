@@ -10,8 +10,6 @@ spec:
   clusterSelector:
     matchLabels:
       needs.dns: "true"
-  dependsOn:
-    - sealed-secrets
   helmCharts:
     - repositoryURL: https://kubernetes-sigs.github.io/external-dns
       repositoryName: external-dns

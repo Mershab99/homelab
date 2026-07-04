@@ -24,7 +24,6 @@ spec:
     - observability-core   # prom-CRDs + OTel must be up first
     - storage              # MinIO (S3 backend) + longhorn StorageClass
     - auth-stack           # Grafana OIDC client lives in dex-config
-    - sealed-secrets       # for grafana-oidc Secret
   helmCharts:
     - repositoryURL: https://grafana.github.io/helm-charts
       repositoryName: grafana
