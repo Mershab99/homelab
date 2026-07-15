@@ -6,10 +6,15 @@
 # Source: k8snetworkplumbingwg/multus-cni deployments/multus-daemonset-thick.yml
 # Image pinned to v4.3.0-thick (upstream ships a floating :snapshot-thick tag).
 #
-# TALOS ADJUSTMENT (load-bearing): host-run-netns hostPath is /var/run/netns/,
-# NOT upstream /run/netns/. Talos exposes the netns dir at /var/run/netns; with
-# the upstream path, pods fail to start with sandbox/netns errors once Multus
-# takes over CNI. See docs.siderolabs.com/kubernetes-guides/cni/multus.
+# TALOS ADJUSTMENTS (load-bearing), per docs.siderolabs.com/kubernetes-guides/cni/multus:
+#   1. host-run-netns hostPath is /var/run/netns/, NOT upstream /run/netns/.
+#      Talos exposes the netns dir at /var/run/netns; with the upstream path,
+#      pods fail to start with sandbox/netns errors once Multus takes over CNI.
+#   2. Resources raised to requests 200m/100Mi, limits 300m/150Mi (upstream
+#      100m/50Mi). At 50Mi the daemon gets OOMKilled under concurrent CNI ADD
+#      bursts (e.g. HCO rolling out ~10 operator pods at once) — shim requests
+#      then fail with 'Post "http://dummy/cni": EOF' and pods stick in
+#      ContainerCreating.
 #
 # Delivered by the `multus` ClusterProfile (03-multus.yaml) as a raw policyRef
 # to every cluster labeled needs.multus=true. NOT mgmt (HCO network-addons
@@ -177,10 +182,10 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "50Mi"
+              memory: "64Mi"
             limits:
-              cpu: "100m"
-              memory: "50Mi"
+              # thick-plugin daemon OOMKills at upstream's 50Mi on this cluster
+              memory: "256Mi"
           securityContext:
             privileged: true
           terminationMessagePolicy: FallbackToLogsOnError
