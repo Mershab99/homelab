@@ -49,6 +49,16 @@ securityContext:
 ipam:
   mode: kubernetes
 
+# REQUIRED for KubeVirt: socket-LB normally translates ClusterIPs at
+# connect() inside the pod netns — VM traffic (KubeVirt masquerade NAT)
+# never touches sockets, so its packets left the node untranslated
+# (identity ->world, blackholed). hostNamespaceOnly pushes pod-netns
+# traffic to per-packet translation in bpf, which VMs do hit.
+# Symptom this fixes: guest can't resolve/reach any ClusterIP (worker VMs
+# failed to resolve get.k0s.sh / join the tenant CP).
+socketLB:
+  hostNamespaceOnly: true
+
 # Pod CIDR matches Talos default. Adjust if you override it in the
 # machineconfig.
 ipv4:

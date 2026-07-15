@@ -100,7 +100,9 @@ spec:
   # tokens + the CAPI kubeconfig target the local network (worker VMs sit on
   # the mgmt pod network via masquerade) instead of hairpinning through the
   # VPS. Off-LAN kubectl: https://k8s-home.mershab.com:6443 (SAN below).
-  externalAddress: kmc-arrakis.tenants.svc.cluster.local
+  # NB: with type LoadBalancer k0smotron names the Service kmc-<name>-lb
+  # (the plain kmc-arrakis ClusterIP svc no longer exists).
+  externalAddress: kmc-arrakis-lb.tenants.svc.cluster.local
   service:
     type: LoadBalancer
     apiPort: 6443
