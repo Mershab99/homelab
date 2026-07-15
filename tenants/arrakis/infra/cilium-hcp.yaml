@@ -24,7 +24,7 @@ spec:
   repoURL: https://helm.cilium.io
   chartName: cilium
   releaseName: cilium
-  releaseNamespace: kube-system
+  namespace: kube-system   # release target ns (this CAAH v1alpha1 has no releaseNamespace field)
   version: 1.17.0
   valuesTemplate: |
     # Tenant has its own kube-proxy (Kamaji's kubeProxy addon installs it).
