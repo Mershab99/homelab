@@ -67,3 +67,10 @@ spec:
         # Kamaji controller — provisions tenant control planes as pods.
         datastore:
           driver: etcd
+  policyRefs:
+    # CoreProvider as raw manifest — chart's helm-hook copy can vanish on
+    # upgrade (terminating-ns race); see core-provider.yaml header.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./clusters/baremetal/addons/capi-providers
