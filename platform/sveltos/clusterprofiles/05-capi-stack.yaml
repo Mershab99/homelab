@@ -27,6 +27,11 @@ kind: ClusterProfile
 metadata:
   name: capi-stack
 spec:
+  # Drift detection is load-bearing here: every helm upgrade hook-cycles the
+  # provider CRs/namespaces, and when the recreate loses the terminating-ns
+  # race the CRs vanish WITHOUT changing sveltos's hash — plain Continuous
+  # mode never re-applies them. Drift detection puts them back.
+  syncMode: ContinuousWithDriftDetection
   clusterRefs:
     - kind: SveltosCluster
       apiVersion: lib.projectsveltos.io/v1beta1
