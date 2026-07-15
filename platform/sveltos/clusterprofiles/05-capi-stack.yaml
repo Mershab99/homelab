@@ -49,10 +49,9 @@ spec:
         # still terminating when hooks re-run, that provider silently vanishes.
         # Bumping this comment forces a re-upgrade to re-run hooks if needed.
         enableHelmHook: true
-        manager:
-          featureGates:
-            core:
-              ClusterResourceSet: true
+        # (No manager.featureGates — CAPI v1.13 removed ClusterResourceSet,
+        # and passing the gate crashloops the core manager. Nothing here used
+        # CRS anyway; Sveltos is the add-on delivery mechanism.)
         # Provider install via operator values. Versions pinned so the
         # helm-hook CRs and the sveltos-owned raw manifests agree.
         # bootstrap/controlPlane MUST stay non-empty: the 0.27 chart's

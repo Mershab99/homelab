@@ -18,7 +18,6 @@ metadata:
 spec:
   # Keep in lockstep with the pin in 05-capi-stack.yaml values — the helm-hook
   # copy and this one must agree or they fight over spec.version.
+  # (No featureGates: CAPI v1.13 removed ClusterResourceSet; the flag
+  # crashloops the manager.)
   version: v1.13.3
-  manager:
-    featureGates:
-      ClusterResourceSet: true
