@@ -7,8 +7,10 @@
 # still terminating and the recreated CRs were swept with them. Sveltos owning
 # them here means they always come back.
 #
-# Version pins live here (not in 05-capi-stack.yaml values) — keep in lockstep
-# with the contract set documented in that profile's header.
+# NOTE: the chart values ALSO declare these providers (like CoreProvider,
+# they're doubled) — the 0.27 chart auto-deploys kubeadm providers whenever
+# bootstrap/controlPlane values are empty, so they can't be values-only OR
+# manifest-only. Keep both copies' version pins in lockstep.
 apiVersion: v1
 kind: Namespace
 metadata:

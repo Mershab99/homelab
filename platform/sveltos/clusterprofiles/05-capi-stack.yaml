@@ -1,7 +1,7 @@
 # capi-stack — cluster-api-operator + CAPI providers (k0smotron edition).
 #
-# cluster-api-operator reconciles the provider CRs; core+kubevirt come from
-# the chart values (helm hooks), the k0smotron pair + a CoreProvider copy are
+# cluster-api-operator reconciles the provider CRs; all four come from the
+# chart values (helm hooks), and the k0smotron pair + CoreProvider are ALSO
 # sveltos-owned raw manifests (policyRef) because of the hook race — see the
 # values comment + capi-providers/ file headers. Providers in the stack:
 #   core                              — core CAPI controllers
@@ -54,14 +54,23 @@ spec:
             core:
               ClusterResourceSet: true
         # Provider install via operator values. Versions pinned so the
-        # helm-hook CRs and the sveltos-owned core-provider.yaml agree.
-        # The k0smotron bootstrap/controlPlane providers are NOT here — the
-        # hook delete+recreate race ate them on day one, so they're sveltos-
-        # owned raw manifests instead (k0smotron-providers.yaml in the
-        # policyRef below, same treatment as CoreProvider).
+        # helm-hook CRs and the sveltos-owned raw manifests agree.
+        # bootstrap/controlPlane MUST stay non-empty: the 0.27 chart's
+        # infra-conditions.yaml auto-deploys KUBEADM providers whenever
+        # infrastructure is set but bootstrap/controlPlane are empty.
+        # The k0smotron pair is ALSO sveltos-owned (k0smotron-providers.yaml
+        # in the policyRef below, same doubled treatment as CoreProvider) so
+        # the hook delete+recreate race can't permanently eat them — it did
+        # exactly that on day one.
         core:
           cluster-api:
             version: v1.13.3
+        bootstrap:
+          k0sproject-k0smotron:
+            version: v2.0.3
+        controlPlane:
+          k0sproject-k0smotron:
+            version: v2.0.3
         infrastructure:
           kubevirt:
             version: v0.11.2
