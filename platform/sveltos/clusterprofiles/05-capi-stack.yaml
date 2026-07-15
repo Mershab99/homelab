@@ -65,6 +65,10 @@ spec:
       helmChartAction: Install
       values: |
         # Kamaji controller — provisions tenant control planes as pods.
+        # Image bumped past chart appVersion: v1.0.0's webhook caps tenant
+        # k8s at 1.30.2; edge releases track current k8s (we run 1.35.0).
+        image:
+          tag: 26.7.3-edge
         datastore:
           driver: etcd
   policyRefs:
