@@ -1,0 +1,26 @@
+# Bootstrap config for the K80 pool (k0s worker).
+#
+# Identical to general (same disk mount + sysctl tweaks) except for node
+# labels. Driver install is the GPU operator's job, not cloud-init's — see
+# the `tenant-gpu` ClusterProfile with its NVIDIADriver CR pinned to
+# 470.141.10.
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: K0sWorkerConfigTemplate
+metadata:
+  name: arrakis-gpu-k80
+  namespace: tenants
+spec:
+  template:
+    spec:
+      version: v1.36.2+k0s.0
+      args:
+        - --labels=node.mershab.com/pool=gpu-k80,nvidia.com/gpu=k80
+      preK0sCommands:
+        - echo "fs.inotify.max_user_watches=2048576" >> /etc/sysctl.conf
+        - echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
+        - sysctl -p
+
+        - mkfs.ext4 -F /dev/vdb
+        - mkdir -p /var/lib/k0s
+        - echo '/dev/vdb /var/lib/k0s ext4 defaults 0 0' >> /etc/fstab
+        - mount -a

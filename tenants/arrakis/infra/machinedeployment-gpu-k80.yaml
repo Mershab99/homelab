@@ -19,11 +19,11 @@ spec:
         nvidia.com/gpu: k80
     spec:
       clusterName: arrakis
-      version: v1.35.0
+      version: v1.36.2
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-          kind: KubeadmConfigTemplate
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          kind: K0sWorkerConfigTemplate
           name: arrakis-gpu-k80
       infrastructureRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1

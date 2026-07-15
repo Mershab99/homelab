@@ -14,7 +14,7 @@
 # downstream app's config: only the Dex `connectors:` block changes.
 #
 # Day-1 clients (all in dex-config Secret):
-#   - kubernetes — shared by tenant Kamaji apiserver + every vCluster
+#   - kubernetes — shared by tenant apiserver (k0s) + every vCluster
 #   - grafana    — Grafana generic_oauth
 # Future apps (home-assistant, ...) add a staticClients entry each when their
 # ClusterProfile lands.

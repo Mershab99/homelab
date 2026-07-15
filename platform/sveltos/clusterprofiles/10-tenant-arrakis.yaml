@@ -1,14 +1,16 @@
-# tenant-arrakis — delivers the entire CAPI definition for the `arrakis` tenant
-# cluster (Cluster + KamajiControlPlane + KubevirtCluster + 3 ×
-# KubeVirtMachineTemplate + 3 × KubeadmConfigTemplate + 3 × MachineDeployment
-# + MHC + br-multus NAD + Cilium HelmChartProxy) to mgmt.
+# tenant-arrakis — delivers the entire CAPI definition for the `arrakis`
+# tenant cluster (Cluster + K0smotronControlPlane + KubevirtCluster + 3 ×
+# KubeVirtMachineTemplate + 3 × K0sWorkerConfigTemplate + 3 × MachineDeployment
+# + MHC + br-multus NAD + apiserver IngressRouteTCP) to mgmt.
 #
 # Sveltos reads from the Flux GitRepository directly — no ConfigMap wrangling.
 #
 # After this profile reconciles:
-#   1. KamajiControlPlane spins up tenant kube-apiserver as pods on mgmt.
+#   1. K0smotronControlPlane spins up the tenant control plane as k0s pods
+#      on mgmt (kmc-arrakis statefulset + kmc-arrakis-etcd in ns tenants).
 #   2. CAPK creates KubeVirt VMs per MachineDeployment.
-#   3. CABPK supplies cloud-init that runs `kubeadm join` against Kamaji.
+#   3. The k0smotron bootstrap provider supplies cloud-init that joins each
+#      VM as a `k0s worker` against the hosted CP.
 #   4. The tenant cluster auto-registers as a SveltosCluster via CAPI
 #      integration. Its CAPI Cluster CR labels propagate.
 #   5. tenant-cilium installs CNI (Sveltos needs no pods on tenant for helm),
@@ -26,12 +28,12 @@ spec:
       name: mgmt
       namespace: mgmt
   dependsOn:
-    - capi-stack    # CAPI + Kamaji + providers must be Running
+    - capi-stack    # CAPI + k0smotron providers must be Running
     - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine
                     # (HCO's CNAO also provides mgmt's Multus for the br-multus
                     # NAD — the `multus` profile targets tenants only and never
                     # matches mgmt, so it must NOT be a dependency here)
-    - storage       # longhorn for Kamaji etcd PVCs + KubeVirt CDI
+    - storage       # longhorn for the k0smotron etcd PVC + KubeVirt CDI
   policyRefs:
     - kind: GitRepository
       name: homelab

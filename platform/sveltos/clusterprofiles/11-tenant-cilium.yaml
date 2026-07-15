@@ -3,7 +3,7 @@
 # Replaces the CAPI helm addon provider (HelmChartProxy). Sveltos's
 # addon-controller installs helm charts from mgmt using the tenant kubeconfig —
 # no pods needed on the tenant, so the CNI chicken-and-egg doesn't apply, and
-# Sveltos retries until the tenant apiserver (Kamaji pods on mgmt) answers.
+# Sveltos retries until the tenant apiserver (k0s CP pods on mgmt) answers.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -21,7 +21,8 @@ spec:
       releaseNamespace: kube-system
       helmChartAction: Install
       values: |
-        # Tenant has its own kube-proxy (Kamaji's kubeProxy addon installs it).
+        # Tenant has its own kube-proxy (k0s installs it; kubeProxy.disabled
+        # is false in the K0smotronControlPlane k0sConfig).
         # Run Cilium as pure CNI — no KPR.
         kubeProxyReplacement: false
         ipam:

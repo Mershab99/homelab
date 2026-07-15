@@ -12,7 +12,7 @@ resources:
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
   - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
-  - 05-capi-stack.yaml          # cluster-api-operator + Kamaji + provider CRs
+  - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
   - 06-auth-stack.yaml          # Dex with password-db connector
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector

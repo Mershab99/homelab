@@ -1,4 +1,4 @@
-# CAPI Cluster CR + KubevirtCluster + KamajiControlPlane for the `arrakis`
+# CAPI Cluster CR + KubevirtCluster + K0smotronControlPlane for the `arrakis`
 # tenant. Lives in `tenants` namespace (matches working convention).
 #
 # Labels are load-bearing — they're what Sveltos selectors on the tenant
@@ -40,8 +40,8 @@ spec:
     services:
       cidrBlocks: [10.96.0.0/16]
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-    kind: KamajiControlPlane
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    kind: K0smotronControlPlane
     name: arrakis
     namespace: tenants
   infrastructureRef:
@@ -56,7 +56,9 @@ metadata:
   name: arrakis
   namespace: tenants
   annotations:
-    cluster.x-k8s.io/managed-by: kamaji
+    # Externally-managed control plane: CAPK must NOT create a CP load
+    # balancer — k0smotron sets spec.controlPlaneEndpoint here itself.
+    cluster.x-k8s.io/managed-by: k0smotron
 spec: {}
 # Day-1 single-cluster setup — CAPK uses the local cluster as infra.
 # When mgmt and infra ever split, add:
@@ -66,41 +68,66 @@ spec: {}
 #     name: infra-cluster-kubeconfig
 #     namespace: capi-system
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
-kind: KamajiControlPlane
+# Hosted control plane: k0smotron runs k0s controller pods (apiserver etc.)
+# on mgmt, plus a managed etcd statefulset (kmc-arrakis-etcd, PVC on
+# longhorn). Resources are named kmc-arrakis in this namespace.
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: K0smotronControlPlane
 metadata:
   name: arrakis
   namespace: tenants
 spec:
-  dataStoreName: default
-  version: 1.35.0
+  # k0s v1.36.2 → tenant k8s 1.36.2. Image tag form uses '-k0s.'; workers
+  # (K0sWorkerConfigTemplates) use the '+k0s.' form of the same release.
+  version: v1.36.2-k0s.0
   replicas: 1   # bump to 3 once R820 lands
-  addons:
-    coreDNS: {}
-    kubeProxy: {}
-    konnectivity: {}
-  kubelet:
-    cgroupfs: systemd
-    preferredAddressTypes:
-      - InternalIP
-      - ExternalIP
-  apiServer:
-    extraArgs:
-      - --oidc-issuer-url=https://auth.mershab.com
-      - --oidc-client-id=kubernetes
-      - --oidc-username-claim=email
-      - "--oidc-username-prefix=oidc:"
-      - --oidc-groups-claim=groups
-      - "--oidc-groups-prefix=oidc:"
-  network:
-    # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as its
-    # own LB. Kamaji v1.0.0 can't set spec.loadBalancerClass on its Service, and
-    # chisel-operator here is class-filtered, so a direct chisel-tunnelled LB is
-    # not possible at this version. Instead a Traefik IngressRouteTCP (TLS
-    # passthrough, HostSNI k8s-home.mershab.com) reuses the single chisel edge —
-    # see apiserver-ingressroutetcp.yaml. external-dns for the FQDN lives on the
-    # Traefik Service (02-ingress-external).
-    serviceType: ClusterIP
-    # certSANs so the apiserver cert is valid for the FQDN under TLS passthrough.
-    certSANs:
-      - k8s-home.mershab.com
+  # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as
+  # its own LB (chisel-operator here is class-filtered). A Traefik
+  # IngressRouteTCP (TLS passthrough, HostSNI k8s-home.mershab.com) reuses
+  # the single chisel edge — see apiserver-ingressroutetcp.yaml. external-dns
+  # for the FQDN lives on the Traefik Service (02-ingress-external).
+  #
+  # externalAddress must be set explicitly for ClusterIP (k0smotron only
+  # auto-detects it for LB/NodePort services and blocks without it). The CP
+  # service's cluster DNS name keeps node↔CP traffic on the local network —
+  # worker VMs sit on the mgmt pod network (masquerade) so they resolve and
+  # reach ClusterIP services directly.
+  externalAddress: kmc-arrakis.tenants.svc.cluster.local
+  service:
+    type: ClusterIP
+    apiPort: 6443
+    konnectivityPort: 8132
+  # CP pod data dir is disposable — cluster CA/SA keys live in CAPI secrets
+  # (arrakis-ca etc.) and state lives in etcd, which gets its own PVC.
+  persistence:
+    type: emptyDir
+  storage:
+    type: etcd
+    etcd:
+      persistence:
+        storageClass: longhorn   # explicit (also the cluster default)
+        size: 4Gi
+  k0sConfig:
+    apiVersion: k0s.k0sproject.io/v1beta1
+    kind: ClusterConfig
+    spec:
+      api:
+        # Extra SAN so the apiserver cert is valid for the FQDN under TLS
+        # passthrough. k0smotron appends its own service SANs automatically.
+        sans:
+          - k8s-home.mershab.com
+        extraArgs:
+          oidc-issuer-url: https://auth.mershab.com
+          oidc-client-id: kubernetes
+          oidc-username-claim: email
+          oidc-username-prefix: "oidc:"
+          oidc-groups-claim: groups
+          oidc-groups-prefix: "oidc:"
+      network:
+        # custom = no bundled CNI (kube-router/calico) — Sveltos delivers
+        # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).
+        provider: custom
+        podCIDR: 10.243.0.0/16
+        serviceCIDR: 10.96.0.0/16
+        kubeProxy:
+          disabled: false   # Cilium runs as pure CNI; kube-proxy stays

@@ -1,14 +1,23 @@
-# capi-stack — cluster-api-operator + Kamaji controller.
+# capi-stack — cluster-api-operator + CAPI providers (k0smotron edition).
 #
 # cluster-api-operator installs ALL providers via its Helm values structure
 # (no separate Provider CRs needed). Providers we enable:
-#   core              — core CAPI controllers
-#   bootstrap/kubeadm — CABPK
-#   controlPlane/kamaji — bridges CAPI to Kamaji TenantControlPlane CRs
-#   infrastructure/kubevirt — CAPK (VM workers)
+#   core                              — core CAPI controllers
+#   bootstrap/k0sproject-k0smotron    — K0sWorkerConfig cloud-init for workers
+#   controlPlane/k0sproject-k0smotron — hosted k0s control planes as pods on mgmt
+#   infrastructure/kubevirt           — CAPK (VM workers)
 #
-# Kamaji's own controller installs separately (it's not a CAPI provider —
-# it's the underlying engine the controlPlane/kamaji provider talks to).
+# k0smotron replaced Kamaji + kubeadm (2026-07): Kamaji v1.0.0's webhook
+# capped tenant k8s at 1.30.2 and its edge image broke the published chart
+# (binary path). k0smotron runs the tenant CP as k0s pods (etcd statefulset
+# included — no external datastore controller), and its bootstrap provider
+# replaces CABPK, so the clastix chart is gone entirely.
+#
+# Versions are pinned as a coherent v1beta2-contract set:
+#   operator 0.27.0 / core v1.13.3 (workload k8s ≤1.36) / CAPK v0.11.2 /
+#   k0smotron v2.0.3. Don't bump one without checking the others' contract
+#   (metadata.yaml releaseSeries) — mixing v1beta1/v1beta2 contract providers
+#   is what previously held tenant k8s back.
 #
 # mgmt-only.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -28,7 +37,7 @@ spec:
     - repositoryURL: https://kubernetes-sigs.github.io/cluster-api-operator
       repositoryName: capi-operator
       chartName: capi-operator/cluster-api-operator
-      chartVersion: 0.19.0
+      chartVersion: 0.27.0
       releaseName: capi-operator
       releaseNamespace: capi-operator-system
       helmChartAction: Install
@@ -43,34 +52,26 @@ spec:
             core:
               ClusterResourceSet: true
         # Provider install via operator values — cleaner than maintaining
-        # separate CoreProvider/BootstrapProvider/etc CRs.
+        # separate CoreProvider/BootstrapProvider/etc CRs. Versions pinned so
+        # the helm-hook CRs and the sveltos-owned core-provider.yaml agree.
         core:
-          cluster-api: {}
+          cluster-api:
+            version: v1.13.3
+        # k0smotron is a clusterctl built-in provider — the operator resolves
+        # "k0sproject-k0smotron" to github.com/k0sproject/k0smotron releases.
         bootstrap:
-          kubeadm: {}
+          k0sproject-k0smotron:
+            version: v2.0.3
         controlPlane:
-          kamaji: {}
+          k0sproject-k0smotron:
+            version: v2.0.3
         infrastructure:
-          kubevirt: {}
+          kubevirt:
+            version: v0.11.2
         # addon/helm (HelmChartProxy) disabled — Sveltos delivers tenant CNI
         # directly (11-tenant-cilium.yaml); saves the CAAH controller pod.
-        cert-manager:
-          enabled: false   # we install cert-manager separately (tls-stack)
-    - repositoryURL: https://clastix.github.io/charts
-      repositoryName: clastix
-      chartName: clastix/kamaji
-      chartVersion: 1.0.0
-      releaseName: kamaji
-      releaseNamespace: kamaji-system
-      helmChartAction: Install
-      values: |
-        # Kamaji controller — provisions tenant control planes as pods.
-        # Image bumped past chart appVersion: v1.0.0's webhook caps tenant
-        # k8s at 1.30.2; edge releases track current k8s (we run 1.35.0).
-        image:
-          tag: 26.7.3-edge
-        datastore:
-          driver: etcd
+        # cert-manager: the 0.27 chart no longer bundles it (we install it
+        # separately via tls-stack anyway).
   policyRefs:
     # CoreProvider as raw manifest — chart's helm-hook copy can vanish on
     # upgrade (terminating-ns race); see core-provider.yaml header.

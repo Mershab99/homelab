@@ -1,0 +1,24 @@
+# Bootstrap config for the P2000 pool (k0s worker).
+#
+# Identical to general except for node labels. NVIDIA driver install is
+# the GPU operator's job — see the `tenant-gpu` ClusterProfile.
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: K0sWorkerConfigTemplate
+metadata:
+  name: arrakis-gpu-p2000
+  namespace: tenants
+spec:
+  template:
+    spec:
+      version: v1.36.2+k0s.0
+      args:
+        - --labels=node.mershab.com/pool=gpu-p2000,nvidia.com/gpu=p2000
+      preK0sCommands:
+        - echo "fs.inotify.max_user_watches=2048576" >> /etc/sysctl.conf
+        - echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
+        - sysctl -p
+
+        - mkfs.ext4 -F /dev/vdb
+        - mkdir -p /var/lib/k0s
+        - echo '/dev/vdb /var/lib/k0s ext4 defaults 0 0' >> /etc/fstab
+        - mount -a

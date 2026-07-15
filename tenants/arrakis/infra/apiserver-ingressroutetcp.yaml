@@ -2,16 +2,16 @@
 # chisel edge, so kubectl works off-LAN.
 #
 # Why not a chisel LoadBalancer directly: chisel-operator here is class-filtered
-# (loadBalancerClass: chisel.mershab.com/external, 02-ingress-external.yaml), and
-# Kamaji v1.0.0 can't set spec.loadBalancerClass on its Service. So instead we
-# hang an L4 route off Traefik (whose Service already carries the chisel class):
-# TLS passthrough on the 443 entrypoint, routed by SNI, straight to the apiserver
-# ClusterIP. The apiserver terminates TLS itself (its cert has k8s-home.mershab.com
-# via KamajiControlPlane.network.certSANs — see cluster.yaml).
+# (loadBalancerClass: chisel.mershab.com/external, 02-ingress-external.yaml), so
+# instead we hang an L4 route off Traefik (whose Service already carries the
+# chisel class): TLS passthrough on the 443 entrypoint, routed by SNI, straight
+# to the k0smotron control-plane ClusterIP Service. The apiserver terminates TLS
+# itself (its cert has k8s-home.mershab.com via K0smotronControlPlane's
+# k0sConfig spec.api.sans — see cluster.yaml).
 #
 # kubeconfig server -> https://k8s-home.mershab.com:443
 #
-# Same namespace as the Kamaji Service, so no cross-namespace config needed;
+# Same namespace as the k0smotron Service, so no cross-namespace config needed;
 # Traefik watches all namespaces. Delivered by the 10-tenant-arrakis policyRef
 # (path ./tenants/arrakis/infra).
 apiVersion: traefik.io/v1alpha1
@@ -25,9 +25,9 @@ spec:
   routes:
     - match: HostSNI(`k8s-home.mershab.com`)
       services:
-        # Kamaji names the apiserver Service after the TenantControlPlane.
-        # Verify at exec: kubectl -n tenants get svc arrakis (name + port).
-        - name: arrakis
+        # k0smotron names the ClusterIP CP Service kmc-<cluster>; port is
+        # spec.service.apiPort on the K0smotronControlPlane (cluster.yaml).
+        - name: kmc-arrakis
           port: 6443
   tls:
     passthrough: true

@@ -56,7 +56,7 @@ spec:
               volumes:
                 - name: containervolume
                   containerDisk:
-                    image: quay.io/capk/ubuntu-2004-container-disk:v1.35.0
+                    image: quay.io/capk/ubuntu-2404-container-disk:v1.34.1  # newest published capk disk; OS only — k0s ignores the baked k8s bits
                 - name: containerstorage
                   emptyDisk:
                     capacity: 50Gi
