@@ -1,0 +1,38 @@
+# Exposes the arrakis tenant kube-apiserver over the single existing Traefik
+# chisel edge (Gateway API TLSRoute — replaced the old IngressRouteTCP).
+#
+# Why not a chisel LoadBalancer directly: chisel-operator here is class-filtered
+# (loadBalancerClass: chisel.mershab.com/external, 02-ingress-external.yaml), so
+# instead the route hangs off the shared Gateway's k8s-apiserver listener
+# (TLS mode Passthrough, SNI k8s-home.mershab.com — manifests/gateway/
+# gateway.yaml), straight to the k0smotron control-plane ClusterIP Service.
+# The apiserver terminates TLS itself (its cert has k8s-home.mershab.com via
+# K0smotronControlPlane's k0sConfig spec.api.sans — see cluster.yaml).
+#
+# TLSRoute is experimental-channel Gateway API: CRD vendored at
+# manifests/gateway/tlsroute-crd.yaml, Traefik provider runs with
+# experimentalChannel: true (02-ingress-external.yaml).
+#
+# kubeconfig server -> https://k8s-home.mershab.com:443
+#
+# Same namespace as the k0smotron Service, so no ReferenceGrant needed
+# (route and backend both in tenants). Delivered by the 10-tenant-arrakis
+# policyRef (path ./tenants/arrakis/infra).
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: TLSRoute
+metadata:
+  name: arrakis-apiserver
+  namespace: tenants
+spec:
+  parentRefs:
+    - name: shared
+      namespace: traefik
+      sectionName: k8s-apiserver
+  hostnames:
+    - k8s-home.mershab.com
+  rules:
+    - backendRefs:
+        # k0smotron names the ClusterIP CP Service kmc-<cluster>; port is
+        # spec.service.apiPort on the K0smotronControlPlane (cluster.yaml).
+        - name: kmc-arrakis
+          port: 6443

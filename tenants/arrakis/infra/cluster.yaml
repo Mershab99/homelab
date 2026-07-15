@@ -92,10 +92,10 @@ spec:
   version: v1.36.2-k0s.0
   replicas: 1   # bump to 3 once R820 lands
   # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as
-  # its own LB (chisel-operator here is class-filtered). A Traefik
-  # IngressRouteTCP (TLS passthrough, HostSNI k8s-home.mershab.com) reuses
-  # the single chisel edge — see apiserver-ingressroutetcp.yaml. external-dns
-  # for the FQDN lives on the Traefik Service (02-ingress-external).
+  # its own LB (chisel-operator here is class-filtered). A Gateway TLSRoute
+  # (TLS passthrough, SNI k8s-home.mershab.com) reuses the single chisel
+  # edge — see apiserver-tlsroute.yaml. external-dns for the FQDN lives on
+  # the Traefik Service (02-ingress-external).
   #
   # externalAddress must be set explicitly for ClusterIP (k0smotron only
   # auto-detects it for LB/NodePort services and blocks without it). The CP

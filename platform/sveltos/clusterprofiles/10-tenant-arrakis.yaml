@@ -1,7 +1,7 @@
 # tenant-arrakis — delivers the entire CAPI definition for the `arrakis`
 # tenant cluster (Cluster + K0smotronControlPlane + KubevirtCluster + 3 ×
 # KubeVirtMachineTemplate + 3 × K0sWorkerConfigTemplate + 3 × MachineDeployment
-# + MHC + br-multus NAD + apiserver IngressRouteTCP) to mgmt.
+# + MHC + br-multus NAD + apiserver TLSRoute) to mgmt.
 #
 # Sveltos reads from the Flux GitRepository directly — no ConfigMap wrangling.
 #

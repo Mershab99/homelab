@@ -46,6 +46,9 @@ spec:
         providers:
           kubernetesGateway:
             enabled: true
+            # TLSRoute (tenant apiserver passthrough) is experimental-channel
+            # Gateway API; CRD vendored at manifests/gateway/tlsroute-crd.yaml.
+            experimentalChannel: true
           kubernetesCRD:
             enabled: true
           kubernetesIngress:
@@ -69,8 +72,8 @@ spec:
           externalTrafficPolicy: Local
           annotations:
             # Point the tenant apiserver FQDN at Traefik's chisel-assigned VPS IP.
-            # The apiserver rides through here via an IngressRouteTCP (TLS
-            # passthrough) — see tenants/arrakis/infra/apiserver-ingressroutetcp.yaml.
+            # The apiserver rides through here via a Gateway TLSRoute (TLS
+            # passthrough) — see tenants/arrakis/infra/apiserver-tlsroute.yaml.
             external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
   policyRefs:
     # One ExitNode per VPS — chisel-operator load-balances Traefik's egress

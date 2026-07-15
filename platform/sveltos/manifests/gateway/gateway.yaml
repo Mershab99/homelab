@@ -75,3 +75,15 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    # Tenant apiserver — TLS passthrough by SNI (the apiserver presents its
+    # own cert; SAN k8s-home.mershab.com is in the k0s config). Attached by
+    # the TLSRoute in tenants/arrakis/infra/apiserver-tlsroute.yaml.
+    - name: k8s-apiserver
+      protocol: TLS
+      port: 443
+      hostname: k8s-home.mershab.com
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: All
