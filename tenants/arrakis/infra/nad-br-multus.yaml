@@ -1,6 +1,13 @@
 # Bare-metal NetworkAttachmentDefinition referenced by every
-# KubevirtMachineTemplate. Macvlan over the host's br0 bridge with DHCP
-# IPAM (Bell Hub gives each VM a LAN IP automatically).
+# KubevirtMachineTemplate. Bridge CNI onto the host's br0 — VMs sit on the
+# LAN at L2 and their own DHCP client gets an IP from the Bell Hub.
+#
+# Why bridge, not macvlan: Talos has no reference CNI plugins in
+# /opt/cni/bin (macvlan/dhcp binaries absent → sandbox creation fails).
+# CNAO's linuxBridge component ships the `bridge` binary
+# (kube-cni-linux-bridge-plugin ds). No pod-level IPAM: the VM interface is
+# bridge-bound (machinetemplates use `bridge: {}`), so the DHCP client runs
+# inside the VM, not in the CNI.
 #
 # Name `br-multus` matches working convention. Lives in the `tenants`
 # namespace alongside the KubevirtMachineTemplates that reference it.
@@ -14,10 +21,7 @@ spec:
     {
       "cniVersion": "0.3.1",
       "name": "br-multus",
-      "type": "macvlan",
-      "master": "br0",
-      "mode": "bridge",
-      "ipam": {
-        "type": "dhcp"
-      }
+      "type": "bridge",
+      "bridge": "br0",
+      "ipam": {}
     }
