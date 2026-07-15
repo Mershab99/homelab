@@ -58,6 +58,16 @@ metadata:
   annotations:
     # Externally-managed control plane: CAPK must NOT create a CP load
     # balancer — k0smotron sets spec.controlPlaneEndpoint here itself.
+    #
+    # KNOWN BUG (k0smotron v2.0.3): with this annotation k0smotron is also
+    # responsible for the infra ready status, but it patches the v1beta2
+    # shape (status.initialization.provisioned) onto CAPK's v1alpha1 API,
+    # where the field doesn't exist and gets pruned — status.ready stays
+    # false and machines never provision. Until k0smotron fixes the version
+    # switch (or CAPK ships a real v1beta2 API), set it once by hand after
+    # any recreation of this object:
+    #   kubectl patch kubevirtcluster arrakis -n tenants \
+    #     --subresource=status --type=merge -p '{"status":{"ready":true}}'
     cluster.x-k8s.io/managed-by: k0smotron
 spec: {}
 # Day-1 single-cluster setup — CAPK uses the local cluster as infra.
