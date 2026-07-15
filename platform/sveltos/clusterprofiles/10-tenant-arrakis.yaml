@@ -31,8 +31,10 @@ spec:
   dependsOn:
     - capi-stack    # CAPI + Kamaji + providers must be Running
     - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine
+                    # (HCO's CNAO also provides mgmt's Multus for the br-multus
+                    # NAD — the `multus` profile targets tenants only and never
+                    # matches mgmt, so it must NOT be a dependency here)
     - storage       # longhorn for Kamaji etcd PVCs + KubeVirt CDI
-    - multus        # bare-metal Multus for the br-multus NAD
   policyRefs:
     - kind: GitRepository
       name: homelab
