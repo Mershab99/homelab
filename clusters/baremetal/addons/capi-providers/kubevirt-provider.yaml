@@ -1,0 +1,18 @@
+# InfrastructureProvider kubevirt, sveltos-owned copy — same doubled
+# treatment as core-provider.yaml and k0smotron-providers.yaml. The chart's
+# helm-hook copy cycles (delete+recreate, whole namespace included) on every
+# upgrade and can vanish in the terminating-ns race; sveltos owning it here
+# means it always comes back. Keep the version pin in lockstep with the
+# 05-capi-stack.yaml values.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt-infrastructure-system
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
+metadata:
+  name: kubevirt
+  namespace: kubevirt-infrastructure-system
+spec:
+  version: v0.11.2
