@@ -33,6 +33,10 @@ spec:
       releaseNamespace: capi-operator-system
       helmChartAction: Install
       values: |
+        # NB: provider CRs are helm HOOKS (delete-policy before-hook-creation).
+        # An upgrade deletes+recreates them; if a provider ns (capi-system) is
+        # still terminating when hooks re-run, that provider silently vanishes.
+        # Bumping this comment forces a re-upgrade to re-run hooks if needed.
         enableHelmHook: true
         manager:
           featureGates:
