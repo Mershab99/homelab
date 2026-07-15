@@ -30,7 +30,7 @@ spec:
     - repositoryURL: https://kubernetes-sigs.github.io/cluster-api-operator
       repositoryName: capi-operator
       chartName: capi-operator/cluster-api-operator
-      chartVersion: 0.19.x
+      chartVersion: 0.19.0
       releaseName: capi-operator
       releaseNamespace: capi-operator-system
       helmChartAction: Install
@@ -57,7 +57,7 @@ spec:
     - repositoryURL: https://clastix.github.io/charts
       repositoryName: clastix
       chartName: clastix/kamaji
-      chartVersion: 1.0.x
+      chartVersion: 1.0.0
       releaseName: kamaji
       releaseNamespace: kamaji-system
       helmChartAction: Install
