@@ -20,6 +20,6 @@ metadata:
   name: node-01
   namespace: chisel-operator-system
 spec:
-  host: "66.63.162.121" # racknerd VPS public IPv4
+  host: "72.11.146.116" # racknerd VPS public IPv4
   port: 9090            # chisel control port; match the VPS server --port
   auth: node-01-credentials
