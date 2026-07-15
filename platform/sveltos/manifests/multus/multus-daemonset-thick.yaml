@@ -181,11 +181,11 @@ spec:
           command: [ "/usr/src/multus-cni/bin/multus-daemon" ]
           resources:
             requests:
-              cpu: "100m"
-              memory: "64Mi"
+              cpu: "200m"
+              memory: "100Mi"
             limits:
-              # thick-plugin daemon OOMKills at upstream's 50Mi on this cluster
-              memory: "256Mi"
+              cpu: "300m"
+              memory: "150Mi"
           securityContext:
             privileged: true
           terminationMessagePolicy: FallbackToLogsOnError
