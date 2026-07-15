@@ -16,5 +16,5 @@ spec:
   channel: stable
   name: community-kubevirt-hyperconverged
   source: operatorhubio-catalog
-  sourceNamespace: olm-system
+  sourceNamespace: olm
   installPlanApproval: Automatic

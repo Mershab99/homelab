@@ -31,5 +31,5 @@ spec:
   values:
     # Default controller set (addon-controller, classifier,
     # sveltoscluster-manager, event-manager, healthcheck-manager) + dashboard.
-    dashboard:
-      enabled: true
+    telemetry:
+      disabled: true

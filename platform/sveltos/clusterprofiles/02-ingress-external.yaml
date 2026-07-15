@@ -27,7 +27,7 @@ spec:
     - repositoryURL: oci://ghcr.io/fyralabs/chisel-operator
       repositoryName: chisel-operator
       chartName: chisel-operator/chisel-operator
-      chartVersion: 0.4.x
+      chartVersion: v0.7.1
       releaseName: chisel-operator
       releaseNamespace: chisel-operator-system
       helmChartAction: Install

@@ -24,5 +24,3 @@ spec:
       defaultCPUModel: host-passthrough
   storage:
     scratchSpaceStorageClass: longhorn
-  infra: {}
-  workloads: {}

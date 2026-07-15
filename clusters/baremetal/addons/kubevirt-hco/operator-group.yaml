@@ -1,6 +1,9 @@
-# OLM OperatorGroup — scopes the HCO operator to a single namespace.
-# An OperatorGroup is required before a Subscription in the same namespace
-# can install.
+# OLM OperatorGroup — HCO (community-kubevirt-hyperconverged) only supports
+# the AllNamespaces install mode (OwnNamespace/SingleNamespace/MultiNamespace
+# are all unsupported by its CSV). AllNamespaces is expressed by an
+# OperatorGroup with an EMPTY spec (no targetNamespaces). Setting
+# targetNamespaces to this operator's own namespace triggers OwnNamespace
+# mode, which the CSV rejects with "UnsupportedOperatorGroup".
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -13,6 +16,4 @@ kind: OperatorGroup
 metadata:
   name: kubevirt-hyperconverged
   namespace: kubevirt-hyperconverged
-spec:
-  targetNamespaces:
-    - kubevirt-hyperconverged
+spec: {}
