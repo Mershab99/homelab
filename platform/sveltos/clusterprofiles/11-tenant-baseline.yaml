@@ -3,9 +3,8 @@
 # bare-metal longhorn storage class).
 #
 # What's NOT here:
-#   - Cilium  — delivered via CAPI HelmChartProxy
-#     (tenants/arrakis/infra/cilium-hcp.yaml). CAPI's helm addon handles tenant
-#     CNI bootstrap which has a chicken-and-egg story Sveltos can't solve.
+#   - Cilium  — own profile (11-tenant-cilium.yaml) so it installs first;
+#     everything else here needs schedulable pods.
 #   - cluster-autoscaler — runs on the BARE-METAL cluster, not on tenant
 #     (see 05b-cluster-autoscaler.yaml). Per
 #     https://cluster-api.sigs.k8s.io/tasks/automated-machine-management/autoscaling
@@ -21,6 +20,8 @@ spec:
   clusterSelector:
     matchLabels:
       sveltos.projectsveltos.io/type: tenant
+  dependsOn:
+    - tenant-cilium   # CNI first — CSI pods can't schedule without it
   policyRefs:
     # kubevirt-csi — vendored manifest + StorageClass. No tenant-side Helm
     # chart exists upstream; the appscode chart is the infra-side install.

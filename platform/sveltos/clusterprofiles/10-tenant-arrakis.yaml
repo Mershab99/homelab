@@ -9,13 +9,10 @@
 #   1. KamajiControlPlane spins up tenant kube-apiserver as pods on mgmt.
 #   2. CAPK creates KubeVirt VMs per MachineDeployment.
 #   3. CABPK supplies cloud-init that runs `kubeadm join` against Kamaji.
-#   4. CAPI helm addon provider sees the cilium-tenant-cni HelmChartProxy
-#      and installs Cilium into the tenant cluster (so the VMs' pods can
-#      actually run).
-#   5. The tenant cluster auto-registers as a SveltosCluster via CAPI
+#   4. The tenant cluster auto-registers as a SveltosCluster via CAPI
 #      integration. Its CAPI Cluster CR labels propagate.
-#   6. tenant-baseline + tenant-gpu + oidc-rbac ClusterProfiles match it
-#      via labels and fan out the rest of the tenant addons.
+#   5. tenant-cilium installs CNI (Sveltos needs no pods on tenant for helm),
+#      then tenant-baseline + tenant-gpu + oidc-rbac fan out the rest.
 #
 # mgmt-only — these are CAPI CRs reconciled by the CAPI providers on mgmt.
 apiVersion: config.projectsveltos.io/v1beta1

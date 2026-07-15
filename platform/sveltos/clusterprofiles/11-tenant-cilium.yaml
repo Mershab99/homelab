@@ -1,0 +1,40 @@
+# tenant-cilium — Cilium CNI into every tenant cluster, delivered by Sveltos.
+#
+# Replaces the CAPI helm addon provider (HelmChartProxy). Sveltos's
+# addon-controller installs helm charts from mgmt using the tenant kubeconfig —
+# no pods needed on the tenant, so the CNI chicken-and-egg doesn't apply, and
+# Sveltos retries until the tenant apiserver (Kamaji pods on mgmt) answers.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tenant-cilium
+spec:
+  clusterSelector:
+    matchLabels:
+      sveltos.projectsveltos.io/type: tenant
+  helmCharts:
+    - repositoryURL: https://helm.cilium.io
+      repositoryName: cilium
+      chartName: cilium/cilium
+      chartVersion: 1.17.0
+      releaseName: cilium
+      releaseNamespace: kube-system
+      helmChartAction: Install
+      values: |
+        # Tenant has its own kube-proxy (Kamaji's kubeProxy addon installs it).
+        # Run Cilium as pure CNI — no KPR.
+        kubeProxyReplacement: false
+        ipam:
+          mode: kubernetes
+        ipv4:
+          enabled: true
+        ipv6:
+          enabled: false
+        routingMode: tunnel
+        tunnelProtocol: vxlan
+        cni:
+          exclusive: false   # Multus chains over Cilium on the tenant cluster
+        hubble:
+          enabled: false     # tenant observability profile flips this on later
+        operator:
+          replicas: 1

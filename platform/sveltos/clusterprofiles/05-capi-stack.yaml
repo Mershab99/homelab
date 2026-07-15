@@ -6,8 +6,6 @@
 #   bootstrap/kubeadm — CABPK
 #   controlPlane/kamaji — bridges CAPI to Kamaji TenantControlPlane CRs
 #   infrastructure/kubevirt — CAPK (VM workers)
-#   addon/helm        — CAPI HelmChartProxy CRs (delivers Helm charts INTO
-#                       tenant clusters, used for tenant CNI bootstrap)
 #
 # Kamaji's own controller installs separately (it's not a CAPI provider —
 # it's the underlying engine the controlPlane/kamaji provider talks to).
@@ -50,8 +48,8 @@ spec:
           kamaji: {}
         infrastructure:
           kubevirt: {}
-        addon:
-          helm: {}   # enables HelmChartProxy CRs — tenant CNI bootstrap
+        # addon/helm (HelmChartProxy) disabled — Sveltos delivers tenant CNI
+        # directly (11-tenant-cilium.yaml); saves the CAAH controller pod.
         cert-manager:
           enabled: false   # we install cert-manager separately (tls-stack)
     - repositoryURL: https://clastix.github.io/charts

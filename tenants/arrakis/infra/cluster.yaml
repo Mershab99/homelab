@@ -33,10 +33,6 @@ metadata:
     needs.gpu: "false"        # minimal: GPU stack off
     needs.autoscaler: "false" # minimal: autoscaler off; general pool fixed
     oidc.enabled: "true"
-    # CAPI HelmChartProxy selector — chooses tenant CNI. The
-    # `cilium-tenant-cni` HelmChartProxy at tenants/arrakis/infra/cilium-hcp.yaml
-    # selects on this label.
-    cniChart: cilium
 spec:
   clusterNetwork:
     pods:
@@ -93,9 +89,9 @@ spec:
       - --oidc-issuer-url=https://auth.mershab.com
       - --oidc-client-id=kubernetes
       - --oidc-username-claim=email
-      - --oidc-username-prefix=oidc:
+      - "--oidc-username-prefix=oidc:"
       - --oidc-groups-claim=groups
-      - --oidc-groups-prefix=oidc:
+      - "--oidc-groups-prefix=oidc:"
   network:
     # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as its
     # own LB. Kamaji v1.0.0 can't set spec.loadBalancerClass on its Service, and

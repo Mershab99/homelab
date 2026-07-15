@@ -18,8 +18,8 @@ resources:
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
   # minimal: - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
   - 10-tenant-arrakis.yaml      # delivers CAPI resources for tenant cluster
+  - 11-tenant-cilium.yaml       # tenant CNI (Sveltos-delivered, replaces HelmChartProxy)
   - 11-tenant-baseline.yaml     # tenant kubevirt-csi
-                                # (Cilium delivered via CAPI HelmChartProxy)
   # minimal: - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
   - 11-oidc-rbac.yaml           # ClusterRoleBindings (tenant + vClusters)
   # minimal: - 12-vcluster-baseline.yaml   # NAD + addons delivered to every vCluster
