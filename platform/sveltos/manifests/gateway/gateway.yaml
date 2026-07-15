@@ -50,9 +50,14 @@ metadata:
 spec:
   gatewayClassName: traefik
   listeners:
+    # Listener ports are traefik's ENTRYPOINT bind port (websecure = :8443),
+    # not the Service's exposed 443 — traefik's gateway provider matches
+    # listener.port against the entrypoint address and rejects the listener
+    # ("PortUnavailable ... no matching entryPoint") otherwise. Clients still
+    # hit 443: the Service maps 443 -> 8443.
     - name: https
       protocol: HTTPS
-      port: 443
+      port: 8443
       hostname: "*.homelab.mershab.com"
       tls:
         mode: Terminate
@@ -65,7 +70,7 @@ spec:
     # Apex listener for the public website (nginx in the mershab k3k vCluster).
     - name: apex
       protocol: HTTPS
-      port: 443
+      port: 8443
       hostname: mershab.com
       tls:
         mode: Terminate
@@ -80,7 +85,7 @@ spec:
     # the TLSRoute in tenants/arrakis/infra/apiserver-tlsroute.yaml.
     - name: k8s-apiserver
       protocol: TLS
-      port: 443
+      port: 8443
       hostname: k8s-home.mershab.com
       tls:
         mode: Passthrough
