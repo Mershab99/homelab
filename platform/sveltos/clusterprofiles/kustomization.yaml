@@ -13,18 +13,17 @@ resources:
   - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + Kamaji + provider CRs
-  - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
+  # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
   - 06-auth-stack.yaml          # Dex with password-db connector
-  - 06-headlamp.yaml            # cluster admin UI gated by Dex
-  - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
-  - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
-  - 10-tenant-arrakis.yaml         # delivers CAPI resources for tenant cluster
-  - 11-tenant-baseline.yaml     # tenant kubevirt-csi + cluster-autoscaler
+  # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
+  # minimal: - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
+  - 10-tenant-arrakis.yaml      # delivers CAPI resources for tenant cluster
+  - 11-tenant-baseline.yaml     # tenant kubevirt-csi
                                 # (Cilium delivered via CAPI HelmChartProxy)
-  - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
+  # minimal: - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
   - 11-oidc-rbac.yaml           # ClusterRoleBindings (tenant + vClusters)
-  - 12-vcluster-baseline.yaml   # NAD + addons delivered to every vCluster
-  - 12-k3k-operator.yaml        # k3k operator on the tenant (replaces Loft vcluster)
-  - 12-k3k-clusters.yaml        # k3k Cluster CRs (family + mershab, shared mode)
-  - 13-app-home-assistant.yaml  # HA (pajikos chart) inside family k3k vCluster
-  - 13-app-mershab-web.yaml     # nginx + mershab.com inside mershab k3k vCluster
+  # minimal: - 12-vcluster-baseline.yaml   # NAD + addons delivered to every vCluster
+  # minimal: - 12-k3k-operator.yaml        # k3k operator on the tenant (replaces Loft vcluster)
+  # minimal: - 12-k3k-clusters.yaml        # k3k Cluster CRs (family + mershab, shared mode)
+  # minimal: - 13-app-home-assistant.yaml  # HA (pajikos chart) inside family k3k vCluster
+  # minimal: - 13-app-mershab-web.yaml     # nginx + mershab.com inside mershab k3k vCluster

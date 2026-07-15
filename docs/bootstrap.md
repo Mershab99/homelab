@@ -132,7 +132,6 @@ kubectl -n mgmt label sveltoscluster mgmt \
   needs.virt-host=true \
   needs.capi=true \
   needs.auth=true \
-  needs.headlamp=true \
   needs.observability-core=true \
   needs.observability-backend=true
 
@@ -152,8 +151,25 @@ It kustomize-builds two dirs from the `homelab` GitRepository onto mgmt:
 `clusters/baremetal/infrastructure/` (namespaces + Cilium runtime CRs) and
 `platform/sveltos/clusterprofiles/` (every other ClusterProfile CR — Sveltos
 manages Sveltos from here). The cluster then lights up in dependency order:
-sealed-secrets → cert-manager, external-dns, Traefik, chisel-operator, Multus,
-Dex, Headlamp, Longhorn, OLM + KubeVirt HCO, CAPI + Kamaji, observability.
+cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex,
+Longhorn, OLM + KubeVirt HCO, CAPI + Kamaji, observability.
+
+### 5a. Apply secrets (plaintext, by hand)
+
+There's no sealed-secrets / SOPS / ESO — cluster secrets are plaintext,
+gitignored, applied by hand (see `secrets/README.md`). Fill each
+`*.example.yaml` → `*.secret.yaml`, then:
+
+```bash
+./secrets/apply.sh    # applies secrets/**/*.secret.yaml to mgmt
+```
+
+Charts consume these by name (cloudflare token, dex-config, grafana OIDC,
+minio). Their namespaces are created by the charts, so
+`apply.sh` is **re-runnable** — run it once after the root profile has created
+the namespaces, and Sveltos requeues any chart that was waiting on its secret.
+The tenant's `infra-cluster-credentials` (kubevirt-csi) is applied separately,
+against the tenant — not by this script.
 
 **Verify**:
 ```bash
@@ -171,8 +187,7 @@ kubectl get providers -A                            # core, capk, cabpk, kamaji
 ```bash
 curl -sI https://auth.mershab.com/.well-known/openid-configuration   # 200
 kubectl get oauth2clients -A                                         # all sync
-# Headlamp UI → Dex login → lands on the cluster dashboard via the
-# headlamp-admin ServiceAccount token configured at install time.
+# Grafana → Dex login (generic_oauth) → lands authenticated.
 ```
 
 OAuth2Client CRs (per-UI) are part of the `dex` ClusterProfile — they ship

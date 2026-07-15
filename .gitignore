@@ -10,3 +10,7 @@ gen/talos-hub-machineconfig.yaml.bak
 .talosconfig
 age.key
 *.age.key
+
+# Filled cluster secrets — plaintext, applied by hand via ./secrets/apply.sh.
+# Only *.example.yaml templates are committed.
+*.secret.yaml

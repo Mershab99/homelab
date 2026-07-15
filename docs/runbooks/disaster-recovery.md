@@ -1,8 +1,9 @@
 # Disaster recovery
 
 The bare-metal cluster is **not** disposable — losing its etcd loses every
-tenant Cluster CR, every Sveltos profile binding, every Flux source, every
-sealed-secret encryption key (unless backed up separately).
+tenant Cluster CR, every Sveltos profile binding, and every Flux source.
+Cluster secrets are plaintext + gitignored (`*.secret.yaml`) — keep your filled
+copies off-box; they are re-applied by hand on restore (see `secrets/README.md`).
 
 ## Backups (running)
 
@@ -10,9 +11,9 @@ sealed-secret encryption key (unless backed up separately).
   `talosctl etcd snapshot` daily, writes to a `zfs` PVC, then
   `rclone copy` to an off-box destination (configured in
   `clusters/baremetal/infrastructure/etcd-backup/`).
-- **Sealed-secrets controller key** is exported nightly and stored alongside
-  the etcd snapshot. Without it, restoring Git is useless — the cluster
-  cannot decrypt any sealed secret.
+- **Filled secrets** (`secrets/**/*.secret.yaml`) are gitignored, so they are
+  NOT in Git — keep a copy off-box alongside the etcd snapshot. Without them the
+  charts that consume cloudflare/dex/oidc/minio Secrets won't come up.
 - **Kamaji tenant etcd snapshots** (each tenant has its own etcd, run by
   Kamaji as a StatefulSet on `zfs`). Snapshots taken by Kamaji's
   built-in snapshot job onto a `zfs` PVC, and shipped off-box.
@@ -29,10 +30,10 @@ sealed-secret encryption key (unless backed up separately).
    delivery layer (both idempotent): `bootstrap/helm/01-cilium.sh`, then
    `bootstrap/helm/02-flux.sh` (reinstalls Flux source + helm controllers,
    re-applies `bootstrap/flux/`, and helm-controller reinstalls Sveltos).
-4. **Restore sealed-secrets controller key** from off-box:
+4. **Re-apply cluster secrets** from your off-box copies (drop the filled
+   `*.secret.yaml` back into `secrets/`, then):
    ```bash
-   kubectl -n sealed-secrets apply -f sealed-secrets-key-backup.yaml
-   kubectl -n sealed-secrets rollout restart deployment sealed-secrets-controller
+   ./secrets/apply.sh
    ```
 5. **Re-apply the root ClusterProfile** —
    `kubectl apply -f clusters/baremetal/sveltos-root.yaml` (after re-labeling

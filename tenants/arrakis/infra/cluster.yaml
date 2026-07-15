@@ -1,5 +1,5 @@
 # CAPI Cluster CR + KubevirtCluster + KamajiControlPlane for the `arrakis`
-# tenant. Lives in `default` namespace (matches working convention).
+# tenant. Lives in `tenants` namespace (matches working convention).
 #
 # Labels are load-bearing — they're what Sveltos selectors on the tenant
 # ClusterProfiles match against. The tenant cluster auto-registers with
@@ -27,10 +27,11 @@ metadata:
     tier: workload
     # Capability labels — ClusterProfile selectors match these.
     needs.tls: "true"
+    needs.dns: "true"          # runs its own external-dns; per-cluster txt prefix keeps it off mgmt's records
     needs.multus: "true"
     needs.kubevirt-csi: "true"
-    needs.gpu: "true"
-    needs.autoscaler: "true"
+    needs.gpu: "false"        # minimal: GPU stack off
+    needs.autoscaler: "false" # minimal: autoscaler off; general pool fixed
     oidc.enabled: "true"
     # CAPI HelmChartProxy selector — chooses tenant CNI. The
     # `cilium-tenant-cni` HelmChartProxy at tenants/arrakis/infra/cilium-hcp.yaml
@@ -96,8 +97,14 @@ spec:
       - --oidc-groups-claim=groups
       - --oidc-groups-prefix=oidc:
   network:
-    serviceType: LoadBalancer
-    serviceAnnotations:
-      external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
-      # Day-1: internal Cilium LB. For off-LAN kubectl, replace with:
-      #   loadBalancerClass: chisel.mershab.com/external
+    # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as its
+    # own LB. Kamaji v1.0.0 can't set spec.loadBalancerClass on its Service, and
+    # chisel-operator here is class-filtered, so a direct chisel-tunnelled LB is
+    # not possible at this version. Instead a Traefik IngressRouteTCP (TLS
+    # passthrough, HostSNI k8s-home.mershab.com) reuses the single chisel edge —
+    # see apiserver-ingressroutetcp.yaml. external-dns for the FQDN lives on the
+    # Traefik Service (02-ingress-external).
+    serviceType: ClusterIP
+    # certSANs so the apiserver cert is valid for the FQDN under TLS passthrough.
+    certSANs:
+      - k8s-home.mershab.com

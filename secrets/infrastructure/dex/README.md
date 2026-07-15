@@ -2,7 +2,8 @@
 
 Dex reads its entire runtime config from a Secret named `dex-config` in the
 `dex` namespace. Users (email + bcrypt'd password) and per-UI OAuth2 client
-secrets all live there. The Secret is sealed cluster-wide before commit.
+secrets all live there. Fill `dex-config.example.yaml` → `dex-config.secret.yaml`
+(plaintext + gitignored) and apply with `./secrets/apply.sh`.
 
 ## Generate users + clients
 
@@ -15,12 +16,10 @@ secrets all live there. The Secret is sealed cluster-wide before commit.
 2. **Generate client secrets** (one per OAuth2 client):
    ```bash
    K8S_CLIENT_SECRET=$(openssl rand -base64 32)
-   HEADLAMP_CLIENT_SECRET=$(openssl rand -base64 32)
    GRAFANA_CLIENT_SECRET=$(openssl rand -base64 32)
-   OAUTH2_PROXY_CLIENT_SECRET=$(openssl rand -base64 32)
    ```
    Note these — they'll also need to land in their respective consumer
-   configs (e.g. Headlamp's own Helm values reference `headlamp` client
+   configs (e.g. Grafana's own values reference the `grafana` client
    secret).
 
 3. **Assemble the dex config**. `staticClients` is the per-app OAuth2 client
@@ -70,56 +69,28 @@ secrets all live there. The Secret is sealed cluster-wide before commit.
          redirectURIs:
            - http://localhost:8000        # kubectl oidc-login local flow
            - http://localhost:18000
-       - id: headlamp
-         name: Headlamp
-         secret: "$HEADLAMP_CLIENT_SECRET"
-         redirectURIs:
-           - https://headlamp.homelab.mershab.com/oauth-callback
        - id: grafana
          name: Grafana
          secret: "$GRAFANA_CLIENT_SECRET"
          redirectURIs:
            - https://grafana.homelab.mershab.com/login/generic_oauth
-       # oauth2-proxy — the forwardAuth gate for services without native OIDC
-       # (longhorn, hubble, traefik dashboard). One client covers all of them.
-       - id: oauth2-proxy
-         name: oauth2-proxy
-         secret: "$OAUTH2_PROXY_CLIENT_SECRET"
-         redirectURIs:
-           - https://oauth2.homelab.mershab.com/oauth2/callback
        # Future apps: one block each.
        # - id: home-assistant
        #   secret: $HA_CLIENT_SECRET
        #   redirectURIs: [https://home.homelab.mershab.com/auth/oauth2_response]
    ```
 
-## Seal + commit
+## Fill + apply
 
-```bash
-kubectl create secret generic dex-config \
-  --namespace=dex \
-  --from-file=config.yaml=./dex-config.yaml \
-  --dry-run=client -o yaml \
-| kubeseal \
-    --controller-namespace=sealed-secrets \
-    --controller-name=sealed-secrets-controller \
-    --scope cluster-wide \
-    -o yaml \
-> secrets/infrastructure/dex/dex-config.sealedsecret.yaml
-```
+Paste the bcrypt hash and each client secret into the placeholders in
+`dex-config.secret.yaml` (copy of `dex-config.example.yaml`), then
+`./secrets/apply.sh`. The dex chart's `configSecret.create: false,
+configSecret.name: dex-config` directive consumes it.
 
-The sealed file gets applied by Flux to the `dex` namespace. The dex chart's
-`configSecret.create: false, configSecret.name: dex-config` directive
-consumes it.
-
-Same client secret values must also land in the corresponding consumer's
-namespace, sealed separately:
-- `secrets/infrastructure/headlamp/oidc-client-secret.sealedsecret.yaml`
-  (key: `clientSecret`) for the Headlamp Helm values to consume.
-- One sealed Secret per future app (grafana, home-assistant, etc.) in that
-  app's namespace.
-- (Future) any tenant/vCluster apiserver that needs to validate against
-  this issuer — they only need the issuer URL + client_id, not the secret.
+Each client secret must ALSO match its consumer's own Secret:
+- `secrets/infrastructure/grafana/grafana-oidc.secret.yaml` (key `clientSecret`).
+- Tenant/vCluster apiservers validating this issuer need only the issuer URL +
+  client_id, not the secret.
 
 ## Adding an upstream IdP later (no downstream churn)
 

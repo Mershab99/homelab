@@ -4,24 +4,32 @@ KubeVirt CSI doesn't ship a Helm chart. The `tenant-baseline`
 ClusterProfile reads from this directory via GitRepository policyRef and
 applies the manifests to the tenant cluster.
 
-## One-time vendoring (populate the placeholder)
+## Files here
 
-`kubevirt-csi.yaml` ships as a placeholder. Replace with the upstream
-tenant-side controller manifest at a pinned tag:
+- `kubevirt-csi.yaml` — controller + node + RBAC + CSIDriver, vendored from
+  `kubevirt/csi-driver` `deploy/{controller-tenant,tenant}/base` at a pinned
+  commit (upstream has no release tags / helm chart). The header records the SHA.
+- `driver-config.yaml` — the `kubevirt-csi-driver` Namespace + `driver-config`
+  ConfigMap (all 3 keys; infraClusterNamespace=`tenants`).
+- `storageclass.yaml` — the `kubevirt` StorageClass → bare-metal `longhorn`.
 
-```bash
-cd tenants/arrakis/addons/kubevirt-csi
+## Required out-of-band Secret
 
-curl -fL https://raw.githubusercontent.com/kubevirt/csi-driver/v0.6.0/deploy/controller-tenant.yaml \
-  -o kubevirt-csi.yaml
-```
-
-Then `git add` + commit. Sveltos's `tenant-baseline` ClusterProfile picks
-it up on the next reconcile.
+The controller needs a kubeconfig to the mgmt (infra) cluster, applied **to the
+tenant**: `secrets/infrastructure/kubevirt-csi/infra-cluster-credentials.example.yaml`
+→ `.secret.yaml`, applied with `KUBECONFIG` pointed at arrakis (not mgmt, so
+`./secrets/apply.sh` does not cover it).
 
 ## Upgrade procedure
 
-Same `curl` at a newer tag, re-commit.
+Re-vendor from a newer commit:
+```bash
+SHA=<new-commit>
+yq eval-all 'select(.kind != "StorageClass" and .kind != "ConfigMap")' \
+  <(curl -fsSL "https://raw.githubusercontent.com/kubevirt/csi-driver/$SHA/deploy/controller-tenant/base/deploy.yaml") \
+  <(curl -fsSL "https://raw.githubusercontent.com/kubevirt/csi-driver/$SHA/deploy/tenant/base/deploy.yaml") \
+  > /tmp/csi.yaml   # then re-add the header + commit
+```
 
 ## What it does
 

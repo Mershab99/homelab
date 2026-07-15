@@ -1,5 +1,5 @@
 # Grafana CR managed by grafana-operator. Dex OIDC via generic_oauth.
-# Client secret comes from `grafana-oidc` SealedSecret.
+# Client secret comes from the plaintext `grafana-oidc` Secret (applied by hand).
 apiVersion: grafana.integreatly.org/v1beta1
 kind: Grafana
 metadata:

@@ -1,0 +1,25 @@
+# chisel ExitNode 01 — one per VPS. Traefik's LoadBalancer Service
+# (loadBalancerClass chisel.mershab.com/external) is tunnelled out through
+# whichever ExitNode chisel-operator picks; run several for redundancy /
+# geo-distribution and the operator load-balances across them.
+#
+# spec.auth = NAME of a Secret in this namespace (chisel-operator-system) with
+# the token under key `auth`. That Secret is plaintext + gitignored — fill it
+# from secrets/infrastructure/chisel-operator/exitnode-creds.example.yaml
+# (copy to node-01-creds.secret.yaml) and `./secrets/apply.sh`.
+#
+# On the VPS: chisel server --auth "chisel:<TOKEN>" --port 9090 --reverse,
+# 80 + 443 bound to the public interface.
+#
+# Add more nodes: copy ../node.yaml.example -> node-02.yaml here, bump names,
+# add its creds Secret. Every file in THIS dir is delivered by Sveltos
+# (02-ingress-external) — keep templates in the parent dir, not here.
+apiVersion: chisel-operator.io/v1
+kind: ExitNode
+metadata:
+  name: node-01
+  namespace: chisel-operator-system
+spec:
+  host: ""              # TODO: VPS public IPv4
+  port: 9090            # chisel control port; match the VPS server --port
+  auth: node-01-credentials

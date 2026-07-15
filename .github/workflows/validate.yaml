@@ -120,22 +120,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify secrets/ are SOPS-encrypted
+      - name: No filled secrets committed
         run: |
-          if [ ! -d secrets ]; then
-            echo "secrets/ does not exist yet — skipping"
-            exit 0
+          # Cluster secrets are plaintext + gitignored (*.secret.yaml), applied
+          # by hand — see secrets/README.md. Only *.example.yaml templates with
+          # REPLACE_WITH_ placeholders are committed. Fail if a real *.secret.yaml
+          # slipped past .gitignore. (gitleaks above catches leaked values.)
+          if git ls-files 'secrets/**/*.secret.yaml' | grep .; then
+            echo "::error::*.secret.yaml is tracked — it must be gitignored"
+            exit 1
           fi
-          FAILED=0
-          while IFS= read -r f; do
-            if ! grep -q '^sops:' "$f" 2>/dev/null; then
-              if grep -qE '^(apiVersion|kind):' "$f" 2>/dev/null; then
-                echo "::error file=$f::Plaintext secret committed"
-                FAILED=1
-              fi
-            fi
-          done < <(find secrets -type f \( -name '*.yaml' -o -name '*.yml' \))
-          exit $FAILED
+          echo "OK — no *.secret.yaml tracked"
 
   policy:
     name: kyverno policies

@@ -6,7 +6,7 @@ metadata:
   namespace: tenants
 spec:
   clusterName: arrakis
-  replicas: 1
+  replicas: 0   # minimal: GPU pool off; bump when GPUs needed
   selector:
     matchLabels:
       cluster.x-k8s.io/deployment-name: arrakis-gpu-p2000

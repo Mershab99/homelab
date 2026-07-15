@@ -21,7 +21,7 @@ spec:
     - repositoryURL: https://rancher.github.io/k3k
       repositoryName: k3k
       chartName: k3k/k3k
-      chartVersion: "*"          # ponytail: floating until a release is pinned; bump to a fixed tag once verified
+      chartVersion: 1.1.0        # latest stable (rancher.github.io/k3k index)
       releaseName: k3k
       releaseNamespace: k3k-system
       helmChartAction: Install

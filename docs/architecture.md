@@ -10,7 +10,7 @@ Bare-metal Talos cluster (R730 → +R820)
 ├── Infra: Cilium, Multus, ingress-nginx (internal+external), chisel-operator,
 │   cert-manager, external-dns, ZFS LocalPV, KubeVirt HCO,
 │   CAPI core + CAPK + CABPK + kamaji-operator
-├── Platform: Sveltos, Dex, sealed-secrets, Headlamp
+├── Platform: Sveltos, Dex
 ├── Observability: OTel Operator + TargetAllocator, prometheus-operator CRDs,
 │   Loki (single-binary, MinIO S3 backend), Grafana Operator, Grafana
 │
@@ -43,7 +43,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
 | Storage                     | ZFS LocalPV (zpool `tank`, 7 mirrors) on bare-metal; kubevirt-csi passthrough in tenant |
 | GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
-| Secrets                     | sealed-secrets for v1 (SOPS still configured) |
+| Secrets                     | plaintext manifests, gitignored, applied by hand (`secrets/`); SOPS only for Talos machineconfig |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
 | LB classes                  | `internal` (Cilium LAN IP); `external` (chisel-operator → VPS) |
 
@@ -77,12 +77,14 @@ Sveltos is for **capability fanout**, not per-instance config.
 
 ## 5. Hard rules
 
-- **No inline secrets, ever.** Sealed or SOPS. `.sops.yaml` at repo root.
+- **No secrets in Git.** Cluster secrets are plaintext + gitignored
+  (`*.secret.yaml`), applied by hand (`secrets/`). SOPS (`.sops.yaml`) covers
+  only the Talos machineconfig.
 - **Bare-metal cluster is not disposable.** etcd snapshots are non-negotiable.
-- **Dex lives on bare-metal.** It is the auth backbone for every UI (Headlamp,
-  Grafana, per-app oauth2-proxy) **and** for every kube-apiserver above the
+- **Dex lives on bare-metal.** It is the auth backbone for every UI (Grafana,
+  and any future OIDC app) **and** for every kube-apiserver above the
   bare-metal one (tenant Kamaji + each vCluster). Connector is the built-in
-  password-db (users + bcrypt'd passwords in a sealed Secret) — no upstream
+  password-db (users + bcrypt'd passwords in the plaintext `dex-config` Secret) — no upstream
   IdP yet. Never nest in a vCluster.
 - **Bare-metal kube-apiserver is the OIDC exception.** It hosts Dex, so it
   cannot federate to Dex (chicken-and-egg). It stays on local Talos kubeconfig
@@ -107,7 +109,7 @@ Sveltos is for **capability fanout**, not per-instance config.
   (namespaces + Cilium runtime CRs) and `platform/sveltos/clusterprofiles/`
   (every other `ClusterProfile` CR) onto `mgmt` — Sveltos manages Sveltos from
   there, replacing the old Flux Kustomization tree. Everything else —
-  cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex, Headlamp,
+  cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex,
   Longhorn, OLM + KubeVirt HCO, CAPI/Kamaji, OTel, Loki, Grafana — is a
   label-selected `ClusterProfile`. The bare-metal cluster auto-registers as
   `SveltosCluster/mgmt`; the same profiles match tenant + vClusters when they

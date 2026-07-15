@@ -3,9 +3,8 @@
 # reach it.
 #
 # Users + bcrypt'd passwords + per-app OAuth2 client registry live in a
-# sealed Secret named `dex-config` in the dex namespace. The Secret is
-# created out of band via kubeseal — see
-# secrets/infrastructure/dex/README.md.
+# plaintext Secret named `dex-config` in the dex namespace, applied by hand —
+# see secrets/infrastructure/dex/README.md.
 #
 # Federation model: every downstream app gets its OWN entry in Dex's
 # `staticClients` list (one client_id, one client_secret, its own redirect
@@ -16,9 +15,9 @@
 #
 # Day-1 clients (all in dex-config Secret):
 #   - kubernetes — shared by tenant Kamaji apiserver + every vCluster
-#   - headlamp   — bare-metal cluster admin UI
-# Future apps (grafana, home-assistant, frigate, jellyfin, ...) add a
-# staticClients entry each when their ClusterProfile lands.
+#   - grafana    — Grafana generic_oauth
+# Future apps (home-assistant, ...) add a staticClients entry each when their
+# ClusterProfile lands.
 #
 # mgmt-only — Dex is a singleton.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -43,9 +42,9 @@ spec:
       releaseNamespace: dex
       helmChartAction: Install
       values: |
-        # The Helm chart reads its config from the `dex-config` Secret (we
-        # create it out of band, sealed). All static passwords + client
-        # secrets are in the Secret; no plaintext in this values block.
+        # The Helm chart reads its config from the `dex-config` Secret (applied
+        # by hand). All static passwords + client secrets are in the Secret; no
+        # plaintext in this values block.
         configSecret:
           create: false
           name: dex-config

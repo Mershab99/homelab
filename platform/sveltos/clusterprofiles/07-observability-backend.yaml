@@ -1,11 +1,11 @@
 # observability-backend — Loki (MinIO S3 backend) + Grafana operator +
 # Grafana CR with Dex OIDC.
 #
-# Loki S3 credentials come from the `loki-minio` Secret (SOPS, delivered by
-# Flux from secrets/infrastructure/minio/) — the same keypair MinIO uses as
+# Loki S3 credentials come from the `loki-minio` Secret (plaintext, applied by
+# hand from secrets/infrastructure/minio/) — the same keypair MinIO uses as
 # its root creds. MinIO itself is delivered by the `storage` bundle.
 #
-# Grafana auth via Dex generic_oauth. Client_secret comes from a sealed
+# Grafana auth via Dex generic_oauth. Client_secret comes from a plaintext
 # Secret named `grafana-oidc` in the monitoring ns (see
 # secrets/infrastructure/grafana/README.md).
 #

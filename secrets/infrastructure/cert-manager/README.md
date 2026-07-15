@@ -1,9 +1,9 @@
 # cert-manager secrets
 
 cert-manager's `letsencrypt-prod` ClusterIssuer needs a Cloudflare API token
-to solve DNS-01 challenges on the `mershab.com` zone. The token is sealed
-**cluster-wide** so the same SealedSecret can also satisfy external-dns
-(which expects the Secret in its own namespace).
+to solve DNS-01 challenges on the `mershab.com` zone. The same token is used
+by external-dns, so it goes into two namespaces (cert-manager + external-dns).
+Plaintext + gitignored — see `secrets/README.md` for the convention.
 
 ## Create the token (Cloudflare dashboard)
 
@@ -13,39 +13,19 @@ to solve DNS-01 challenges on the `mershab.com` zone. The token is sealed
 4. Zone Resources: include `mershab.com`
 5. Save and copy the token (shown once).
 
-## Seal the token (run once, after sealed-secrets is Ready on the mgmt cluster)
+## Fill + apply
+
+Paste the token into both filled copies, then apply:
 
 ```bash
-read -rs CF_TOKEN     # paste the token; not echoed
-kubectl create secret generic cloudflare-api-token \
-  --namespace=cert-manager \
-  --from-literal=api-token="$CF_TOKEN" \
-  --dry-run=client -o yaml \
-| kubeseal \
-    --controller-namespace=sealed-secrets \
-    --controller-name=sealed-secrets-controller \
-    --scope cluster-wide \
-    -o yaml \
-> secrets/infrastructure/cert-manager/cloudflare-api-token.sealedsecret.yaml
+cp cloudflare-token.example.yaml cloudflare-token.secret.yaml   # cert-manager ns
+cp ../external-dns/cloudflare-token.example.yaml \
+   ../external-dns/cloudflare-token.secret.yaml                 # external-dns ns
+# replace REPLACE_WITH_CLOUDFLARE_API_TOKEN in both, then:
+./secrets/apply.sh
 ```
-
-The `cluster-wide` scope means the resulting SealedSecret can be applied to
-ANY namespace (including `external-dns/`) without re-sealing. Commit the
-resulting file to Git.
-
-## Wire into Flux (one-time)
-
-The sealed file gets applied by a tiny Flux Kustomization:
-
-```bash
-# secrets-ks.yaml at clusters/baremetal/ — to be added when sealing happens
-```
-
-Reconciling that Kustomization makes the SealedSecret land in
-`cert-manager/` and `external-dns/` namespaces; the controllers decrypt to
-plain Secrets named `cloudflare-api-token`.
 
 ## Rotate
 
-When the Cloudflare token is rotated, re-run the seal command. The new
-SealedSecret has the same name → idempotent re-apply.
+Re-run with the new token value and `./secrets/apply.sh` — same Secret name,
+idempotent re-apply.

@@ -52,7 +52,7 @@ the actual hardware via the Talos maintenance-mode dashboard
 | What | How to check | Default |
 |---|---|---|
 | Primary NIC name | `talosctl --insecure get links` | `eno1` (R730's first onboard 1GbE) |
-| Install disk | `talosctl --insecure get disks` | `/dev/sdb` |
+| Install disk | `talosctl --insecure get disks` | by model: `WDC*` (sdX names shuffle — never hardcode) |
 | GPU PCI BDFs | `talosctl --insecure get pcidevices` or `lspci -nn` from a live USB | placeholders in `_patches/06-vfio.yaml` |
 | Static IP | LAN policy | `192.168.2.70/24`, gateway `192.168.2.1` |
 | Hostname | choose | `r730.mershab.com` |
@@ -95,6 +95,6 @@ patch makes discovery's-off explicit so it can't drift back on.
 ## Auth
 
 The Talos machineconfig deliberately does **not** wire kube-apiserver OIDC.
-Dex lives at the platform layer and federates **UIs only** (Headlamp,
-Grafana, etc.) via per-app `OAuth2Client`s. kube-apiserver authentication
+Dex lives at the platform layer and federates **UIs only** (Grafana, etc.)
+via per-app `OAuth2Client`s. kube-apiserver authentication
 stays on the local Talos-admin kubeconfig + ServiceAccount tokens.

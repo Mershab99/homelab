@@ -2,8 +2,8 @@
 # + the self-signed bootstrap chain).
 #
 # Single bundle because the ClusterIssuers have no meaning without
-# cert-manager and vice versa. Cloudflare API token is a cluster-wide
-# SealedSecret created out of band (see secrets/infrastructure/cert-manager/README.md).
+# cert-manager and vice versa. Cloudflare API token is a plaintext Secret
+# applied by hand (see secrets/infrastructure/cert-manager/README.md).
 #
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile

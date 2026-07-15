@@ -35,8 +35,8 @@ PAT needs `repo:read`. Referenced by name in `gitrepository.yaml`. Rotate by
 re-creating the Secret; source-controller re-reads on next reconcile.
 
 > No `sops-age` secret needed — there is no kustomize-controller doing SOPS
-> decryption. In-cluster secrets are SealedSecrets, decrypted by the
-> sealed-secrets controller (delivered by the `sealed-secrets` ClusterProfile).
+> decryption. In-cluster secrets are plaintext manifests applied by hand
+> (gitignored `*.secret.yaml`) — see `secrets/README.md`.
 
 ## Apply
 

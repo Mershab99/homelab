@@ -1,0 +1,13 @@
+# Template for an additional exit node. Copy to exit-nodes/node-NN.yaml (the
+# delivered dir; keep this template here in the parent so Sveltos doesn't apply
+# it), then add its creds Secret
+# (secrets/infrastructure/chisel-operator, name node-NN-credentials).
+apiVersion: chisel-operator.io/v1
+kind: ExitNode
+metadata:
+  name: node-NN
+  namespace: chisel-operator-system
+spec:
+  host: ""              # VPS public IPv4
+  port: 9090
+  auth: node-NN-credentials

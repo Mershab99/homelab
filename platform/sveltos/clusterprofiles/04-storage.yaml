@@ -1,8 +1,8 @@
 # storage — Longhorn across all 15× 2TB Samsung SSDs on the R730.
 #
-# Disks are mounted by Talos (machine.disks → /var/lib/longhorn/disks/disk01..15)
-# and auto-registered via the node's default-disks-config annotation — see
-# bootstrap/talos/controlplane.yaml. Longhorn just consumes them.
+# Disks are Talos UserVolumes (UserVolumeConfig → /var/mnt/lh01..15, selected
+# by disk model) and auto-registered via the node's default-disks-config
+# annotation — see bootstrap/talos/controlplane.yaml. Longhorn just consumes them.
 #
 # Single node day-1: replicas land on different DISKS (disk-level anti-affinity)
 # so a single SSD failure doesn't lose a volume. Bump node anti-affinity when the

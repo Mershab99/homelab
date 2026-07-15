@@ -6,9 +6,9 @@
 # loadBalancerClass, so chisel-operator tunnels the entrypoint to the ExitNode
 # (the only path to the internet — no local LB).
 #
-# Day-1: ExitNode is a placeholder (no VPS yet); Traefik's Service sits Pending
-# an external IP until the ExitNode is wired — see
-# clusters/baremetal/addons/chisel-operator/README.md.
+# Day-1: exit-nodes/ ships one placeholder ExitNode (no VPS yet); Traefik's
+# Service sits Pending an external IP until a node's host/auth is filled — see
+# clusters/baremetal/addons/chisel-operator/exit-nodes/node-01.yaml.
 #
 # mgmt-only.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -41,8 +41,8 @@ spec:
       releaseNamespace: traefik
       helmChartAction: Install
       values: |
-        # Providers: Gateway API (homelab services) + CRD (Middleware/IngressRoute
-        # for forwardAuth + dashboard) + Ingress (legacy `external` class = Dex).
+        # Providers: Gateway API (homelab services) + CRD (IngressRoute for the
+        # dashboard) + Ingress (legacy `external` class = Dex).
         providers:
           kubernetesGateway:
             enabled: true
@@ -57,8 +57,8 @@ spec:
           enabled: false
         gatewayClass:
           enabled: false
-        # The dashboard is exposed via an IngressRoute (manifests/gateway), gated
-        # by oauth2-proxy — keep the insecure API off.
+        # The dashboard is exposed via an IngressRoute (manifests/gateway),
+        # UNAUTHENTICATED + internal-only — keep the insecure API off.
         api:
           dashboard: true
           insecure: false
@@ -67,11 +67,18 @@ spec:
           spec:
             loadBalancerClass: chisel.mershab.com/external
           externalTrafficPolicy: Local
+          annotations:
+            # Point the tenant apiserver FQDN at Traefik's chisel-assigned VPS IP.
+            # The apiserver rides through here via an IngressRouteTCP (TLS
+            # passthrough) — see tenants/arrakis/infra/apiserver-ingressroutetcp.yaml.
+            external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
   policyRefs:
+    # One ExitNode per VPS — chisel-operator load-balances Traefik's egress
+    # across them. Add nodes by dropping a file in exit-nodes/.
     - kind: GitRepository
       name: homelab
       namespace: flux-system
-      path: ./clusters/baremetal/addons/chisel-operator
+      path: ./clusters/baremetal/addons/chisel-operator/exit-nodes
     - kind: GitRepository
       name: homelab
       namespace: flux-system

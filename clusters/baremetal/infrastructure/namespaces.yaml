@@ -1,7 +1,7 @@
 # Namespaces. Sveltos and its prereq sit here; the rest (cert-manager,
 # kubevirt, capi-system, kamaji-system, traefik, external-dns,
-# chisel-operator-system, sealed-secrets) are created by the Sveltos
-# ClusterProfile that installs the corresponding chart.
+# chisel-operator-system) are created by the Sveltos ClusterProfile that
+# installs the corresponding chart.
 apiVersion: v1
 kind: Namespace
 metadata:

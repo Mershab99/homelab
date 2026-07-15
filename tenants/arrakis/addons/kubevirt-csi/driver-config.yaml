@@ -1,0 +1,23 @@
+# kubevirt-csi runtime config for the arrakis tenant. Replaces the incomplete
+# ConfigMap from the upstream base (which omitted infraStorageClassEnforcement,
+# a key the controller mounts → pod would fail without it).
+#
+# infraClusterNamespace: where this tenant's KubeVirt VMs + DataVolumes live on
+# the mgmt (infra) cluster — the CAPI Cluster is in `tenants`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt-csi-driver
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: driver-config
+  namespace: kubevirt-csi-driver
+data:
+  infraClusterNamespace: tenants
+  infraClusterLabels: csi-driver/cluster=tenant
+  # Permissive: any infra StorageClass allowed (homelab has one — longhorn).
+  infraStorageClassEnforcement: |
+    allowAll: true
+    allowDefault: true

@@ -1,7 +1,12 @@
 # dns — external-dns, reading Ingress/Service hostnames and publishing
-# Cloudflare records.
+# Cloudflare records. Multi-cluster: matches any cluster labelled needs.dns
+# (mgmt + tenant). Every instance shares the mershab.com zone, so txtOwnerId +
+# txtPrefix are templated per cluster name (Sveltos exposes .Cluster) — that
+# unique owner-id + record prefix is what keeps two external-dns instances from
+# clobbering each other's TXT registry (external-dns multi-instance docs).
 #
-# Same cluster-wide CF token Secret as tls-stack.
+# CF token Secret (cloudflare-api-token, ns external-dns) must exist on each
+# matched cluster — for the tenant, apply it there by hand too.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -33,8 +38,8 @@ spec:
           - ingress              # Dex (legacy external class via Traefik)
           - service
           - gateway-httproute    # homelab services on the Traefik Gateway
-        txtOwnerId: homelab-mgmt
-        txtPrefix: "edns-"
+        txtOwnerId: homelab-{{ .Cluster.metadata.name }}
+        txtPrefix: "edns-{{ .Cluster.metadata.name }}-"
         policy: sync
         registry: txt
         serviceMonitor:
