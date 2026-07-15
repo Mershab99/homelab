@@ -546,9 +546,11 @@ spec:
           hostPath:
             path: /run/udev
 ---
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshotClass
-metadata:
-  name: kubevirt-csi-snapclass
-driver: csi.kubevirt.io
-deletionPolicy: Delete
+# VolumeSnapshotClass dropped: the tenant has no external-snapshotter CRDs
+# and nothing snapshots yet. Re-add (plus the snapshot.storage.k8s.io CRDs)
+# when snapshots are actually wanted:
+#   apiVersion: snapshot.storage.k8s.io/v1
+#   kind: VolumeSnapshotClass
+#   metadata: {name: kubevirt-csi-snapclass}
+#   driver: csi.kubevirt.io
+#   deletionPolicy: Delete
