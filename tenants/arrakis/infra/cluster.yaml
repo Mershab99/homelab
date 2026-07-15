@@ -91,22 +91,32 @@ spec:
   # (K0sWorkerConfigTemplates) use the '+k0s.' form of the same release.
   version: v1.36.2-k0s.0
   replicas: 1   # bump to 3 once R820 lands
-  # ClusterIP — the tenant apiserver is fronted by Traefik, not exposed as
-  # its own LB (chisel-operator here is class-filtered). A Gateway TLSRoute
-  # (TLS passthrough, SNI k8s-home.mershab.com) reuses the single chisel
-  # edge — see apiserver-tlsroute.yaml. external-dns for the FQDN lives on
-  # the Traefik Service (02-ingress-external).
+  # LoadBalancer with the chisel class — chisel-operator tunnels 6443 (and
+  # 8132) straight to the VPS, no Traefik/Gateway hop. k0smotron's service
+  # schema has no loadBalancerClass/annotations fields, so both are injected
+  # via spec.patches below. external-dns picks the FQDN off the annotation.
   #
-  # externalAddress must be set explicitly for ClusterIP (k0smotron only
-  # auto-detects it for LB/NodePort services and blocks without it). The CP
-  # service's cluster DNS name keeps node↔CP traffic on the local network —
-  # worker VMs sit on the mgmt pod network (masquerade) so they resolve and
-  # reach ClusterIP services directly.
+  # externalAddress stays the cluster-local service DNS name so worker join
+  # tokens + the CAPI kubeconfig target the local network (worker VMs sit on
+  # the mgmt pod network via masquerade) instead of hairpinning through the
+  # VPS. Off-LAN kubectl: https://k8s-home.mershab.com:6443 (SAN below).
   externalAddress: kmc-arrakis.tenants.svc.cluster.local
   service:
-    type: ClusterIP
+    type: LoadBalancer
     apiPort: 6443
     konnectivityPort: 8132
+  patches:
+    - target:
+        kind: Service
+        component: control-plane
+      patch:
+        type: merge
+        content: |
+          metadata:
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
+          spec:
+            loadBalancerClass: chisel.mershab.com/external
   # CP pod data dir is disposable — cluster CA/SA keys live in CAPI secrets
   # (arrakis-ca etc.) and state lives in etcd, which gets its own PVC.
   persistence:

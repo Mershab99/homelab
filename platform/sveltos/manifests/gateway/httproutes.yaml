@@ -1,10 +1,10 @@
-# HTTPRoutes for every homelab service (*.homelab.mershab.com) on the shared
+# HTTPRoutes for every homelab service (*.mershab.com) on the shared
 # Gateway. All routes live in the traefik ns; cross-ns backends are unlocked by
 # a ReferenceGrant in each app ns. Grafana authenticates against Dex itself.
 #
 # NOTE: longhorn, hubble and the Traefik dashboard are served UNAUTHENTICATED
 # (oauth2-proxy forwardAuth was removed). They're internal-only
-# (*.homelab.mershab.com), but add auth back if that's not acceptable.
+# (*.mershab.com), but add auth back if that's not acceptable.
 #
 # ponytail: service ports for hubble/longhorn are the chart defaults —
 # verify with `kubectl get svc -A` after deploy if a route 404s.
@@ -15,7 +15,7 @@ kind: HTTPRoute
 metadata: {name: grafana, namespace: traefik}
 spec:
   parentRefs: [{name: shared, namespace: traefik}]
-  hostnames: ["grafana.homelab.mershab.com"]
+  hostnames: ["grafana.mershab.com"]
   rules:
     - backendRefs: [{name: grafana-service, namespace: monitoring, port: 3000}]
 ---
@@ -32,7 +32,7 @@ kind: HTTPRoute
 metadata: {name: longhorn, namespace: traefik}
 spec:
   parentRefs: [{name: shared, namespace: traefik}]
-  hostnames: ["longhorn.homelab.mershab.com"]
+  hostnames: ["longhorn.mershab.com"]
   rules:
     - backendRefs: [{name: longhorn-frontend, namespace: longhorn-system, port: 80}]
 ---
@@ -49,7 +49,7 @@ kind: HTTPRoute
 metadata: {name: hubble, namespace: traefik}
 spec:
   parentRefs: [{name: shared, namespace: traefik}]
-  hostnames: ["hubble.homelab.mershab.com"]
+  hostnames: ["hubble.mershab.com"]
   rules:
     - backendRefs: [{name: hubble-ui, namespace: kube-system, port: 80}]
 ---
@@ -110,7 +110,7 @@ metadata: {name: traefik-dashboard, namespace: traefik}
 spec:
   entryPoints: [websecure]
   routes:
-    - match: Host(`traefik.homelab.mershab.com`)
+    - match: Host(`traefik.mershab.com`)
       kind: Rule
       services: [{name: api@internal, kind: TraefikService}]
   tls:

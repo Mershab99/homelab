@@ -1,6 +1,6 @@
 # Shared internal Gateway — Traefik Gateway API. One VIP (chisel-tunnelled),
 # one wildcard listener; every homelab service attaches an HTTPRoute for
-# <svc>.homelab.mershab.com. External reachability is via chisel-operator
+# <svc>.mershab.com. External reachability is via chisel-operator
 # (Traefik's Service has the chisel loadBalancerClass — see 02-ingress-external).
 apiVersion: gateway.networking.k8s.io/v1
 kind: GatewayClass
@@ -9,8 +9,10 @@ metadata:
 spec:
   controllerName: traefik.io/gateway-controller
 ---
-# Wildcard TLS for *.homelab.mershab.com via letsencrypt-prod (Cloudflare DNS-01,
+# Wildcard TLS for *.mershab.com via letsencrypt-prod (Cloudflare DNS-01,
 # already configured in 01-tls-stack). DNS-01 is required for wildcards.
+# (Flattened from *.homelab.mershab.com 2026-07-15; secret name kept to
+# avoid churning listener refs — cert-manager reissues in place.)
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -21,9 +23,9 @@ spec:
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
-  commonName: "*.homelab.mershab.com"
+  commonName: "*.mershab.com"
   dnsNames:
-    - "*.homelab.mershab.com"
+    - "*.mershab.com"
 ---
 # Apex TLS for mershab.com (the public website). The homelab wildcard does NOT
 # cover the apex, so it needs its own cert. letsencrypt-prod DNS-01 already lists
@@ -58,7 +60,7 @@ spec:
     - name: https
       protocol: HTTPS
       port: 8443
-      hostname: "*.homelab.mershab.com"
+      hostname: "*.mershab.com"
       tls:
         mode: Terminate
         certificateRefs:
@@ -80,15 +82,6 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
-    # Tenant apiserver — TLS passthrough by SNI (the apiserver presents its
-    # own cert; SAN k8s-home.mershab.com is in the k0s config). Attached by
-    # the TLSRoute in tenants/arrakis/infra/apiserver-tlsroute.yaml.
-    - name: k8s-apiserver
-      protocol: TLS
-      port: 8443
-      hostname: k8s-home.mershab.com
-      tls:
-        mode: Passthrough
-      allowedRoutes:
-        namespaces:
-          from: All
+    # (tenant apiserver is NOT routed here — its k0smotron Service is a
+    # chisel-class LoadBalancer with its own VPS tunnel on :6443; see
+    # tenants/arrakis/infra/cluster.yaml spec.patches)

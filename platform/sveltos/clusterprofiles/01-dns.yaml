@@ -33,7 +33,7 @@ spec:
                 name: cloudflare-api-token
                 key: api-token
         domainFilters:
-          - mershab.com          # matches mershab.com + all subdomains (incl. *.homelab.mershab.com)
+          - mershab.com          # matches mershab.com + all subdomains (flat *.mershab.com scheme)
         sources:
           - ingress              # Dex (legacy external class via Traefik)
           - service

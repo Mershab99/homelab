@@ -25,8 +25,8 @@ spec:
       role_attribute_path: "contains(groups[*], 'oidc:platform-admins') && 'GrafanaAdmin' || contains(groups[*], 'oidc:viewers') && 'Viewer' || 'Viewer'"
       allow_assign_grafana_admin: "true"
     server:
-      domain: grafana.homelab.mershab.com
-      root_url: https://grafana.homelab.mershab.com
+      domain: grafana.mershab.com
+      root_url: https://grafana.mershab.com
   deployment:
     spec:
       template:
@@ -41,4 +41,4 @@ spec:
               secret:
                 secretName: grafana-oidc
   # No Grafana-managed Ingress — exposed via the Traefik Gateway HTTPRoute
-  # (grafana.homelab.mershab.com) in platform/sveltos/manifests/gateway.
+  # (grafana.mershab.com) in platform/sveltos/manifests/gateway.

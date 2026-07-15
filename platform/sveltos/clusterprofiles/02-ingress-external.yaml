@@ -1,7 +1,7 @@
 # ingress-external — chisel-operator + ExitNode + Traefik v3 (Gateway API).
 #
 # Traefik is the single edge proxy: it implements Gateway API (homelab services
-# on *.homelab.mershab.com via HTTPRoute) AND still serves the legacy `external`
+# on *.mershab.com via HTTPRoute) AND still serves the legacy `external`
 # IngressClass (Dex at auth.mershab.com). Its Service carries the chisel
 # loadBalancerClass, so chisel-operator tunnels the entrypoint to the ExitNode
 # (the only path to the internet — no local LB).
@@ -70,11 +70,10 @@ spec:
           spec:
             loadBalancerClass: chisel.mershab.com/external
           externalTrafficPolicy: Local
-          annotations:
-            # Point the tenant apiserver FQDN at Traefik's chisel-assigned VPS IP.
-            # The apiserver rides through here via a Gateway TLSRoute (TLS
-            # passthrough) — see tenants/arrakis/infra/apiserver-tlsroute.yaml.
-            external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
+          annotations: {}
+            # (k8s-home.mershab.com moved to the k0smotron CP Service — it is
+            # its own chisel LoadBalancer now; see tenants/arrakis/infra/
+            # cluster.yaml spec.patches.)
   policyRefs:
     # One ExitNode per VPS — chisel-operator load-balances Traefik's egress
     # across them. Add nodes by dropping a file in exit-nodes/.
