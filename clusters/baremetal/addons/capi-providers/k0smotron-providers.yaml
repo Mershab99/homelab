@@ -1,0 +1,36 @@
+# k0smotron bootstrap + control-plane providers owned declaratively (NOT by
+# the capi-operator chart's helm hooks) — same rationale as core-provider.yaml:
+# the chart renders provider CRs as post-install/post-upgrade hooks with
+# delete-policy before-hook-creation, so every upgrade deletes+recreates them.
+# On 2026-07-15 both k0smotron providers (and their namespaces) vanished this
+# way minutes after first install — the hook re-ran while the namespaces were
+# still terminating and the recreated CRs were swept with them. Sveltos owning
+# them here means they always come back.
+#
+# Version pins live here (not in 05-capi-stack.yaml values) — keep in lockstep
+# with the contract set documented in that profile's header.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k0sproject-k0smotron-bootstrap-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k0sproject-k0smotron-control-plane-system
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: BootstrapProvider
+metadata:
+  name: k0sproject-k0smotron
+  namespace: k0sproject-k0smotron-bootstrap-system
+spec:
+  version: v2.0.3
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: ControlPlaneProvider
+metadata:
+  name: k0sproject-k0smotron
+  namespace: k0sproject-k0smotron-control-plane-system
+spec:
+  version: v2.0.3

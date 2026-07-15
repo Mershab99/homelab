@@ -1,7 +1,9 @@
 # capi-stack — cluster-api-operator + CAPI providers (k0smotron edition).
 #
-# cluster-api-operator installs ALL providers via its Helm values structure
-# (no separate Provider CRs needed). Providers we enable:
+# cluster-api-operator reconciles the provider CRs; core+kubevirt come from
+# the chart values (helm hooks), the k0smotron pair + a CoreProvider copy are
+# sveltos-owned raw manifests (policyRef) because of the hook race — see the
+# values comment + capi-providers/ file headers. Providers in the stack:
 #   core                              — core CAPI controllers
 #   bootstrap/k0sproject-k0smotron    — K0sWorkerConfig cloud-init for workers
 #   controlPlane/k0sproject-k0smotron — hosted k0s control planes as pods on mgmt
@@ -51,20 +53,15 @@ spec:
           featureGates:
             core:
               ClusterResourceSet: true
-        # Provider install via operator values — cleaner than maintaining
-        # separate CoreProvider/BootstrapProvider/etc CRs. Versions pinned so
-        # the helm-hook CRs and the sveltos-owned core-provider.yaml agree.
+        # Provider install via operator values. Versions pinned so the
+        # helm-hook CRs and the sveltos-owned core-provider.yaml agree.
+        # The k0smotron bootstrap/controlPlane providers are NOT here — the
+        # hook delete+recreate race ate them on day one, so they're sveltos-
+        # owned raw manifests instead (k0smotron-providers.yaml in the
+        # policyRef below, same treatment as CoreProvider).
         core:
           cluster-api:
             version: v1.13.3
-        # k0smotron is a clusterctl built-in provider — the operator resolves
-        # "k0sproject-k0smotron" to github.com/k0sproject/k0smotron releases.
-        bootstrap:
-          k0sproject-k0smotron:
-            version: v2.0.3
-        controlPlane:
-          k0sproject-k0smotron:
-            version: v2.0.3
         infrastructure:
           kubevirt:
             version: v0.11.2
