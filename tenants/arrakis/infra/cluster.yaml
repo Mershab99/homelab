@@ -94,14 +94,11 @@ spec:
   # schema has no loadBalancerClass/annotations fields, so both are injected
   # via spec.patches below. external-dns picks the FQDN off the annotation.
   #
-  # externalAddress = the public FQDN (chisel VPS). k0smotron propagates it
-  # into KubevirtCluster.spec.controlPlaneEndpoint, the CAPI kubeconfig
-  # secret, and worker join tokens — everything targets the external
-  # endpoint; nothing points at the cluster-local svc DNS (which off-LAN
-  # kubectl can't resolve). Workers hairpin 6443/8132 through the VPS.
+  # No externalAddress: k0smotron waits for the LB Service's ingress IP
+  # (chisel populates the VPS IP) and uses it for controlPlaneEndpoint,
+  # kubeconfig, and join tokens — raw IP, no DNS dependency.
   # NB: with type LoadBalancer k0smotron names the Service kmc-<name>-lb
   # (the plain kmc-arrakis ClusterIP svc no longer exists).
-  externalAddress: k8s-home.mershab.com
   service:
     type: LoadBalancer
     apiPort: 6443
