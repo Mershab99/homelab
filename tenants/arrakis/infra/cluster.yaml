@@ -9,8 +9,10 @@
 # OIDC: disabled for now (cert-auth only) — see k0sConfig comment below.
 #
 # Networking: pods 10.243.0.0/16 (distinct from bare-metal's 10.244.0.0/16),
-# services 10.96.0.0/16. KubeVirt masquerade isolates the tenant network
-# from bare-metal's matching service CIDR.
+# services 10.112.0.0/16 — deliberately OUTSIDE bare-metal's 10.96.0.0/12.
+# Overlap bit us hard (2026-07-16): worker VMs get mgmt DNS (10.96.0.10) via
+# masquerade DHCP, and tenant Cilium captured that VIP once it started —
+# node DNS died, kubelet couldn't pull images or reach the CP.
 #
 # Single-cluster setup: KubevirtCluster has no infraClusterSecretRef, so
 # CAPK provisions VMs on the SAME cluster CAPI runs on. If/when we ever
@@ -36,7 +38,7 @@ spec:
     pods:
       cidrBlocks: [10.243.0.0/16]
     services:
-      cidrBlocks: [10.96.0.0/16]
+      cidrBlocks: [10.112.0.0/16]
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: K0smotronControlPlane
@@ -94,11 +96,16 @@ spec:
   # schema has no loadBalancerClass/annotations fields, so both are injected
   # via spec.patches below. external-dns picks the FQDN off the annotation.
   #
-  # No externalAddress: k0smotron waits for the LB Service's ingress IP
-  # (chisel populates the VPS IP) and uses it for controlPlaneEndpoint,
-  # kubeconfig, and join tokens — raw IP, no DNS dependency.
+  # externalAddress = cluster-local svc DNS: workers join INTERNALLY (they
+  # sit on the mgmt pod network via masquerade and, with the serviceCIDR
+  # overlap gone, resolve mgmt DNS). Never point workers at the VPS — the
+  # provider filters most inbound ports and a filter flap orphans every
+  # kubelet (2026-07-16). Off-LAN access: ssh -L tunnel to the VPS chisel
+  # port until RackNerd opens 6443 (then k8s-home.mershab.com works, SAN
+  # already present).
   # NB: with type LoadBalancer k0smotron names the Service kmc-<name>-lb
   # (the plain kmc-arrakis ClusterIP svc no longer exists).
+  externalAddress: kmc-arrakis-lb.tenants.svc.cluster.local
   service:
     type: LoadBalancer
     apiPort: 6443
@@ -141,6 +148,6 @@ spec:
         # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).
         provider: custom
         podCIDR: 10.243.0.0/16
-        serviceCIDR: 10.96.0.0/16
+        serviceCIDR: 10.112.0.0/16
         kubeProxy:
           disabled: false   # Cilium runs as pure CNI; kube-proxy stays
