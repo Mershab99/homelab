@@ -1,0 +1,57 @@
+# ServiceAccount + Role for the TENANT's kubevirt-csi controller to manage
+# DataVolumes / VM hotplug on THIS (infra/mgmt) cluster, scoped to `tenants`.
+# The SA token is packed into a kubeconfig and applied to arrakis as the
+# `infra-cluster-credentials` Secret (see secrets/infrastructure/kubevirt-csi/).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubevirt-csi
+  namespace: tenants
+---
+# Long-lived token for the SA (k8s 1.24+ no longer auto-creates these).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubevirt-csi-token
+  namespace: tenants
+  annotations:
+    kubernetes.io/service-account.name: kubevirt-csi
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubevirt-csi
+  namespace: tenants
+rules:
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachineinstances"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources:
+      - virtualmachineinstances/addvolume
+      - virtualmachineinstances/removevolume
+    verbs: ["update"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: ["volumesnapshots"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubevirt-csi
+  namespace: tenants
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubevirt-csi
+subjects:
+  - kind: ServiceAccount
+    name: kubevirt-csi
+    namespace: tenants
