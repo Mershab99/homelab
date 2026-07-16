@@ -22,6 +22,9 @@ kind: ClusterProfile
 metadata:
   name: tenant-arrakis
 spec:
+  # DriftDetection: a deleted Cluster CR (tenant rebuild) gets recreated
+  # from git immediately — plain Continuous only redeploys on hash change.
+  syncMode: ContinuousWithDriftDetection
   clusterRefs:
     - kind: SveltosCluster
       apiVersion: lib.projectsveltos.io/v1beta1
