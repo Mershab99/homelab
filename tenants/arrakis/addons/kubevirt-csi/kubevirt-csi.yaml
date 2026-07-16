@@ -81,8 +81,8 @@ spec:
       enableServiceLinks: false
       serviceAccount: kubevirt-csi-controller-sa
       priorityClassName: system-cluster-critical
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+      # No control-plane nodeSelector: k0smotron clusters have no CP nodes
+      # (CP runs as pods on the hub) — controller runs on workers.
       tolerations:
         - key: CriticalAddonsOnly
           operator: Exists
