@@ -23,6 +23,15 @@ spec:
       args:
         - --labels=node.mershab.com/pool=general
       preK0sCommands:
+        # Pin node DNS to public resolvers. The guest's DHCP resolv.conf
+        # points at the MGMT cluster's kube-dns VIP (10.96.0.10), and the
+        # tenant serviceCIDR overlaps 10.96.0.0/16 — once tenant Cilium
+        # starts on this node it captures that VIP and node-level DNS
+        # (kubelet image pulls!) dies. Public resolvers sidestep the overlap.
+        - rm -f /etc/resolv.conf
+        - printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
+        - systemctl disable --now systemd-resolved 2>/dev/null || true
+
         # inotify limits — many small pods saturate the default.
         - echo "fs.inotify.max_user_watches=2048576" >> /etc/sysctl.conf
         - echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf

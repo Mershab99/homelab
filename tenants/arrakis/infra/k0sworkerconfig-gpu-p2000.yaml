@@ -14,6 +14,12 @@ spec:
       args:
         - --labels=node.mershab.com/pool=gpu-p2000,nvidia.com/gpu=p2000
       preK0sCommands:
+        # Pin node DNS to public resolvers (see k0sworkerconfig-general.yaml
+        # — tenant serviceCIDR overlaps mgmt kube-dns VIP).
+        - rm -f /etc/resolv.conf
+        - printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
+        - systemctl disable --now systemd-resolved 2>/dev/null || true
+
         - echo "fs.inotify.max_user_watches=2048576" >> /etc/sysctl.conf
         - echo "fs.inotify.max_user_instances=1024" >> /etc/sysctl.conf
         - sysctl -p
