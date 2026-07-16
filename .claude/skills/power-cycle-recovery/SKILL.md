@@ -159,8 +159,16 @@ kubectl --context admin@contraxia patch kubevirtcluster arrakis -n tenants \
 ```
 
 Arrakis API is chisel-exposed (NOT cilium): kmc-arrakis-lb binds ExitNode
-node-01 (shared with traefik — the operator multiplexes; a transient
-NoAvailableExitNodes right after reinstall resolves on retry).
+node-01. chisel-operator is strictly ONE Service per ExitNode — never add a
+second LB Service on mgmt or it steals the tunnel and arrakis goes dark.
+
+RackNerd VPS filters inbound ports (only 22 + 9090 pass). Off-LAN access:
+`ssh -f -N -L 16443:127.0.0.1:6443 root@72.11.146.116`, kubeconfig server
+`https://127.0.0.1:16443`.
+
+Tenant full rebuild: deleting Cluster arrakis leaves the etcd PVC
+(`etcd-data-kmc-arrakis-etcd-0`) — delete it too, or the new CP mounts the
+old cluster's state (phantom nodes, stale service CIDR).
 
 ```bash
 kubectl --context admin@contraxia get cluster -n tenants        # Provisioning → Provisioned
