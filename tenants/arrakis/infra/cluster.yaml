@@ -96,13 +96,14 @@ spec:
   # schema has no loadBalancerClass/annotations fields, so both are injected
   # via spec.patches below. external-dns picks the FQDN off the annotation.
   #
-  # externalAddress stays the cluster-local service DNS name so worker join
-  # tokens + the CAPI kubeconfig target the local network (worker VMs sit on
-  # the mgmt pod network via masquerade) instead of hairpinning through the
-  # VPS. Off-LAN kubectl: https://k8s-home.mershab.com:6443 (SAN below).
+  # externalAddress = the public FQDN (chisel VPS). k0smotron propagates it
+  # into KubevirtCluster.spec.controlPlaneEndpoint, the CAPI kubeconfig
+  # secret, and worker join tokens — everything targets the external
+  # endpoint; nothing points at the cluster-local svc DNS (which off-LAN
+  # kubectl can't resolve). Workers hairpin 6443/8132 through the VPS.
   # NB: with type LoadBalancer k0smotron names the Service kmc-<name>-lb
   # (the plain kmc-arrakis ClusterIP svc no longer exists).
-  externalAddress: kmc-arrakis-lb.tenants.svc.cluster.local
+  externalAddress: k8s-home.mershab.com
   service:
     type: LoadBalancer
     apiPort: 6443
