@@ -24,7 +24,10 @@ spec:
       apiVersion: lib.projectsveltos.io/v1beta1
       name: mgmt
       namespace: mgmt
-  syncMode: Continuous
+  # DriftDetection: if the deployed ClusterProfiles are deleted out-of-band
+  # (e.g. helm remediation after a power cycle nukes them), redeploy them
+  # instead of waiting for the next git-artifact hash change.
+  syncMode: ContinuousWithDriftDetection
   # deploymentType defaults to Remote → deploys to the matched cluster (mgmt),
   # same as every other mgmt-targeted profile (olm, capi-stack, ...).
   kustomizationRefs:
