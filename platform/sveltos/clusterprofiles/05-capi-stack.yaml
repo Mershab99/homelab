@@ -1,9 +1,9 @@
 # capi-stack — cluster-api-operator + CAPI providers (k0smotron edition).
 #
-# cluster-api-operator reconciles the provider CRs; all four come from the
-# chart values (helm hooks), and the k0smotron pair + CoreProvider are ALSO
-# sveltos-owned raw manifests (policyRef) because of the hook race — see the
-# values comment + capi-providers/ file headers. Providers in the stack:
+# cluster-api-operator reconciles the provider CRs; the chart installs ONLY
+# the operator (no provider values, no helm hooks — see values comment), and
+# all four provider CRs are sveltos-owned raw manifests (policyRef).
+# Providers in the stack:
 #   core                              — core CAPI controllers
 #   bootstrap/k0sproject-k0smotron    — K0sWorkerConfig cloud-init for workers
 #   controlPlane/k0sproject-k0smotron — hosted k0s control planes as pods on mgmt
@@ -49,42 +49,27 @@ spec:
       releaseNamespace: capi-operator-system
       helmChartAction: Install
       values: |
-        # NB: provider CRs are helm HOOKS (delete-policy before-hook-creation).
-        # An upgrade deletes+recreates them; if a provider ns (capi-system) is
-        # still terminating when hooks re-run, that provider silently vanishes.
-        # Bumping this comment forces a re-upgrade to re-run hooks if needed.
-        enableHelmHook: true
+        # OPERATOR-ONLY install: NO provider values, NO helm hooks. The chart's
+        # provider-CRs-as-hooks design is atomic-failure-prone: if any hook hits
+        # a not-yet-ready operator webhook or a terminating namespace, the whole
+        # install fails, Sveltos remediation uninstalls the operator, namespaces
+        # go Terminating, and the next attempt fails on THEM — infinite loop
+        # (2026-07-16 power-cycle recovery hit exactly this). All four provider
+        # CRs live in the policyRef below instead; the Resources feature retries
+        # each apply independently until the operator webhook is ready.
+        # Leaving core/bootstrap/controlPlane/infrastructure unset also means
+        # the chart's infra-conditions.yaml never auto-deploys kubeadm providers.
         # (No manager.featureGates — CAPI v1.13 removed ClusterResourceSet,
-        # and passing the gate crashloops the core manager. Nothing here used
-        # CRS anyway; Sveltos is the add-on delivery mechanism.)
-        # Provider install via operator values. Versions pinned so the
-        # helm-hook CRs and the sveltos-owned raw manifests agree.
-        # bootstrap/controlPlane MUST stay non-empty: the 0.27 chart's
-        # infra-conditions.yaml auto-deploys KUBEADM providers whenever
-        # infrastructure is set but bootstrap/controlPlane are empty.
-        # The k0smotron pair is ALSO sveltos-owned (k0smotron-providers.yaml
-        # in the policyRef below, same doubled treatment as CoreProvider) so
-        # the hook delete+recreate race can't permanently eat them — it did
-        # exactly that on day one.
-        core:
-          cluster-api:
-            version: v1.13.3
-        bootstrap:
-          k0sproject-k0smotron:
-            version: v2.0.3
-        controlPlane:
-          k0sproject-k0smotron:
-            version: v2.0.3
-        infrastructure:
-          kubevirt:
-            version: v0.11.2
+        # and passing the gate crashloops the core manager.)
         # addon/helm (HelmChartProxy) disabled — Sveltos delivers tenant CNI
         # directly (11-tenant-cilium.yaml); saves the CAAH controller pod.
         # cert-manager: the 0.27 chart no longer bundles it (we install it
         # separately via tls-stack anyway).
+        enableHelmHook: false
   policyRefs:
-    # CoreProvider as raw manifest — chart's helm-hook copy can vanish on
-    # upgrade (terminating-ns race); see core-provider.yaml header.
+    # ALL provider CRs (core, k0smotron bootstrap+controlPlane, kubevirt infra)
+    # as raw manifests — versions pinned in the files, contract set documented
+    # in the header above.
     - kind: GitRepository
       name: homelab
       namespace: flux-system
