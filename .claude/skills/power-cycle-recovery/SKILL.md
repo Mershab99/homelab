@@ -38,9 +38,28 @@ kubectl --context admin@contraxia get clusterprofiles
 grep -v '^\s*#' platform/sveltos/clusterprofiles/kustomization.yaml | grep yaml
 ```
 
-Missing profiles: do NOT hand-apply. The root ClusterProfile recreates them
-on its next reconcile (watch `clustersummaries -A`). Only intervene if
-addon-controller logs show errors:
+Missing profiles: do NOT hand-apply. Root runs `ContinuousWithDriftDetection`
+so it recreates deleted profiles on its own (watch `clustersummaries -A`).
+If root somehow lost drift detection, bump the artifact instead: push any
+commit, then `kubectl annotate gitrepository homelab -n flux-system
+reconcile.fluxcd.io/requestedAt=$(date +%s) --overwrite`.
+
+A profile can also be stuck **dying** (deletionTimestamp set, held by
+`clusterprofilefinalizer`): its ClusterSummary loops on
+`undeploying failing because of missing permission` and never drains. This
+deadlocks every profile that `dependsOn` it (e.g. capi-stack → virt-host).
+If the addon it deployed should KEEP running (KubeVirt, cert-manager...),
+skip the teardown entirely — strip finalizers on both objects; root
+recreates the profile and re-adopts the running addon idempotently:
+
+```bash
+kubectl --context admin@contraxia patch clustersummary <name>-sveltos-mgmt -n mgmt \
+  --type=merge -p '{"metadata":{"finalizers":null}}'
+kubectl --context admin@contraxia patch clusterprofile <name> \
+  --type=merge -p '{"metadata":{"finalizers":null}}'
+```
+
+Only intervene beyond that if addon-controller logs show errors:
 
 ```bash
 kubectl --context admin@contraxia -n projectsveltos logs deploy/addon-controller \
