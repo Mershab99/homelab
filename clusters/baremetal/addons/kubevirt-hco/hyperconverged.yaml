@@ -12,6 +12,10 @@ kind: HyperConverged
 metadata:
   name: kubevirt-hyperconverged
   namespace: kubevirt-hyperconverged
+  annotations:
+    # Opt in to the virt-platform-autopilot controller. Value is "true" or a
+    # comma-separated list of asset names to manage; "true" manages all.
+    platform.kubevirt.io/autopilot: "true"
 spec:
   virtualization:
     permittedHostDevices:
