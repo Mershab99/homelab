@@ -35,7 +35,7 @@ spec:
     - repositoryURL: https://traefik.github.io/charts
       repositoryName: traefik
       chartName: traefik/traefik
-      chartVersion: 33.x
+      chartVersion: 33.2.1   # pinned exact: wildcard "33.x" trips sveltos semver.NewVersion → "invalid semantic version" (same as external-dns 1.15.2)
       releaseName: traefik
       releaseNamespace: traefik
       helmChartAction: Install
