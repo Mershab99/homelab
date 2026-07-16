@@ -149,8 +149,22 @@ against arrakis, not by apply.sh — do it after arrakis API is reachable.
 
 ## 5. Verify arrakis
 
+If the KubevirtCluster was recreated, re-apply the documented k0smotron
+v2.0.3 workaround (see comment in tenants/arrakis/infra/cluster.yaml) —
+without it machines sit in Pending/WaitingForClusterInfrastructure forever:
+
+```bash
+kubectl --context admin@contraxia patch kubevirtcluster arrakis -n tenants \
+  --subresource=status --type=merge -p '{"status":{"ready":true}}'
+```
+
+Arrakis API is chisel-exposed (NOT cilium): kmc-arrakis-lb binds ExitNode
+node-01 (shared with traefik — the operator multiplexes; a transient
+NoAvailableExitNodes right after reinstall resolves on retry).
+
 ```bash
 kubectl --context admin@contraxia get cluster -n tenants        # Provisioning → Provisioned
+kubectl --context admin@contraxia get svc kmc-arrakis-lb -n tenants  # EXTERNAL-IP = VPS
 kubectl --context admin@contraxia get vm,vmi -n tenants         # worker VMs boot
 kubectl --context admin@contraxia get machines -n tenants
 ```
