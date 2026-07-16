@@ -37,7 +37,9 @@ spec:
         sources:
           - ingress              # Dex (legacy external class via Traefik)
           - service
-          - gateway-httproute    # homelab services on the Traefik Gateway
+          # gateway-httproute only where Gateway API exists (mgmt/Traefik);
+          # on tenants the informer sync fatals and crashloops the pod.
+          {{ if eq .Cluster.metadata.name "mgmt" }}- gateway-httproute{{ end }}
         txtOwnerId: homelab-{{ .Cluster.metadata.name }}
         txtPrefix: "edns-{{ .Cluster.metadata.name }}-"
         policy: sync

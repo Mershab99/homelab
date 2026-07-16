@@ -17,7 +17,7 @@ spec:
     - repositoryURL: https://charts.jetstack.io
       repositoryName: jetstack
       chartName: jetstack/cert-manager
-      chartVersion: v1.15.x
+      chartVersion: v1.15.5   # pinned exact: wildcard "v1.15.x" trips sveltos semver on upgrade (same as external-dns)
       releaseName: cert-manager
       releaseNamespace: cert-manager
       helmChartAction: Install
