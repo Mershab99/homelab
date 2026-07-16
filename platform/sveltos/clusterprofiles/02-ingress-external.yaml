@@ -1,13 +1,14 @@
-# ingress-external — chisel-operator + ExitNode + Traefik v3 (Gateway API).
+# ingress-external — chisel-operator + ExitNode(s) on mgmt.
 #
-# Traefik is the single edge proxy: it implements Gateway API for all homelab
-# services on *.mershab.com via HTTPRoute (Dex/auth included). Its Service carries the chisel
-# loadBalancerClass, so chisel-operator tunnels the entrypoint to the ExitNode
-# (the only path to the internet — no local LB).
+# mgmt exposes ONLY the tenant control-plane LoadBalancers (kmc-<tenant>-lb)
+# through chisel — no Gateway/Traefik on mgmt. chisel-operator binds ONE
+# Service per ExitNode (1:1 — hard-learned 2026-07-16: two LB Services and
+# one ExitNode flip-flop, whoever reconciles last steals the tunnel and the
+# other goes dark).
 #
-# Day-1: exit-nodes/ ships one placeholder ExitNode (no VPS yet); Traefik's
-# Service sits Pending an external IP until a node's host/auth is filled — see
-# clusters/baremetal/addons/chisel-operator/exit-nodes/node-01.yaml.
+# App ingress (Traefik + Gateway API) belongs on the tenant (arrakis) —
+# delivered by a tenant-targeted profile, with its own chisel-operator +
+# ExitNode there when it lands.
 #
 # mgmt-only.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -32,57 +33,10 @@ spec:
       helmChartAction: Install
       values: |
         loadBalancerClass: chisel.mershab.com/external
-    - repositoryURL: https://traefik.github.io/charts
-      repositoryName: traefik
-      chartName: traefik/traefik
-      chartVersion: 33.2.1   # pinned exact: wildcard "33.x" trips sveltos semver.NewVersion → "invalid semantic version" (same as external-dns 1.15.2)
-      releaseName: traefik
-      releaseNamespace: traefik
-      helmChartAction: Install
-      values: |
-        # Providers: Gateway API (all homelab services, incl. Dex) + CRD
-        # (IngressRoute for the dashboard). Legacy Ingress provider removed —
-        # nothing uses it now that Dex is on the Gateway.
-        providers:
-          kubernetesGateway:
-            enabled: true
-            # TLSRoute (tenant apiserver passthrough) is experimental-channel
-            # Gateway API; CRD vendored at manifests/gateway/tlsroute-crd.yaml.
-            experimentalChannel: true
-          kubernetesCRD:
-            enabled: true
-        # We define our own GatewayClass/Gateway in manifests/gateway — don't let
-        # the chart create a default one.
-        gateway:
-          enabled: false
-        gatewayClass:
-          enabled: false
-        # Dashboard served on the internal `traefik` entrypoint (:8080) via the
-        # insecure API. That port is NOT on the LoadBalancer Service, so chisel
-        # never tunnels it — it's reachable only in-cluster, then fronted by an
-        # HTTPRoute at traefik.mershab.com (manifests/gateway). HTTPRoute is used
-        # so external-dns publishes the record (it can't see IngressRoutes).
-        # UNAUTHENTICATED + internal-only — add forwardAuth if that's not OK.
-        api:
-          dashboard: true
-          insecure: true
-        service:
-          type: LoadBalancer
-          spec:
-            loadBalancerClass: chisel.mershab.com/external
-          externalTrafficPolicy: Local
-          annotations: {}
-            # (k8s-home.mershab.com moved to the k0smotron CP Service — it is
-            # its own chisel LoadBalancer now; see tenants/arrakis/infra/
-            # cluster.yaml spec.patches.)
   policyRefs:
-    # One ExitNode per VPS — chisel-operator load-balances Traefik's egress
-    # across them. Add nodes by dropping a file in exit-nodes/.
+    # One ExitNode per VPS. With one VPS + 1:1 binding, node-01 carries the
+    # arrakis API (kmc-arrakis-lb, 6443/8132).
     - kind: GitRepository
       name: homelab
       namespace: flux-system
       path: ./clusters/baremetal/addons/chisel-operator/exit-nodes
-    - kind: GitRepository
-      name: homelab
-      namespace: flux-system
-      path: ./platform/sveltos/manifests/gateway
