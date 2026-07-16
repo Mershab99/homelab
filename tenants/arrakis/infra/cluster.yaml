@@ -6,9 +6,7 @@
 # Sveltos via CAPI integration; the labels here propagate to the resulting
 # SveltosCluster.
 #
-# OIDC: tenant kube-apiserver federates to Dex at auth.mershab.com using
-# the shared `kubernetes` OAuth2 client (bare-metal apiserver is the OIDC
-# exception — see docs/architecture.md).
+# OIDC: disabled for now (cert-auth only) — see k0sConfig comment below.
 #
 # Networking: pods 10.243.0.0/16 (distinct from bare-metal's 10.244.0.0/16),
 # services 10.96.0.0/16. KubeVirt masquerade isolates the tenant network
@@ -139,13 +137,8 @@ spec:
         # passthrough. k0smotron appends its own service SANs automatically.
         sans:
           - k8s-home.mershab.com
-        extraArgs:
-          oidc-issuer-url: https://auth.mershab.com
-          oidc-client-id: kubernetes
-          oidc-username-claim: email
-          oidc-username-prefix: "oidc:"
-          oidc-groups-claim: groups
-          oidc-groups-prefix: "oidc:"
+        # OIDC (Dex) flags removed for now — cert-auth only until the stack
+        # is stable; re-add oidc-issuer-url/client-id/claims when Dex is back.
       network:
         # custom = no bundled CNI (kube-router/calico) — Sveltos delivers
         # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).
