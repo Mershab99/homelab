@@ -1,6 +1,8 @@
 # auth-stack — Dex with the built-in password-db connector, served at
-# auth.mershab.com on the EXTERNAL Ingress class so off-LAN browsers can
-# reach it.
+# auth.mershab.com via an HTTPRoute on the shared Traefik Gateway (see
+# manifests/gateway/httproutes.yaml). TLS terminates at the gateway's
+# *.mershab.com wildcard listener; external-dns publishes the record from the
+# HTTPRoute's gateway-httproute source. No Ingress, no per-Dex cert.
 #
 # Users + bcrypt'd passwords + per-app OAuth2 client registry live in a
 # plaintext Secret named `dex-config` in the dex namespace, applied by hand —
@@ -31,8 +33,7 @@ spec:
       name: mgmt
       namespace: mgmt
   dependsOn:
-    - tls-stack         # letsencrypt-prod must exist before Dex's Ingress can request a cert
-    - ingress-external  # the external Ingress class must be wired
+    - ingress-external  # the shared Gateway (+ wildcard TLS) must be wired first
   helmCharts:
     - repositoryURL: https://charts.dexidp.io
       repositoryName: dex
@@ -60,20 +61,10 @@ spec:
           oauth2:
             skipApprovalScreen: true
             alwaysShowLoginScreen: false
+        # Routing is an HTTPRoute on the shared Gateway (manifests/gateway),
+        # not a chart-managed Ingress.
         ingress:
-          enabled: true
-          className: external
-          hosts:
-            - host: auth.mershab.com
-              paths:
-                - path: /
-                  pathType: Prefix
-          tls:
-            - hosts: [auth.mershab.com]
-              secretName: dex-tls
-          annotations:
-            cert-manager.io/cluster-issuer: letsencrypt-prod
-            external-dns.alpha.kubernetes.io/hostname: auth.mershab.com
+          enabled: false
         # ServiceMonitor flips on once observability-core lands.
         serviceMonitor:
           enabled: false

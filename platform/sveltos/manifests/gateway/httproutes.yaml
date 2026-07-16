@@ -9,6 +9,23 @@
 # ponytail: service ports for hubble/longhorn are the chart defaults —
 # verify with `kubectl get svc -A` after deploy if a route 404s.
 
+# --- dex (OIDC issuer, auth.mershab.com) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: dex, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["auth.mershab.com"]
+  rules:
+    - backendRefs: [{name: dex, namespace: dex, port: 5556}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: dex}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
 # --- grafana (native OIDC) ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -103,15 +120,27 @@ spec:
 #   - addresses:
 #       - "<LAN LB IP of website svc>"
 ---
-# --- Traefik dashboard (unauthenticated, internal-only) — IngressRoute to the internal API ---
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
+# --- Traefik dashboard (unauthenticated, internal-only) ---
+# The internal `api@internal` service can't be an HTTPRoute backend, and an
+# IngressRoute is invisible to external-dns. So we expose the insecure API on
+# the `traefik` entrypoint (:8080, ClusterIP-only — never on the chisel LB) via
+# a selectorful Service, then front it with an HTTPRoute so external-dns
+# publishes traefik.mershab.com. Same ns as the Gateway → no ReferenceGrant.
+apiVersion: v1
+kind: Service
 metadata: {name: traefik-dashboard, namespace: traefik}
 spec:
-  entryPoints: [websecure]
-  routes:
-    - match: Host(`traefik.mershab.com`)
-      kind: Rule
-      services: [{name: api@internal, kind: TraefikService}]
-  tls:
-    secretName: homelab-wildcard-tls
+  selector:
+    app.kubernetes.io/instance: traefik-traefik
+    app.kubernetes.io/name: traefik
+  ports:
+    - {name: dashboard, port: 8080, targetPort: traefik}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: traefik-dashboard, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["traefik.mershab.com"]
+  rules:
+    - backendRefs: [{name: traefik-dashboard, port: 8080}]

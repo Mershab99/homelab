@@ -1,8 +1,7 @@
 # ingress-external — chisel-operator + ExitNode + Traefik v3 (Gateway API).
 #
-# Traefik is the single edge proxy: it implements Gateway API (homelab services
-# on *.mershab.com via HTTPRoute) AND still serves the legacy `external`
-# IngressClass (Dex at auth.mershab.com). Its Service carries the chisel
+# Traefik is the single edge proxy: it implements Gateway API for all homelab
+# services on *.mershab.com via HTTPRoute (Dex/auth included). Its Service carries the chisel
 # loadBalancerClass, so chisel-operator tunnels the entrypoint to the ExitNode
 # (the only path to the internet — no local LB).
 #
@@ -41,8 +40,9 @@ spec:
       releaseNamespace: traefik
       helmChartAction: Install
       values: |
-        # Providers: Gateway API (homelab services) + CRD (IngressRoute for the
-        # dashboard) + Ingress (legacy `external` class = Dex).
+        # Providers: Gateway API (all homelab services, incl. Dex) + CRD
+        # (IngressRoute for the dashboard). Legacy Ingress provider removed —
+        # nothing uses it now that Dex is on the Gateway.
         providers:
           kubernetesGateway:
             enabled: true
@@ -51,20 +51,21 @@ spec:
             experimentalChannel: true
           kubernetesCRD:
             enabled: true
-          kubernetesIngress:
-            enabled: true
-            ingressClass: external
         # We define our own GatewayClass/Gateway in manifests/gateway — don't let
         # the chart create a default one.
         gateway:
           enabled: false
         gatewayClass:
           enabled: false
-        # The dashboard is exposed via an IngressRoute (manifests/gateway),
-        # UNAUTHENTICATED + internal-only — keep the insecure API off.
+        # Dashboard served on the internal `traefik` entrypoint (:8080) via the
+        # insecure API. That port is NOT on the LoadBalancer Service, so chisel
+        # never tunnels it — it's reachable only in-cluster, then fronted by an
+        # HTTPRoute at traefik.mershab.com (manifests/gateway). HTTPRoute is used
+        # so external-dns publishes the record (it can't see IngressRoutes).
+        # UNAUTHENTICATED + internal-only — add forwardAuth if that's not OK.
         api:
           dashboard: true
-          insecure: false
+          insecure: true
         service:
           type: LoadBalancer
           spec:
