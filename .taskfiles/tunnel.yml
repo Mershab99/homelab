@@ -1,0 +1,32 @@
+# ssh tunnel to the chisel VPS for arrakis API access.
+# RackNerd filters inbound ports (only 22 + 9090 pass), so kubectl/k9s reach
+# the apiserver via ssh -L to the VPS loopback, where chisel serves 6443.
+# kubeconfig context admin@arrakis points at https://127.0.0.1:16443.
+# Once RackNerd opens 6443: point kubeconfig at k8s-home.mershab.com:6443
+# and forget this file.
+version: '3'
+
+vars:
+  VPS: root@72.11.146.116
+  LOCAL_PORT: '16443'
+  REMOTE_PORT: '6443'
+
+tasks:
+  up:
+    desc: Start the arrakis API tunnel (idempotent)
+    status:
+      - pgrep -f 'ssh.*-L {{.LOCAL_PORT}}:127.0.0.1:{{.REMOTE_PORT}}'
+    cmds:
+      - ssh -f -N -o ExitOnForwardFailure=yes -o ConnectTimeout=6 -L {{.LOCAL_PORT}}:127.0.0.1:{{.REMOTE_PORT}} {{.VPS}}
+      - kubectl --context admin@arrakis get nodes
+
+  down:
+    desc: Stop the tunnel
+    cmds:
+      - pkill -f 'ssh.*-L {{.LOCAL_PORT}}:127.0.0.1:{{.REMOTE_PORT}}' || true
+
+  status:
+    desc: Tunnel + arrakis API health
+    cmds:
+      - pgrep -fl 'ssh.*-L {{.LOCAL_PORT}}:127.0.0.1:{{.REMOTE_PORT}}' || echo "tunnel DOWN (task tunnel:up)"
+      - kubectl --context admin@arrakis get nodes

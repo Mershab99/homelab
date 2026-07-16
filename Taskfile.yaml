@@ -1,0 +1,13 @@
+# Root Taskfile — modules live in .taskfiles/. https://taskfile.dev
+version: '3'
+
+includes:
+  tunnel: .taskfiles/tunnel.yml
+  talos: .taskfiles/talos.yml
+  bootstrap: .taskfiles/bootstrap.yml
+  sops: .taskfiles/sops.yml
+  backup: .taskfiles/backup.yml
+  fleet: .taskfiles/fleet.yml
+  verify: .taskfiles/verify.yml
+  tools: .taskfiles/tools.yml
+  ci: .taskfiles/ci.yml
