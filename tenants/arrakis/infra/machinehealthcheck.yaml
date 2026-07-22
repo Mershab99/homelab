@@ -1,6 +1,10 @@
 # Single MHC for the whole tenant. Replaces any worker that goes NotReady
-# for >5 min. maxUnhealthy 50% prevents replacement storms when more than
-# half the workers are sick (almost always a host-side issue).
+# for >5 min. maxUnhealthy must tolerate the sole-worker case: at 50% with
+# replicas=1, one dead machine is 100% unhealthy and the MHC refuses to
+# remediate — the cluster then sits dead until someone intervenes. 100%
+# lets the last worker be replaced; the replacement-storm guard only
+# matters once the pool is large enough that CAS scales it past a few
+# machines, and a full-pool outage is exactly when we WANT rebuilds.
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineHealthCheck
 metadata:
@@ -18,4 +22,4 @@ spec:
     - type: Ready
       status: "False"
       timeout: 300s
-  maxUnhealthy: 50%
+  maxUnhealthy: 100%
