@@ -1,0 +1,56 @@
+# app-jellyfin — Jellyfin media server with NVIDIA P2000 hardware transcoding.
+# The ONE app deliberately on the PUBLIC path (its own auth, no Dex): served at
+# jellyfin.mershab.com via the tenant Traefik edge → VPS-02 chisel.
+#
+# Lands on the gpu-p2000 pool (nodeSelector) and requests the nvidia.com/gpu
+# resource exposed by the GPU operator's device plugin (11-tenant-gpu). Uses the
+# `nvidia` RuntimeClass the operator provisions (explicit, to avoid default-
+# runtime drift — this cluster has seen containerd runtime drift before).
+#
+# Selector: persona=platform. dependsOn tenant-gpu (device plugin + driver +
+# RuntimeClass) and tenant-ingress (public route).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: app-jellyfin
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-gpu       # nvidia.com/gpu device plugin + P2000 driver + nvidia RuntimeClass
+    - tenant-ingress   # jellyfin.mershab.com public route
+  helmCharts:
+    - repositoryURL: https://jellyfin.github.io/jellyfin-helm
+      repositoryName: jellyfin
+      chartName: jellyfin/jellyfin
+      chartVersion: 3.2.0           # app 10.11.11; pin exact (repo rule)
+      releaseName: jellyfin
+      releaseNamespace: jellyfin
+      helmChartAction: Install
+      values: |
+        # Pin to the P2000 node + use the operator's nvidia runtime.
+        runtimeClassName: nvidia
+        nodeSelector:
+          node.mershab.com/pool: gpu-p2000
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+        service:
+          type: ClusterIP           # fronted by Traefik; FULL-REMOTE (no LB)
+          port: 8096
+        # Tenant storage routes via kubevirt-csi → bare-metal Longhorn.
+        persistence:
+          config:
+            enabled: true
+            storageClass: kubevirt
+            size: 10Gi
+          cache:
+            enabled: true            # transcode scratch
+            storageClass: kubevirt
+            size: 20Gi
+          media:
+            enabled: true
+            type: pvc
+            storageClass: kubevirt
+            size: 500Gi              # or type: hostPath / existingClaim to point at a NAS

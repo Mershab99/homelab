@@ -1,11 +1,12 @@
-# Cilium bootstrap values — Talos-compatible.
+# Cilium bootstrap values — Talos-compatible. FULL-REMOTE: no LAN LoadBalancer.
 #
 # Most knobs here are required for Cilium to come up on Talos at all (cgroup,
-# securityContext, kubeProxyReplacement). The rest enables LB IPAM + L2
-# announcer (MetalLB replacement) and Hubble.
+# securityContext, kubeProxyReplacement). Hubble is enabled.
 #
-# LB IPAM pools, L2AnnouncementPolicy, and the Hubble UI Ingress live in
-# `clusters/baremetal/infrastructure/cilium/` and arrive via Flux later.
+# There is NO LAN LoadBalancer path: no LB IPAM pool, no L2AnnouncementPolicy,
+# no `internal` LB class. The only ingress paths are the chisel reverse tunnel
+# (public, → VPS) and the Netbird overlay (private). l2announcements/externalIPs
+# stay OFF below and no Cilium LB CRs are delivered by Flux/Sveltos.
 
 # Cilium replaces kube-proxy entirely (cluster.proxy.disabled: true in Talos
 # machineconfig). Cilium needs to know where the apiserver is, since
@@ -71,14 +72,13 @@ ipv6:
 routingMode: tunnel
 tunnelProtocol: vxlan
 
-# LB IPAM + L2 announcer — replaces MetalLB. Specific pools + announcement
-# policies arrive via Flux at clusters/baremetal/infrastructure/cilium/.
+# FULL-REMOTE: no LAN LoadBalancer. Keep L2 announce + externalIPs OFF; no LB
+# IPAM pools or L2AnnouncementPolicy CRs are delivered. Public = chisel tunnel,
+# private = Netbird overlay.
 l2announcements:
   enabled: false
 externalIPs:
   enabled: false
-#loadBalancer:
-#  algorithm: maglev
 
 # Don't claim CNI exclusivity — Multus installs a thick CNI later that
 # delegates to Cilium for the default network, and that needs the directory

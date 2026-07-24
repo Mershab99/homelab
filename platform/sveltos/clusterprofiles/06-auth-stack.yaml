@@ -1,8 +1,9 @@
 # auth-stack — Dex with the built-in password-db connector, served at
-# auth.mershab.com via an HTTPRoute on the shared Traefik Gateway (see
-# manifests/gateway/httproutes.yaml). TLS terminates at the gateway's
-# *.mershab.com wildcard listener; external-dns publishes the record from the
-# HTTPRoute's gateway-httproute source. No Ingress, no per-Dex cert.
+# auth.mershab.com via an HTTPRoute on the tenant Traefik Gateway (see
+# manifests/tenant-gateway/httproutes.yaml — same cluster, Dex runs on the
+# tenant). TLS terminates at the gateway's *.mershab.com wildcard listener;
+# external-dns publishes the record from the HTTPRoute's gateway-httproute
+# source. No Ingress, no per-Dex cert.
 #
 # Users + bcrypt'd passwords + per-app OAuth2 client registry live in a
 # plaintext Secret named `dex-config` in the dex namespace, applied by hand —
@@ -21,19 +22,21 @@
 # Future apps (home-assistant, ...) add a staticClients entry each when their
 # ClusterProfile lands.
 #
-# mgmt-only — Dex is a singleton.
+# Runs on the TENANT (arrakis), NOT mgmt: contraxia is a pure private-cloud
+# provider with no auth surface; arrakis is the AIO estate. auth.mershab.com is
+# then a SAME-CLUSTER backend on the tenant Traefik gateway (no cross-cluster
+# hack). Selector: persona=platform (arrakis, which hosts Dex). Apply the
+# dex-config Secret on arrakis.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: auth-stack
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: platform
   dependsOn:
-    - ingress-external  # the shared Gateway (+ wildcard TLS) must be wired first
+    - tenant-ingress  # the tenant Gateway (+ wildcard TLS) must be wired first
   helmCharts:
     - repositoryURL: https://charts.dexidp.io
       repositoryName: dex
@@ -61,8 +64,8 @@ spec:
           oauth2:
             skipApprovalScreen: true
             alwaysShowLoginScreen: false
-        # Routing is an HTTPRoute on the shared Gateway (manifests/gateway),
-        # not a chart-managed Ingress.
+        # Routing is an HTTPRoute on the tenant Gateway
+        # (manifests/tenant-gateway), not a chart-managed Ingress.
         ingress:
           enabled: false
         # ServiceMonitor flips on once observability-core lands.

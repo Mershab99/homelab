@@ -9,17 +9,15 @@
 # Secret named `grafana-oidc` in the monitoring ns (see
 # secrets/infrastructure/grafana/README.md).
 #
-# mgmt-only — single observability backend for the whole homelab.
+# persona=infra — single observability backend for the whole homelab.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: observability-backend
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   dependsOn:
     - observability-core   # prom-CRDs + OTel must be up first
     - storage              # MinIO (S3 backend) + longhorn StorageClass

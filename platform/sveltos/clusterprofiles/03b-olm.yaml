@@ -8,17 +8,15 @@
 # etc.) drop a Subscription + OperatorGroup into their own namespace and
 # OLM handles the rest.
 #
-# mgmt-only.
+# Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: olm
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   helmCharts:
     - repositoryURL: https://helm.sikalabs.io
       repositoryName: sikalabs

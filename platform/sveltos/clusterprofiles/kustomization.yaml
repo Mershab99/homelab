@@ -1,7 +1,7 @@
 # Sveltos ClusterProfiles — multi-cluster delivery surface, organized as
-# capability bundles. One profile per bundle, not per app. Selectors are
-# label-driven (needs.<bundle>=true) except where a bundle is intrinsically
-# single-instance (then clusterRefs by name).
+# capability bundles. One profile per bundle, not per app. Selectors are the
+# single `persona` label (infra | platform | ai); a few cross-persona bundles
+# use `matchExpressions: persona In [...]`.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -14,16 +14,23 @@ resources:
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
-  - 06-auth-stack.yaml          # Dex with password-db connector
+  - 06-auth-stack.yaml          # Dex with password-db connector (runs on platform)
+  - 08-netbird.yaml             # self-hosted NetBird overlay + operator (private access backbone)
+  - 09-db-operators.yaml        # vended DBs — CloudNativePG (Postgres) + MOCO (MySQL) operators
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
   # minimal: - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
   - 10-tenant-arrakis.yaml      # delivers CAPI resources for tenant cluster
   - 11-tenant-cilium.yaml       # tenant CNI (Sveltos-delivered, replaces HelmChartProxy)
   - 11-tenant-baseline.yaml     # tenant kubevirt-csi
-  # minimal: - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
+  - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
   - 11-oidc-rbac.yaml           # ClusterRoleBindings (tenant + vClusters)
-  # minimal: - 12-vcluster-baseline.yaml   # NAD + addons delivered to every vCluster
-  # minimal: - 12-k3k-operator.yaml        # k3k operator on the tenant (replaces Loft vcluster)
-  # minimal: - 12-k3k-clusters.yaml        # k3k Cluster CRs (family + mershab, shared mode)
-  # minimal: - 13-app-home-assistant.yaml  # HA (pajikos chart) inside family k3k vCluster
-  # minimal: - 13-app-mershab-web.yaml     # nginx + mershab.com inside mershab k3k vCluster
+  - 12-tenant-ingress.yaml      # Traefik (Gateway API) + tenant chisel-operator + node-02/VPS-02 (app ingress edge)
+  - 13-app-web.yaml             # nginx + mershab.com — flat `web` ns (collapsed out of mershab vCluster)
+  - 13-app-home-assistant.yaml  # HA (pajikos chart) — flat `home-assistant` ns, private via NetBird
+  - 14-app-jellyfin.yaml        # Jellyfin + P2000 transcode — PUBLIC (jellyfin.mershab.com, own auth)
+  - 15-app-coder.yaml           # Coder CDE — PUBLIC (coder.mershab.com, Dex OIDC), CNPG-backed
+  # k3k reserved for the AI/MCP layer ONLY (family/mershab vClusters collapsed to flat ns):
+  - 12-vcluster-baseline.yaml   # NAD + addons for the `ai` vCluster
+  - 12-k3k-operator.yaml        # k3k operator on the tenant (for the `ai` vCluster)
+  - 12-k3k-clusters.yaml        # the `ai` k3k Cluster CR
+  - 16-ai-helpers.yaml          # kagent + KMCP inside the `ai` vCluster (register it first)

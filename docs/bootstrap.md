@@ -6,8 +6,7 @@ ends in a `Verify` block — do not move on until it passes.
 Reference targets:
 - Domain: `mershab.com`
 - Talos node IP: `192.168.2.70` (R730, pinned)
-- LB IPAM pool: `192.168.2.200–240`
-- Tenant cluster name: `home`
+- Tenant cluster name: `arrakis`
 
 ## Prerequisites (workstation)
 
@@ -31,8 +30,8 @@ brew install go-task/tap/go-task
 
 ## 1. Network
 
-- Bell Hub 3000: DHCP enabled on `192.168.2.0/24`. Carve out the LB pool by
-  configuring DHCP to **exclude** `192.168.2.200–240`.
+- Bell Hub 3000: DHCP enabled on `192.168.2.0/24`. FULL-REMOTE: no LB pool to
+  carve out — nothing is exposed via a LAN LoadBalancer IP.
 - Aruba S2500: L2-only; no VLAN config required. Confirm all interfaces in
   the default VLAN.
 - Reserve `192.168.2.70` for the R730 in Bell Hub's DHCP, but Talos will
@@ -81,9 +80,9 @@ talosctl --nodes 192.168.2.70 read /proc/cmdline       # pcirebind.rebind=... pr
 bootstrap/helm/01-cilium.sh
 ```
 
-This installs Cilium with kube-proxy replacement, L2 announcer, LB IPAM, and
-Hubble enabled. The IPAM pool + L2AnnouncementPolicy CRs are applied later by
-the root ClusterProfile (via Sveltos) — for bootstrap, Cilium itself is enough.
+This installs Cilium with kube-proxy replacement and Hubble enabled.
+FULL-REMOTE: L2 announce + LB IPAM stay OFF and no LB CRs are delivered —
+there is no LAN LoadBalancer path.
 
 **Verify**:
 ```bash
@@ -117,27 +116,20 @@ kubectl -n mgmt get sveltoscluster mgmt              # registered
 
 ## 5. Label mgmt + apply the root ClusterProfile
 
-Label `mgmt` so the cross-cluster ClusterProfiles target it (Sveltos owns the
-SveltosCluster spec; we own its labels):
+Label `mgmt` with its **persona** so ClusterProfiles target it (Sveltos owns the
+SveltosCluster spec; we own its labels). ONE label — `persona` is the single
+selector dimension (no `needs.*` sprawl):
 
 ```bash
 kubectl -n mgmt label sveltoscluster mgmt \
   sveltos.projectsveltos.io/type=mgmt \
   tier=platform \
-  needs.tls=true \
-  needs.dns=true \
-  needs.ingress-internal=true \
-  needs.ingress-external=true \
-  needs.storage=true \
-  needs.virt-host=true \
-  needs.capi=true \
-  needs.auth=true \
-  needs.observability-core=true \
-  needs.observability-backend=true
-
-# Also label the tenant Cluster CR (after it lands) so observability-core
-# fans into the tenant too:
-#   kubectl label cluster -n tenants arrakis needs.observability-core=true
+  persona=infra
+# persona=infra = the hypervisor/provider plane (olm, storage, virt-host, capi,
+# autoscaler, the arrakis API tunnel, tenant-arrakis, observability-backend).
+# NO auth on infra — Dex runs on the platform (arrakis). tls/dns/observability-core
+# also match arrakis via `persona In [infra, platform]`.
+# arrakis is labelled persona=platform in git (tenants/arrakis/infra/cluster.yaml).
 ```
 
 Then apply the **root ClusterProfile** — the single object that replaces the

@@ -1,0 +1,60 @@
+# app-coder — Coder CDE, flat on the tenant. Provisions dev workspaces as
+# pods/PVCs on the same arrakis API (kubernetes template, in-cluster SA auth).
+# Public UI at coder.mershab.com; workspaces stay private (reached over NetBird).
+# Federates login to our Dex. Postgres from the CNPG operator (Phase 5).
+#
+# dependsOn tenant-ingress (public route) + auth-stack (Dex) + db-operators (CNPG).
+#
+# ── FILL ──
+#   - Verify the exact coder chart version at https://helm.coder.com/v2
+#     (GH latest release v2.34.6 pinned here; chart may lead/lag).
+#   - Dex `coder` staticClient (CONFIDENTIAL, has a secret) — see dex README;
+#     redirectURI https://coder.mershab.com/api/v2/users/oidc/callback.
+#   - Apply secrets/infrastructure/coder/coder-oidc.secret.yaml on the tenant.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: app-coder
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-ingress
+    - auth-stack
+    - db-operators
+  helmCharts:
+    - repositoryURL: https://helm.coder.com/v2
+      repositoryName: coder-v2
+      chartName: coder-v2/coder
+      chartVersion: 2.34.6          # verify exact at helm.coder.com/v2 before apply
+      releaseName: coder
+      releaseNamespace: coder
+      helmChartAction: Install
+      values: |
+        coder:
+          service:
+            type: ClusterIP          # fronted by Traefik; FULL-REMOTE (no LB)
+          env:
+            - name: CODER_ACCESS_URL
+              value: "https://coder.mershab.com"
+            - name: CODER_OIDC_ISSUER_URL
+              value: "https://auth.mershab.com"
+            - name: CODER_OIDC_CLIENT_ID
+              value: "coder"
+            - name: CODER_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef: {name: coder-oidc, key: client-secret}
+            - name: CODER_OIDC_EMAIL_DOMAIN
+              value: "mershab.com,integratrace.com"
+            # Postgres from the CNPG Cluster `coder-pg` (manifests/coder). The
+            # auto-generated coder-pg-app Secret carries a ready `uri` key.
+            - name: CODER_PG_CONNECTION_URL
+              valueFrom:
+                secretKeyRef: {name: coder-pg-app, key: uri}
+  policyRefs:
+    # coder namespace + its CNPG Postgres Cluster.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/coder

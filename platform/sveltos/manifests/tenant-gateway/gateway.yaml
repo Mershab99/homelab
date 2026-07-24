@@ -1,0 +1,98 @@
+# Tenant Gateway — Traefik Gateway API on arrakis. One wildcard listener; every
+# PUBLIC tenant service attaches an HTTPRoute for <svc>.mershab.com. External
+# reachability is the tenant chisel-operator → node-02/VPS-02 (Traefik's Service
+# has the chisel loadBalancerClass — see 12-tenant-ingress).
+#
+# Requires cert-manager + letsencrypt-prod ClusterIssuer ON THE TENANT
+# (already satisfied — arrakis is persona=platform, matched by tls-stack): apply the
+# cloudflare-api-token Secret here.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: traefik
+spec:
+  controllerName: traefik.io/gateway-controller
+---
+# Wildcard TLS for *.mershab.com via letsencrypt-prod (Cloudflare DNS-01).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: homelab-wildcard
+  namespace: traefik
+spec:
+  secretName: homelab-wildcard-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: "*.mershab.com"
+  dnsNames:
+    - "*.mershab.com"
+---
+# Apex TLS for mershab.com (the public website — the wildcard does NOT cover apex).
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mershab-apex
+  namespace: traefik
+spec:
+  secretName: mershab-apex-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  commonName: mershab.com
+  dnsNames:
+    - mershab.com
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shared
+  namespace: traefik
+spec:
+  gatewayClassName: traefik
+  listeners:
+    # listener.port = traefik's websecure ENTRYPOINT bind port (:8443), not the
+    # Service's 443 (Service maps 443 -> 8443). Mismatched -> "PortUnavailable".
+    - name: https
+      protocol: HTTPS
+      port: 8443
+      hostname: "*.mershab.com"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: homelab-wildcard-tls
+      allowedRoutes:
+        namespaces:
+          from: All        # routes live in traefik ns; backends cross-ns via ReferenceGrant
+    - name: apex
+      protocol: HTTPS
+      port: 8443
+      hostname: mershab.com
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: mershab-apex-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    # TCP listeners for the public DB product (Phase 5). Port must match a
+    # Traefik entrypoint of the same number (12-tenant-ingress values). A DB is
+    # published by attaching a TCPRoute to the matching sectionName — see
+    # platform/sveltos/manifests/db-operators/README.md. No route attached here
+    # by default (listener accepts, routes nothing).
+    - name: postgres
+      protocol: TCP
+      port: 5432
+      allowedRoutes:
+        kinds: [{kind: TCPRoute}]
+        namespaces:
+          from: All
+    - name: mysql
+      protocol: TCP
+      port: 3306
+      allowedRoutes:
+        kinds: [{kind: TCPRoute}]
+        namespaces:
+          from: All

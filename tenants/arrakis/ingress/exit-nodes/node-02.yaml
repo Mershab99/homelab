@@ -1,0 +1,30 @@
+# chisel ExitNode 02 — the TENANT public edge (VPS-02), separate from VPS-01.
+#
+# Why a second VPS: chisel-operator binds ONE Service per ExitNode (1:1 —
+# hard-learned 2026-07-16: two LB Services + one ExitNode flip-flop, whoever
+# reconciles last steals the tunnel). VPS-01/node-01 is bound 1:1 to the arrakis
+# API LB (kmc-arrakis-lb, 6443/8132) on the MGMT chisel-operator. This node-02
+# runs on the TENANT's own chisel-operator (installed by 12-tenant-ingress) and
+# carries Traefik's public LoadBalancer (80/443).
+#
+# spec.auth = NAME of a Secret in chisel-operator-system with the token under
+# key `auth`. Plaintext + gitignored — fill from
+# secrets/infrastructure/chisel-operator/node-02-credentials.example.yaml
+# (copy to node-02-credentials.secret.yaml) and `./secrets/apply.sh` AGAINST
+# THE TENANT (arrakis), not mgmt.
+#
+# On VPS-02: chisel server --auth "chisel:<TOKEN>" --port 9090 --reverse, with
+# 80 + 443 bound to the public interface. As the public DB TCP path (Phase 4)
+# and Netbird signaling (Phase 2) land, either add their ports here or add
+# node-03/VPS-03 — one ExitNode per public Service (the 1:1 rule).
+#
+# Delivered by 12-tenant-ingress (policyRef → this dir).
+apiVersion: chisel-operator.io/v1
+kind: ExitNode
+metadata:
+  name: node-02
+  namespace: chisel-operator-system
+spec:
+  host: "REPLACE_WITH_VPS_02_PUBLIC_IPV4" # provision VPS-02, fill its IP
+  port: 9090            # chisel control port; match the VPS server --port
+  auth: node-02-credentials

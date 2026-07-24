@@ -3,10 +3,13 @@
 # Replaces the former Loft vcluster stack. k3k runs virtual clusters in SHARED
 # mode: an agentless k3s control-plane pod whose workloads are reflected onto
 # the host (arrakis) nodes via a virtual-kubelet provider, using the host Cilium
-# CNI with NetworkPolicy isolation. The Cluster CRs themselves are delivered by
-# 12-k3k-clusters (dependsOn this, so the CRD exists first).
+# CNI with NetworkPolicy isolation.
 #
-# Selector: runs on every tenant cluster.
+# RESERVED FOR THE AI/MCP LAYER (Phase 6): the mershab/family vClusters were
+# collapsed to flat namespaces; the only vCluster is the throwaway `ai` cluster
+# (kagent + KMCP). Its Cluster CR + delivery land in Phase 6.
+#
+# Selector: persona=platform.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -14,7 +17,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      sveltos.projectsveltos.io/type: tenant
+      persona: platform
   dependsOn:
     - tenant-baseline
   helmCharts:

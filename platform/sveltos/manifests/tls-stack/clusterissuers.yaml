@@ -1,4 +1,4 @@
-# cert-manager ClusterIssuers — delivered to every needs.tls cluster by the
+# cert-manager ClusterIssuers — delivered on `persona In [infra, platform]` by the
 # tls-stack ClusterProfile (GitRepository policyRef). The homelab-ca Certificate
 # that the selfsigned-ca issuer depends on lives in homelab-ca-cert.yaml.
 ---

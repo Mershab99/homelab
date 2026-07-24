@@ -10,7 +10,7 @@
 #      P2000 on current LTS. Each has nodeSelector matching the relevant
 #      pool label set by the KubeadmConfigTemplate.
 #
-# Selector: needs.gpu=true on the tenant SveltosCluster.
+# Selector: persona=platform (GPU stack).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -18,7 +18,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      needs.gpu: "true"
+      persona: platform
   dependsOn:
     - tenant-baseline   # CSI + autoscaler should be up first
   helmCharts:

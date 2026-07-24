@@ -10,22 +10,19 @@
 # HCO bundles KubeVirt + CDI + SSP + Network Addons (Multus) + Node
 # Maintenance — applying the HyperConverged CR rolls all of them out.
 #
-# Multus note: HCO's network-addons sub-operator installs Multus on mgmt,
-# so mgmt is NOT labeled `needs.multus=true` (would double-install via the
-# separate 03-multus ClusterProfile). Tenant cluster has no HCO, gets
-# Multus from 03-multus.
+# Multus note: HCO's network-addons sub-operator installs Multus on mgmt (infra),
+# so 03-multus (persona=platform) does NOT run here — that would double-install.
+# The platform cluster has no HCO, so it gets Multus from 03-multus.
 #
-# mgmt-only.
+# Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: virt-host
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   dependsOn:
     - olm         # need OLM CRDs (Subscription/OperatorGroup) before we apply Subscription
     - storage     # CDI scratchSpace lands on the longhorn StorageClass

@@ -45,34 +45,41 @@ Bare-metal Talos cluster (R730 → +R820)
 | GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
 | Secrets                     | plaintext manifests, gitignored, applied by hand (`secrets/`); SOPS only for Talos machineconfig |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
-| LB classes                  | `internal` (Cilium LAN IP); `external` (chisel-operator → VPS) |
+| LB classes                  | `external` (chisel-operator → VPS) only. FULL-REMOTE: no `internal`/LAN LB. Private services reach via the Netbird overlay. |
 
 ## 3. Network
 
 - **Edge:** Bell Hub 3000 (DHCP, NAT). **Switch:** Aruba S2500 (L2 only).
   Single flat subnet, no VLANs.
 - Talos node IPs pinned in machineconfig — do not rely on Bell Hub DHCP.
-- Cilium LB IPAM pool: `192.168.2.200–240` (carved from the Bell Hub subnet).
-- Cilium L2 announcer ARPs LB IPs on the LAN.
+- FULL-REMOTE: no Cilium LB IPAM pool and no L2 announcer. Nothing is reachable
+  via a LAN LoadBalancer IP. Public = chisel tunnel → VPS; private = Netbird overlay.
 - **LAN-attached pods:** host bridge `br0` on every Talos node. Bare-metal NAD
   `lan-bridge` (macvlan over br0). Every tenant worker VM gets a secondary NIC
   on `br0`. Tenant-side Sveltos profile installs a DaemonSet that builds
   `br-lan` on the VMs over eth1, plus a tenant NAD `lan`. vCluster pods
   annotate `k8s.v1.cni.cncf.io/networks: lan` to attach.
 
-## 4. Label taxonomy (Sveltos)
+## 4. Label taxonomy (Sveltos) — one `persona` dimension
 
-| Label                                    | Values                          | Gates                  |
-|------------------------------------------|----------------------------------|------------------------|
-| `sveltos.projectsveltos.io/type`         | `tenant`, `vcluster`             | top-level kind         |
-| `tier`                                   | `platform`, `workload`           | broad fanout           |
-| `workload`                               | `home-assistant`, `frigate`, ... | per-vCluster overrides |
-| `needs.lan`                              | `"true"` / `"false"`             | Multus + NAD           |
-| `needs.gpu`                              | `"k80"`, `"p2000"`, `"false"`    | GPU plugin tweaks      |
-| `needs.storage`                          | `zfs`                            | StorageClass plumbing  |
-| `oidc.enabled`                           | `"true"`                         | OIDC RBAC              |
+ClusterProfiles select on a SINGLE label, `persona`. No `needs.*` sprawl. Each
+cluster IS one persona; a profile targets the persona that owns its bundle.
 
-Per-instance config lives in `tenants/arrakis/vclusters/<name>/apps/`.
+| `persona` | Cluster | Owns |
+|---|---|---|
+| `infra` | contraxia (hub) | hypervisor/provider plane: olm, storage, virt-host, capi, autoscaler, arrakis-API tunnel, tenant-arrakis (CAPI), observability-backend |
+| `platform` | arrakis (AIO estate) | multus, cilium, kubevirt-csi, gpu, tenant-ingress, auth (Dex), netbird, db, k3k, all apps |
+| `ai` | ai vCluster | ai-helpers (kagent/KMCP), vcluster-baseline, oidc-rbac |
+
+Cross-persona bundles use `matchExpressions: {key: persona, operator: In, values: […]}`:
+- `tls-stack`, `dns`, `observability-core` → `In [infra, platform]`.
+- `oidc-rbac` → `persona: ai` ONLY — vClusters are the only apiservers that
+  federate to Dex. arrakis HOSTS Dex, so its apiserver does not (cert-auth only).
+
+The `persona` label is set in git on the arrakis Cluster CR
+(`tenants/arrakis/infra/cluster.yaml`) and by hand on the mgmt SveltosCluster
+(bootstrap) + each vCluster at registration. `sveltos.projectsveltos.io/type`
+and `tier` remain as structural metadata but are no longer selected on.
 Sveltos is for **capability fanout**, not per-instance config.
 
 ## 5. Hard rules

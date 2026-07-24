@@ -17,7 +17,7 @@
 #      ContainerCreating.
 #
 # Delivered by the `multus` ClusterProfile (03-multus.yaml) as a raw policyRef
-# to every cluster labeled needs.multus=true. NOT mgmt (HCO network-addons
+# to persona=platform. NOT infra/mgmt (HCO network-addons
 # installs Multus there) — tenant/vClusters only.
 ---
 # Note:

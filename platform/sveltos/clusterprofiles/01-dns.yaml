@@ -1,5 +1,5 @@
 # dns — external-dns, reading Ingress/Service hostnames and publishing
-# Cloudflare records. Multi-cluster: matches any cluster labelled needs.dns
+# Cloudflare records. Multi-cluster: persona In [infra, platform]
 # (mgmt + tenant). Every instance shares the mershab.com zone, so txtOwnerId +
 # txtPrefix are templated per cluster name (Sveltos exposes .Cluster) — that
 # unique owner-id + record prefix is what keeps two external-dns instances from
@@ -13,8 +13,8 @@ metadata:
   name: dns
 spec:
   clusterSelector:
-    matchLabels:
-      needs.dns: "true"
+    matchExpressions:
+      - {key: persona, operator: In, values: [infra, platform]}
   helmCharts:
     - repositoryURL: https://kubernetes-sigs.github.io/external-dns
       repositoryName: external-dns

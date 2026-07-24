@@ -6,9 +6,9 @@
 # first, so Multus delegates pod-network traffic to Cilium and overlays
 # secondary attachments from NetworkAttachmentDefinitions.
 #
-# Fans out to every cluster with needs.multus=true — tenant/vClusters. NOT
-# mgmt: HCO's network-addons sub-operator installs Multus there (see
-# 04-virt-host.yaml), so mgmt is not labeled needs.multus.
+# Fans out on persona=platform (arrakis). NOT infra: HCO's network-addons
+# sub-operator installs Multus on mgmt (see 04-virt-host.yaml), so the provider
+# doesn't run this profile.
 #
 # Delivered as a raw manifest (policyRef), not Helm: the k8snetworkplumbingwg
 # org stopped publishing a Helm index. The manifest carries a load-bearing
@@ -20,7 +20,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      needs.multus: "true"
+      persona: platform
   policyRefs:
     - kind: GitRepository
       name: homelab

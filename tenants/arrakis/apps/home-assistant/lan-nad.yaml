@@ -1,6 +1,7 @@
-# Local NAD in the home-assistant namespace (vCluster doesn't sync NADs
-# from the default namespace where 12-vcluster-baseline drops one). Pods
-# in this ns annotate `k8s.v1.cni.cncf.io/networks: lan` to attach.
+# Local `lan` NAD in the home-assistant namespace — HA pods annotate
+# `k8s.v1.cni.cncf.io/networks: lan` to attach a macvlan LAN NIC (device
+# control: mDNS / Matter / Zigbee-Zwave). Flat namespace on arrakis (NADs are
+# namespace-scoped, so it lives here next to HA).
 apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:

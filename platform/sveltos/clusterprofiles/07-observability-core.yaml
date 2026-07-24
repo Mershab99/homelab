@@ -9,7 +9,7 @@
 #     ServiceMonitors via the targetallocator and ships metrics elsewhere
 #     (Loki, eventually a managed Mimir/Tempo, etc.).
 #
-# Selector: needs.observability-core=true — fans out to mgmt + tenant
+# Selector: persona In [infra, platform] — fans out to mgmt + tenant
 # + (optionally) vClusters that opt in.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
@@ -17,8 +17,8 @@ metadata:
   name: observability-core
 spec:
   clusterSelector:
-    matchLabels:
-      needs.observability-core: "true"
+    matchExpressions:
+      - {key: persona, operator: In, values: [infra, platform]}
   dependsOn:
     - tls-stack   # OTel collector wants TLS certs for OTLP receivers
   helmCharts:

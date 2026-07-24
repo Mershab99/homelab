@@ -1,0 +1,36 @@
+# ai — the ONE k3k shared virtual cluster (the reserved vcluster use case). Home
+# of the personal AI helpers: kagent + KMCP-managed MCP servers. Throwaway +
+# RBAC-isolated — a hard blast-radius boundary is exactly what vclusters are good
+# at, and what MCP-server groups want. Workloads land on the general pool.
+#
+# Register with the hub Sveltos from its generated kubeconfig Secret — see
+# docs/runbooks/registering-a-k3k-vcluster.md (the one runtime step; k3k can't
+# self-register). Label the resulting SveltosCluster persona=ai.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k3k-ai
+---
+apiVersion: k3k.io/v1beta1
+kind: Cluster
+metadata:
+  name: ai
+  namespace: k3k-ai
+spec:
+  mode: shared
+  servers: 1
+  # ponytail: pinned k3s tag — bump to match arrakis/k3k support once verified.
+  version: v1.31.5-k3s1
+  nodeSelector:
+    node.mershab.com/pool: general
+  tlsSANs:
+    - k3k-ai.mershab.com
+  # OIDC federation to Dex (same kubernetes client as the tenant apiserver).
+  serverArgs:
+    - --kube-apiserver-arg=oidc-issuer-url=https://auth.mershab.com
+    - --kube-apiserver-arg=oidc-client-id=kubernetes
+    - --kube-apiserver-arg=oidc-username-claim=email
+    - --kube-apiserver-arg=oidc-username-prefix=oidc:
+    - --kube-apiserver-arg=oidc-groups-claim=groups
+    - --kube-apiserver-arg=oidc-groups-prefix=oidc:
+  # expose: wire per the registration runbook (sub-schema varies by k3k version).

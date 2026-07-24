@@ -25,14 +25,11 @@ metadata:
   labels:
     sveltos.projectsveltos.io/type: tenant
     tier: workload
-    # Capability labels — ClusterProfile selectors match these.
-    needs.tls: "true"
-    needs.dns: "true"          # runs its own external-dns; per-cluster txt prefix keeps it off mgmt's records
-    needs.multus: "true"
-    needs.kubevirt-csi: "true"
-    needs.gpu: "false"        # minimal: GPU stack off
-    needs.autoscaler: "false" # minimal: autoscaler off; general pool fixed
-    oidc.enabled: "true"
+    # persona — the ONE selector ClusterProfiles match. arrakis is the AIO
+    # estate: tls/dns/multus/csi/gpu/ingress/auth(Dex)/netbird/db/apps all fan in
+    # on persona=platform. No `needs.*` sprawl, no oidc.enabled (arrakis hosts Dex
+    # so its own apiserver does NOT federate to it — see api.sans comment below).
+    persona: platform
 spec:
   clusterNetwork:
     pods:
@@ -141,8 +138,10 @@ spec:
         # passthrough. k0smotron appends its own service SANs automatically.
         sans:
           - k8s-home.mershab.com
-        # OIDC (Dex) flags removed for now — cert-auth only until the stack
-        # is stable; re-add oidc-issuer-url/client-id/claims when Dex is back.
+        # NO OIDC on this apiserver — arrakis HOSTS Dex, so it cannot federate
+        # its own apiserver auth to it (bootstrap circular + Dex-down locks out
+        # the apiserver). cert-auth only. OIDC-to-Dex is for vClusters ONLY
+        # (see k3k ai.yaml serverArgs + 11-oidc-rbac, persona=ai).
       network:
         # custom = no bundled CNI (kube-router/calico) — Sveltos delivers
         # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).

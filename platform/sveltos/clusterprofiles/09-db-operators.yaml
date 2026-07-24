@@ -1,0 +1,43 @@
+# db-operators — vended databases on the tenant: CloudNativePG (Postgres) +
+# MOCO (MySQL). Operators only; individual DBs are declared per-app as CRs (the
+# "vending" convention — see platform/sveltos/manifests/db-operators/README.md).
+#
+# Two exposure lanes per DB:
+#   - in-cluster: apps consume the operator-generated Service + credentials Secret.
+#   - PUBLIC product: a Traefik TCPRoute (tenant-gateway) fronts the DB's primary
+#     Service on a dedicated port through node-02/VPS-02 — same Traefik LB Service
+#     (extra ports), so ONE ExitNode still (the 1:1 rule is per-Service).
+#
+# MOCO requires cert-manager (mTLS controller<->agents) — already on the tenant
+# (persona=platform runs cert-manager). dependsOn tls-stack for that +
+# tenant-baseline for schedulable pods.
+#
+# Selector: persona=platform.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: db-operators
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-baseline
+    - tls-stack        # MOCO needs cert-manager
+  helmCharts:
+    # CloudNativePG operator. DBs are postgresql.cnpg.io/v1 Cluster CRs per-app.
+    - repositoryURL: https://cloudnative-pg.github.io/charts
+      repositoryName: cloudnative-pg
+      chartName: cloudnative-pg/cloudnative-pg
+      chartVersion: 0.29.0          # operator 1.30.0; pin exact (repo rule)
+      releaseName: cloudnative-pg
+      releaseNamespace: cnpg-system
+      helmChartAction: Install
+    # MOCO (MySQL) operator. DBs are moco.cybozu.com/v1beta2 MySQLCluster CRs.
+    - repositoryURL: https://cybozu-go.github.io/moco
+      repositoryName: moco
+      chartName: moco/moco
+      chartVersion: 0.26.0          # operator 0.36.0; pin exact
+      releaseName: moco
+      releaseNamespace: moco-system
+      helmChartAction: Install

@@ -5,6 +5,10 @@ Dex reads its entire runtime config from a Secret named `dex-config` in the
 secrets all live there. Fill `dex-config.example.yaml` → `dex-config.secret.yaml`
 (plaintext + gitignored) and apply with `./secrets/apply.sh`.
 
+**Apply against the TENANT (arrakis), not mgmt.** Dex runs on arrakis (the AIO
+estate) — `06-auth-stack` is `needs.auth`-selected and that label lives only on
+the arrakis Cluster. Contraxia carries no auth surface.
+
 ## Generate users + clients
 
 1. **bcrypt the admin password** (Dex requires bcrypt for `staticPasswords`).
@@ -74,6 +78,24 @@ secrets all live there. Fill `dex-config.example.yaml` → `dex-config.secret.ya
          secret: "$GRAFANA_CLIENT_SECRET"
          redirectURIs:
            - https://grafana.homelab.mershab.com/login/generic_oauth
+       # NetBird — self-hosted management + dashboard. PUBLIC client (PKCE), so
+       # `public: true` and no client secret; also needs the OAuth2 device flow
+       # for the CLI (ensure `oauth2` device grant is enabled in Dex). audience
+       # = the client id (netbird-client), matching 08-netbird.yaml.
+       - id: netbird-client
+         name: NetBird
+         public: true
+         redirectURIs:
+           - https://netbird.mershab.com/peers
+           - https://netbird.mershab.com/callback
+           - https://netbird.mershab.com/silent-auth
+       # Coder CDE — CONFIDENTIAL client (has a secret). The secret must also
+       # land in secrets/infrastructure/coder/coder-oidc.secret.yaml.
+       - id: coder
+         name: Coder
+         secret: "$CODER_CLIENT_SECRET"
+         redirectURIs:
+           - https://coder.mershab.com/api/v2/users/oidc/callback
        # Future apps: one block each.
        # - id: home-assistant
        #   secret: $HA_CLIENT_SECRET

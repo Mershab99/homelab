@@ -1,5 +1,6 @@
-# ClusterRoleBindings mapping Dex groups to Kubernetes RBAC. Delivered to every
-# oidc.enabled cluster (tenant + every vCluster) by the oidc-rbac ClusterProfile.
+# ClusterRoleBindings mapping Dex groups to Kubernetes RBAC. Delivered to
+# vClusters ONLY (persona=ai) by the oidc-rbac ClusterProfile — the only
+# apiservers that federate to Dex (arrakis hosts Dex, so it doesn't).
 #   oidc:platform-admins — full cluster-admin
 #   oidc:viewers         — read-only across all resources
 ---

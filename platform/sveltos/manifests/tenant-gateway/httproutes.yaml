@@ -1,0 +1,111 @@
+# HTTPRoutes for PUBLIC tenant services (*.mershab.com) on the shared tenant
+# Gateway. All routes live in the traefik ns; cross-ns backends are unlocked by
+# a ReferenceGrant in each app ns.
+#
+# What is DELIBERATELY NOT here:
+#  - Admin UIs (Longhorn / Hubble / Grafana / Traefik dashboard): PRIVATE — they
+#    reach via the Netbird overlay (Phase 3), not the public Gateway. (mgmt
+#    Longhorn/Hubble stay provider-internal: port-forward / `task tunnel`.)
+#  - Jellyfin / Coder / public-app: added with their apps (Phases 6-7).
+#
+# The website route is the anchor — backend `website` lands in the `web` ns when
+# the mershab vCluster collapses to a flat namespace (Phase 4). Until then it
+# 503s (no endpoints) — harmless pre-launch.
+
+# --- dex (OIDC issuer, auth.mershab.com; same-cluster now that Dex runs on the
+# tenant — no selectorless-Service/EndpointSlice hack) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: dex, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["auth.mershab.com"]
+  rules:
+    - backendRefs: [{name: dex, namespace: dex, port: 5556}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: dex}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- mershab.com (public website; nginx in the `web` namespace, same cluster) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: mershab-web, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["mershab.com"]
+  rules:
+    - backendRefs: [{name: website, namespace: web, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: web}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- NetBird dashboard + management API (netbird.mershab.com) ---
+# Dashboard SPA at /, and the browser calls the management API on the SAME host
+# (dashboard env NETBIRD_MGMT_API_ENDPOINT=https://netbird.mershab.com). Verify
+# the chart's Service names/ports against netbird 1.9.0 before apply — names
+# assumed `netbird-dashboard` / `netbird-management`, ports assumed 80.
+# NOTE: the management gRPC API (ManagementService) + the /api HTTP need proper
+# routing — if the dashboard proxies both over :80 this one route covers it;
+# otherwise split the gRPC path into a GRPCRoute (Traefik supports it).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: netbird-dashboard, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["netbird.mershab.com"]
+  rules:
+    - backendRefs: [{name: netbird-dashboard, namespace: netbird, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: netbird}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+# --- Coder CDE (public UI; coder.mershab.com — OIDC via Dex) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: coder, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["coder.mershab.com"]
+  rules:
+    - backendRefs: [{name: coder, namespace: coder, port: 80}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: coder}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# --- Jellyfin (public; jellyfin.mershab.com — its own auth, no Dex) ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: jellyfin, namespace: traefik}
+spec:
+  parentRefs: [{name: shared, namespace: traefik}]
+  hostnames: ["jellyfin.mershab.com"]
+  rules:
+    - backendRefs: [{name: jellyfin, namespace: jellyfin, port: 8096}]
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata: {name: allow-traefik-httproutes, namespace: jellyfin}
+spec:
+  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
+  to: [{group: "", kind: Service}]
+---
+# TODO(netbird): signal (signal.mershab.com, gRPC/HTTP2) + relay
+# (relay.mershab.com, wss/TCP over :443) need a GRPCRoute + a TCPRoute/TLSRoute
+# respectively (experimental CRDs already shipped in this dir). Add once the
+# exact chart Service names/ports are confirmed. All three are TCP/TLS — they
+# tunnel through VPS-02 chisel (no UDP/coturn to expose).

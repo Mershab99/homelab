@@ -11,7 +11,7 @@
 #     — CAS on mgmt is the simpler topology (no cross-cluster kubeconfig
 #     seal, CAPI auto-creates the tenant kubeconfig Secret CAS reads).
 #
-# Selector: tenant cluster type.
+# Selector: persona=platform.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -19,7 +19,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      sveltos.projectsveltos.io/type: tenant
+      persona: platform
   dependsOn:
     - tenant-cilium   # CNI first — CSI pods can't schedule without it
   policyRefs:

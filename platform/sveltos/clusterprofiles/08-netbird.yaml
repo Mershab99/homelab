@@ -1,0 +1,131 @@
+# netbird — self-hosted NetBird overlay + the k8s operator, on the TENANT.
+# The private-access backbone: every non-public service (Home Assistant, immich,
+# paperless, DB admin, admin UIs) reaches over this overlay, never a LAN LB and
+# never the public Gateway. Public apps stay on Traefik/chisel.
+#
+# TWO charts:
+#   1. netbird SERVER (management + signal + dashboard + relay) — the self-hosted
+#      control plane. Federates auth to OUR Dex (auth.mershab.com) — NOT NetBird's
+#      embedded Dex (one-IdP rule). All four components are TCP/TLS, so they
+#      tunnel out cleanly through VPS-02 chisel (no coturn/UDP — 0.46 relay is
+#      TCP/TLS; WireGuard P2P is peer-to-peer, not server-exposed).
+#   2. netbird OPERATOR (netbird.io CRDs) — deploys routing-peer pods and exposes
+#      cluster Services on the overlay via NetworkRouter + NetworkResource.
+#
+# dependsOn auth-stack (Dex must exist to federate) + tenant-ingress (Traefik
+# fronts netbird.mershab.com + signal/relay ingress).
+#
+# ── FILL before rollout ──
+#   - Pin BOTH chart versions if newer (server 1.9.0, operator v0.8.0 here).
+#   - Secrets (secrets/infrastructure/netbird/, applied on the TENANT):
+#       * management datastore encryption key + relay auth secret + turn secret
+#         (netbird-management-secrets.example.yaml)
+#       * operator PAT (netbird-operator-token.example.yaml) — GENERATED in the
+#         NetBird dashboard AFTER management is up, then applied + operator restarted.
+#       * setup key (setup-key.example.yaml, already seeded) for the routing peer.
+#   - Dex: add a `netbird` staticClient (public/PKCE + device flow) to dex-config
+#     (see secrets/infrastructure/dex/README.md) — the domains/endpoints below
+#     must match it.
+#   - arrakis is persona=platform (cluster.yaml) — this profile fans in there.
+#   - Public routes: netbird.mershab.com (dashboard) + signal/relay — tenant-gateway.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: netbird
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - auth-stack       # federate to Dex
+    - tenant-ingress   # public edge for dashboard/signal/relay
+  helmCharts:
+    # 1) Self-hosted NetBird server.
+    - repositoryURL: https://netbirdio.github.io/helms
+      repositoryName: netbird
+      chartName: netbird/netbird
+      chartVersion: 1.9.0            # app 0.46.0; pin exact (repo rule)
+      releaseName: netbird
+      releaseNamespace: netbird
+      helmChartAction: Install
+      values: |
+        # Management config is the raw management.json (HttpConfig auth block
+        # federates to Dex). Secrets (datastore key, relay/turn) come from the
+        # netbird-management-secrets Secret via envFromSecret / volume — wire the
+        # placeholders when filling. Endpoints below are the PUBLIC FQDNs served
+        # through the tenant Traefik gateway.
+        management:
+          enabled: true
+          configmap: |
+            {
+              "Stuns": [{"Proto":"udp","URI":"stun:netbird.mershab.com:3478"}],
+              "TURNConfig": {"Turns":[{"Proto":"udp","URI":"turn:netbird.mershab.com:3478","Username":"netbird","Password":"REPLACE_TURN_PASSWORD"}]},
+              "Signal": {"Proto":"https","URI":"signal.mershab.com:443"},
+              "Relay": {"Addresses":["rels://relay.mershab.com:443"],"CredentialsTTL":"24h","Secret":"REPLACE_RELAY_SECRET"},
+              "HttpConfig": {
+                "AuthAudience": "netbird-client",
+                "AuthIssuer": "https://auth.mershab.com",
+                "AuthKeysLocation": "https://auth.mershab.com/keys",
+                "AuthUserIDClaim": "sub",
+                "OIDCConfigEndpoint": "https://auth.mershab.com/.well-known/openid-configuration"
+              },
+              "DeviceAuthorizationFlow": {
+                "Provider": "hosted",
+                "ProviderConfig": {
+                  "Audience": "netbird-client",
+                  "ClientID": "netbird-client",
+                  "Domain": "auth.mershab.com",
+                  "Scope": "openid profile email offline_access api"
+                }
+              },
+              "PKCEAuthorizationFlow": {
+                "ProviderConfig": {
+                  "Audience": "netbird-client",
+                  "ClientID": "netbird-client",
+                  "Scope": "openid profile email offline_access api",
+                  "RedirectURLs": ["https://netbird.mershab.com/peers","https://netbird.mershab.com/callback"]
+                }
+              }
+            }
+        signal:
+          enabled: true
+        relay:
+          enabled: true
+        dashboard:
+          enabled: true
+          env:
+            # Dashboard SPA OIDC — points at our Dex.
+            AUTH_AUTHORITY: https://auth.mershab.com
+            AUTH_CLIENT_ID: netbird-client
+            AUTH_AUDIENCE: netbird-client
+            AUTH_SUPPORTED_SCOPES: openid profile email offline_access api
+            USE_AUTH0: "false"
+            AUTH_REDIRECT_URI: /peers
+            AUTH_SILENT_REDIRECT_URI: /silent-auth
+            NETBIRD_MGMT_API_ENDPOINT: https://netbird.mershab.com
+            NETBIRD_MGMT_GRPC_API_ENDPOINT: https://netbird.mershab.com
+    # 2) NetBird k8s operator (netbird.io CRDs). Talks to the management API with
+    #    a PAT (from the netbird-operator Secret).
+    - repositoryURL: oci://ghcr.io/netbirdio/helm-charts/netbird-operator
+      repositoryName: netbird-operator
+      chartName: netbird-operator/netbird-operator
+      chartVersion: 0.8.0             # verify exact tag at publish (ghcr: v0.8.0)
+      releaseName: netbird-operator
+      releaseNamespace: netbird
+      helmChartAction: Install
+      values: |
+        netbird:
+          managementURL: https://netbird.mershab.com
+          # PAT from the netbird-operator Secret (key NB_API_KEY). Generated in
+          # the dashboard AFTER management is up; apply the Secret then restart.
+          apiKeyFromSecret:
+            name: netbird-operator
+            key: NB_API_KEY
+  policyRefs:
+    # Namespace + the tenant routing peer (NetworkRouter) + the NetworkResource
+    # publishing convention + RBAC. See the dir's README for how private apps
+    # publish themselves.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/netbird

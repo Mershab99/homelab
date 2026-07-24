@@ -1,0 +1,19 @@
+# The tenant routing peer. A NetworkRouter creates a network in NetBird and
+# deploys routing-peer pod(s) here; NetworkResources (one per private app, in the
+# app's own namespace) attach to it to publish a Service onto the overlay.
+#
+# One router for the whole flat estate — this is the payoff of a flat cluster vs.
+# federated vclusters: ONE operator, ONE router, ONE overlay (a vcluster split
+# would need a router per API server).
+#
+# dnsZoneRef points at a NetBird DNS zone for overlay names — `int.mershab.com`
+# is the private-side zone (distinct from public *.mershab.com). Create it in the
+# NetBird dashboard (or it is auto-created on first use, depending on version).
+apiVersion: netbird.io/v1alpha1
+kind: NetworkRouter
+metadata:
+  name: homelab
+  namespace: netbird
+spec:
+  dnsZoneRef:
+    name: int.mershab.com

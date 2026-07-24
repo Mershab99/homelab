@@ -1,0 +1,50 @@
+# ai-helpers — kagent + KMCP INSIDE the `ai` k3k vCluster. The personal-AI layer:
+# kagent runs Agents; KMCP reconciles MCPServer CRs into Deployment+Service
+# (AgentGateway wraps stdio servers). Grouped MCP servers get a hard blast-radius
+# boundary here — the reserved vcluster use case.
+#
+# Targets the `ai` SveltosCluster (registered by hand from the k3k kubeconfig —
+# docs/runbooks/registering-a-k3k-vcluster.md). Four OCI charts: CRDs then
+# controllers, for both kagent and kmcp.
+#
+# ── FILL ──
+#   - Confirm the OCI chart tags exist before apply (kagent 0.9.12, kmcp 0.3.0).
+#   - A ModelConfig + its API-key Secret (secrets/infrastructure/kagent/) applied
+#     INSIDE the ai vcluster — see platform/sveltos/manifests/ai-helpers/README.md.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: ai-helpers
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: ai
+  helmCharts:
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
+      repositoryName: kagent-crds
+      chartName: kagent-crds/kagent-crds
+      chartVersion: 0.9.12
+      releaseName: kagent-crds
+      releaseNamespace: kagent
+      helmChartAction: Install
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm/kagent
+      repositoryName: kagent
+      chartName: kagent/kagent
+      chartVersion: 0.9.12
+      releaseName: kagent
+      releaseNamespace: kagent
+      helmChartAction: Install
+    - repositoryURL: oci://ghcr.io/kagent-dev/kmcp/helm/kmcp-crds
+      repositoryName: kmcp-crds
+      chartName: kmcp-crds/kmcp-crds
+      chartVersion: 0.3.0
+      releaseName: kmcp-crds
+      releaseNamespace: kmcp-system
+      helmChartAction: Install
+    - repositoryURL: oci://ghcr.io/kagent-dev/kmcp/helm/kmcp
+      repositoryName: kmcp
+      chartName: kmcp/kmcp
+      chartVersion: 0.3.0
+      releaseName: kmcp
+      releaseNamespace: kmcp-system
+      helmChartAction: Install

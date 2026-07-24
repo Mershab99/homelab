@@ -13,17 +13,15 @@
 #   cluster.x-k8s.io/cluster-api-autoscaler-node-group-max-size
 # The `arrakis-general` MachineDeployment has these set.
 #
-# mgmt-only.
+# Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: cluster-autoscaler
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   dependsOn:
     - capi-stack   # CAPI providers must be Running
   helmCharts:

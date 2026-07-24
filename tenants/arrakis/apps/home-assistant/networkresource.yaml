@@ -1,0 +1,17 @@
+# Publish Home Assistant on the NetBird overlay — the ONLY way its UI is reached
+# (no Ingress, no LB). Points the shared `homelab` router at the chart's
+# ClusterIP Service. Only peers in the `family` NetBird group can reach it.
+# See platform/sveltos/manifests/netbird/README.md for the convention.
+apiVersion: netbird.io/v1alpha1
+kind: NetworkResource
+metadata:
+  name: home-assistant
+  namespace: home-assistant
+spec:
+  networkRouterRef:
+    name: homelab
+    namespace: netbird
+  serviceRef:
+    name: home-assistant   # pajikos chart Service (releaseName home-assistant)
+  groups:
+    - name: family

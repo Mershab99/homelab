@@ -6,7 +6,7 @@ source-controller + helm-controller; Sveltos drives all delivery.
 
 | Script | Installs | Why in this order |
 |---|---|---|
-| `01-cilium.sh` | Cilium (CNI + LB IPAM + L2 announcer + Hubble) | Cluster has `cni.name=none` — no pod schedules until Cilium is up |
+| `01-cilium.sh` | Cilium (CNI + Hubble; FULL-REMOTE, no LB IPAM / L2 announce) | Cluster has `cni.name=none` — no pod schedules until Cilium is up |
 | `02-flux.sh` | Flux (source + helm controllers) + the git secret, then `kubectl apply -f bootstrap/flux/` | source-controller syncs the repo + Sveltos chart; helm-controller installs Sveltos from the HelmRelease |
 
 That's the whole delivery bootstrap: install Flux, mount the secret, apply
@@ -21,8 +21,8 @@ ClusterProfile pulls `clusters/baremetal/infrastructure/` +
 
 `values/cilium.yaml` and `values/flux.yaml` are the source of truth for the
 bootstrap helm installs. NOT applied via GitOps later — bootstrap values only.
-Post-bootstrap Cilium runtime config (LB IPAM pools, L2AnnouncementPolicy,
-Hubble Ingress) lives at `clusters/baremetal/infrastructure/`. Sveltos install
+FULL-REMOTE: no LB IPAM pools or L2AnnouncementPolicy are delivered (no LAN LB
+path). Sveltos install
 values live in the HelmRelease at `bootstrap/flux/sveltos-helmrelease.yaml`.
 
 ## Idempotent

@@ -1,12 +1,13 @@
 # oidc-rbac — ClusterRoleBindings that map Dex groups to Kubernetes RBAC.
-# Applied to every cluster whose apiserver federates to Dex (tenant +
-# every vCluster). The bare-metal apiserver is excluded (no OIDC).
+# Applied to vClusters ONLY — the only apiservers that federate to Dex. arrakis
+# (persona=platform) HOSTS Dex, so its apiserver does NOT federate (cert-auth
+# only); the bare-metal apiserver has no OIDC either.
 #
 # Group taxonomy:
 #   oidc:platform-admins — full cluster-admin
 #   oidc:viewers         — read-only across all resources
 #
-# Selector: oidc.enabled=true on the SveltosCluster.
+# Selector: persona=ai (vClusters).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -14,7 +15,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      oidc.enabled: "true"
+      persona: ai
   policyRefs:
     - kind: GitRepository
       name: homelab

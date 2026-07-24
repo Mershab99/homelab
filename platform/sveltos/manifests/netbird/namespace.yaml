@@ -1,0 +1,7 @@
+# netbird namespace — home of the self-hosted server, the operator, and the
+# tenant routing peer. (Helm releaseNamespace also targets this; declared here
+# so the policyRef manifests below have it regardless of apply order.)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: netbird

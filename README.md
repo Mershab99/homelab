@@ -5,8 +5,8 @@ One Dex federates OIDC across every kube-apiserver and UI.
 
 ## Architecture (one paragraph)
 
-A Dell R730 (R820 later) running Talos. Cilium for CNI + LB IPAM + L2 announce
-+ kube-proxy replacement. ZFS (OpenEBS ZFS LocalPV) for storage. KubeVirt for VMs. CAPI + CAPK
+A Dell R730 (R820 later) running Talos. Cilium for CNI + kube-proxy replacement
+(FULL-REMOTE: no LB IPAM / L2 announce — public via chisel tunnel, private via Netbird). ZFS (OpenEBS ZFS LocalPV) for storage. KubeVirt for VMs. CAPI + CAPK
 + CABPK + kamaji-operator manage a single tenant cluster "home" whose control
 plane runs as pods on the bare-metal cluster and whose workers are KubeVirt
 VMs (general / gpu-k80 / gpu-p2000 pools). vClusters provide per-workload API

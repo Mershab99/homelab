@@ -16,7 +16,7 @@
 #   5. tenant-cilium installs CNI (Sveltos needs no pods on tenant for helm),
 #      then tenant-baseline + tenant-gpu + oidc-rbac fan out the rest.
 #
-# mgmt-only — these are CAPI CRs reconciled by the CAPI providers on mgmt.
+# persona=infra — these are CAPI CRs reconciled by the CAPI providers on mgmt.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -25,11 +25,9 @@ spec:
   # DriftDetection: a deleted Cluster CR (tenant rebuild) gets recreated
   # from git immediately — plain Continuous only redeploys on hash change.
   syncMode: ContinuousWithDriftDetection
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   dependsOn:
     - capi-stack    # CAPI + k0smotron providers must be Running
     - virt-host     # KubeVirt HCO must be ready for KubeVirtMachine

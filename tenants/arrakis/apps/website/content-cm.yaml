@@ -4,7 +4,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: website-content
-  namespace: website
+  namespace: web
 data:
   index.html: |
     <!doctype html>
@@ -12,6 +12,6 @@ data:
       <head><meta charset="utf-8"><title>mershab.com</title></head>
       <body style="font-family: system-ui; max-width: 40rem; margin: 4rem auto;">
         <h1>mershab.com</h1>
-        <p>Served by nginx in the <code>mershab</code> k3k shared vCluster on arrakis.</p>
+        <p>Served by nginx in the <code>web</code> namespace on arrakis.</p>
       </body>
     </html>

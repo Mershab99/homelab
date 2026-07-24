@@ -21,7 +21,7 @@
 #   (metadata.yaml releaseSeries) — mixing v1beta1/v1beta2 contract providers
 #   is what previously held tenant k8s back.
 #
-# mgmt-only.
+# Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -32,11 +32,9 @@ spec:
   # race the CRs vanish WITHOUT changing sveltos's hash — plain Continuous
   # mode never re-applies them. Drift detection puts them back.
   syncMode: ContinuousWithDriftDetection
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: mgmt
-      namespace: mgmt
+  clusterSelector:
+    matchLabels:
+      persona: infra
   dependsOn:
     - tls-stack   # cluster-api-operator's webhooks need cert-manager
     - virt-host   # CAPK validates against KubeVirt CRDs

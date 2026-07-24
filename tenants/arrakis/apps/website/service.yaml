@@ -1,0 +1,14 @@
+# ClusterIP — mershab.com is fronted SAME-CLUSTER by the tenant Traefik Gateway
+# (tenant-gateway/httproutes.yaml, the mershab-web route → web/website:80).
+# FULL-REMOTE: no LoadBalancer, no LAN IP. Flat `web` namespace on arrakis
+# (collapsed out of the mershab k3k vCluster).
+apiVersion: v1
+kind: Service
+metadata:
+  name: website
+  namespace: web
+spec:
+  type: ClusterIP
+  selector: {app: website}
+  ports:
+    - {name: http, port: 80, targetPort: 80}

@@ -1,4 +1,4 @@
-# NVIDIADriver CRs — delivered to needs.gpu clusters by the tenant-gpu
+# NVIDIADriver CRs — delivered to persona=platform (the GPU pools) by the tenant-gpu
 # ClusterProfile. Driver install is disabled in the gpu-operator chart so K80
 # and P2000 can pin different versions. nodeSelectors match the pool labels set
 # by the gpu-k80 / gpu-p2000 KubeadmConfigTemplates.

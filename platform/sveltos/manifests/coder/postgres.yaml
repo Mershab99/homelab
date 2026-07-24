@@ -1,0 +1,23 @@
+# Coder's Postgres — a CloudNativePG Cluster (operator from 09-db-operators).
+# Auto-generates the `coder-pg-app` Secret (keys username/password/uri/...) that
+# 15-app-coder feeds to CODER_PG_CONNECTION_URL via its `uri` key. In-cluster
+# only (no TCPRoute) — Coder's DB is not a public product.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: coder
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: coder-pg
+  namespace: coder
+spec:
+  instances: 2
+  storage:
+    size: 10Gi
+    storageClass: kubevirt        # tenant CSI -> bare-metal Longhorn
+  bootstrap:
+    initdb:
+      database: coder
+      owner: coder

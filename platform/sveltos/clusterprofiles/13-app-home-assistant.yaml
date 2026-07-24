@@ -1,28 +1,27 @@
-# Home Assistant — installed INSIDE the `family` vCluster.
+# Home Assistant — FLAT namespace on arrakis (collapsed out of the `family`
+# vCluster). PRIVATE: no Ingress, no LoadBalancer — the UI is reached over the
+# NetBird overlay via a NetworkResource. HA keeps a Multus LAN NIC for device
+# control (mDNS / Matter / Zigbee-Zwave coordinators) — full-remote drops LAN
+# *exposure*, not device connectivity.
 #
 # Two delivery channels:
-#   1. helmCharts — pajikos/home-assistant (the most actively maintained
-#      community chart). Handles the namespace, PVC, Deployment, Service,
-#      and Ingress with our values. Pod annotated with Multus to attach to
-#      the LAN.
-#   2. policyRefs — a GitRepository ref pointing at
-#      tenants/arrakis/vclusters/family/apps/home-assistant/ for the things
-#      the chart doesn't manage (the `lan` NAD in the home-assistant ns).
+#   1. helmCharts — pajikos/home-assistant. Namespace, PVC, Deployment, Service.
+#      Pod annotated with Multus to attach to the LAN. Ingress OFF.
+#   2. policyRefs — tenants/arrakis/apps/home-assistant/ for the `lan` NAD + the
+#      NetBird NetworkResource that publishes HA on the overlay.
 #
-# Selector: clusterRefs by name targets the family SveltosCluster registered
-# from the k3k vCluster kubeconfig (see docs/runbooks/registering-a-k3k-vcluster.md).
+# Selector: persona=platform (flat, no vCluster).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: app-home-assistant
 spec:
-  clusterRefs:
-    - kind: SveltosCluster
-      apiVersion: lib.projectsveltos.io/v1beta1
-      name: family
-      namespace: vclusters
+  clusterSelector:
+    matchLabels:
+      persona: platform
   dependsOn:
-    - vcluster-baseline   # need the lan NAD baseline before HA's NAD copy lands
+    - tenant-baseline   # kubevirt-csi for the PVC
+    - netbird           # NetworkResource CRD + the homelab routing peer
   helmCharts:
     - repositoryURL: https://pajikos.github.io/home-assistant-helm-chart/
       repositoryName: pajikos
@@ -36,21 +35,10 @@ spec:
           enabled: true
           storageClass: kubevirt   # routes via kubevirt-csi to bare-metal longhorn
           size: 10Gi
+        # PRIVATE — no Ingress. Reached over NetBird (see the NetworkResource in
+        # tenants/arrakis/apps/home-assistant/). FULL-REMOTE: no internal LB class.
         ingress:
-          enabled: true
-          className: internal
-          hosts:
-            - host: home.mershab.com
-              paths:
-                - path: /
-                  pathType: Prefix
-          tls:
-            - secretName: home-assistant-tls
-              hosts:
-                - home.mershab.com
-          annotations:
-            cert-manager.io/cluster-issuer: selfsigned-ca
-            external-dns.alpha.kubernetes.io/hostname: home.mershab.com
+          enabled: false
         # Multus LAN attach — HA needs LAN for mDNS / zwave coordinator / etc.
         podAnnotations:
           k8s.v1.cni.cncf.io/networks: lan
@@ -58,4 +46,4 @@ spec:
     - kind: GitRepository
       name: homelab
       namespace: flux-system
-      path: ./tenants/arrakis/vclusters/family/apps/home-assistant
+      path: ./tenants/arrakis/apps/home-assistant

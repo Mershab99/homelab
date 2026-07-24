@@ -1,0 +1,113 @@
+# tenant-ingress — the app ingress edge, on the TENANT (arrakis), not mgmt.
+#
+# Closes the delivery gap: today no ClusterProfile installs Traefik and the
+# gateway manifests are delivered by nothing (mershab.com 503s). This profile
+# puts Traefik + Gateway API + a TENANT-side chisel-operator on arrakis, so
+# public apps (Jellyfin/website/public-app/Coder) land as tenant namespaces
+# behind one Gateway, tunnelled out through VPS-02 (node-02).
+#
+# WHY a second chisel-operator (not the mgmt one from 02-ingress-external):
+# chisel-operator is per-API-server and binds 1:1 ExitNode↔Service. mgmt's
+# operator is bound to the arrakis API LB via node-01/VPS-01. Traefik's public
+# LB is a DIFFERENT Service on the tenant API — it needs its own operator +
+# ExitNode (node-02/VPS-02) or it flip-flops with the API tunnel.
+#
+# ── GATES before this profile is correct end-to-end (resolve, then fill) ──
+#  1. Traefik chart version: PIN EXACT (repo rule — wildcard "vX.Y.x" trips
+#     sveltos semver on upgrade; see 01-tls-stack.yaml:20). Fill chartVersion
+#     below with a real pinned traefik chart version. While pinning, confirm the
+#     chart installs the STANDARD Gateway API CRDs (GatewayClass/Gateway/
+#     HTTPRoute/ReferenceGrant) when the kubernetesGateway provider is on — the
+#     EXPERIMENTAL CRDs (TCPRoute/TLSRoute/BackendTLSPolicy) ship from the
+#     tenant-gateway dir (policyRef below). If the chart does NOT install the
+#     standard set, vendor them into tenant-gateway too.
+#  2. external-dns HTTPRoute source on the tenant: 01-dns.yaml:42 gates the
+#     `gateway-httproute` source to mgmt ONLY (it crashloops where Gateway CRDs
+#     are absent). Once Traefik installs the Gateway CRDs here, flip that gate to
+#     also enable the source on arrakis, else tenant HTTPRoute hostnames never
+#     publish to Cloudflare.
+#  3. VPS-02: provision it, fill node-02.yaml spec.host + the node-02-credentials
+#     Secret (applied against the tenant).
+#
+# RESOLVED (no longer gates):
+#  - cert-manager + letsencrypt-prod already run on arrakis (persona=platform,
+#    via `persona In [infra, platform]`) — Traefik's Certificates issue here already.
+#  - Dex: relocated to the tenant (06-auth-stack now persona=platform). It is
+#    a same-cluster backend; auth.mershab.com is fronted by tenant-gateway.
+#
+# Selector: persona=platform.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: tenant-ingress
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-baseline   # needs schedulable pods (CNI + CSI up)
+  helmCharts:
+    # Traefik (Gateway API provider). PIN chartVersion EXACT — see GATE 1.
+    - repositoryURL: https://traefik.github.io/charts
+      repositoryName: traefik
+      chartName: traefik/traefik
+      chartVersion: REPLACE_WITH_PINNED_TRAEFIK_CHART_VERSION
+      releaseName: traefik
+      releaseNamespace: traefik
+      helmChartAction: Install
+      values: |
+        # Gateway API provider on; experimentalChannel enables TCPRoute (the
+        # public DB path — Phase 5). expose via the chisel external LB class so
+        # the tenant chisel-operator tunnels the ports out through node-02/VPS-02.
+        providers:
+          kubernetesGateway:
+            enabled: true
+            experimentalChannel: true   # TCPRoute is Experimental-channel only
+        # Extra TCP entrypoints for the public DB product (Phase 5). Each must
+        # match a Gateway TCP listener port (tenant-gateway/gateway.yaml).
+        ports:
+          postgres:
+            port: 5432
+            expose:
+              default: true
+            protocol: TCP
+          mysql:
+            port: 3306
+            expose:
+              default: true
+            protocol: TCP
+        service:
+          type: LoadBalancer
+          annotations:
+            external-dns.alpha.kubernetes.io/hostname: "*.mershab.com"
+        # loadBalancerClass set on the Service so the tenant chisel-operator
+        # (below) claims it, not any LAN LB (there is none — FULL-REMOTE). ONE
+        # LB Service carries 80/443/5432/3306 -> ONE ExitNode (node-02); the 1:1
+        # rule is per-Service, so extra ports don't need extra ExitNodes.
+        # traefik chart exposes this under service.spec — verify key names against
+        # the pinned chart version before apply.
+    # Tenant-side chisel-operator (separate from mgmt's). Binds Traefik's LB to
+    # node-02/VPS-02.
+    - repositoryURL: oci://ghcr.io/fyralabs/chisel-operator
+      repositoryName: chisel-operator
+      chartName: chisel-operator/chisel-operator
+      chartVersion: v0.7.1
+      releaseName: chisel-operator
+      releaseNamespace: chisel-operator-system
+      helmChartAction: Install
+      values: |
+        loadBalancerClass: chisel.mershab.com/external
+  policyRefs:
+    # node-02 ExitNode (VPS-02) — the tenant public edge.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./tenants/arrakis/ingress/exit-nodes
+    # Tenant Gateway + certs + HTTPRoutes + the experimental Gateway API CRDs
+    # (TCPRoute/TLSRoute/BackendTLSPolicy). Backends are tenant namespaces
+    # (Dex, website, ...). The old mgmt manifests/gateway dir was retired — the
+    # whole edge lives on the tenant now.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/tenant-gateway

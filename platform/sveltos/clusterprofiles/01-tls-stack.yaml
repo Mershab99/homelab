@@ -11,8 +11,8 @@ metadata:
   name: tls-stack
 spec:
   clusterSelector:
-    matchLabels:
-      needs.tls: "true"
+    matchExpressions:
+      - {key: persona, operator: In, values: [infra, platform]}
   helmCharts:
     - repositoryURL: https://charts.jetstack.io
       repositoryName: jetstack

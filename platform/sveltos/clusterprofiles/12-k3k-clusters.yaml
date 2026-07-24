@@ -1,7 +1,8 @@
-# k3k-clusters — delivers the k3k Cluster CRs (family + mershab) onto the tenant.
+# k3k-clusters — the k3k Cluster CRs delivered to the tenant. After the
+# mershab/family collapse, the ONLY vCluster is `ai` (kagent + KMCP). Reserved
+# strictly for the AI/MCP layer; every other workload is a flat namespace.
 #
-# Split from 12-k3k-operator via dependsOn so the k3k.io CRD is registered
-# before these CRs apply. Native manifests live in manifests/k3k-clusters/.
+# Selector: persona=platform. dependsOn k3k-operator (CRD must exist first).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -9,7 +10,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      sveltos.projectsveltos.io/type: tenant
+      persona: platform
   dependsOn:
     - k3k-operator
   policyRefs:

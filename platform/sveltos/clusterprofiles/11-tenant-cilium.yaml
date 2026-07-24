@@ -11,7 +11,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      sveltos.projectsveltos.io/type: tenant
+      persona: platform
   helmCharts:
     - repositoryURL: https://helm.cilium.io
       repositoryName: cilium

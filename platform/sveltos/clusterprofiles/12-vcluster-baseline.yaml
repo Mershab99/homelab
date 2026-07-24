@@ -1,6 +1,5 @@
-# vcluster-baseline — runs INSIDE every vCluster (selected by the
-# sveltos.projectsveltos.io/type=vcluster label set when the k3k vCluster is
-# registered with the hub from its kubeconfig — see
+# vcluster-baseline — runs INSIDE every vCluster (selected by persona=ai, set
+# when the k3k vCluster is registered with the hub from its kubeconfig — see
 # docs/runbooks/registering-a-k3k-vcluster.md).
 #
 # Manifests delivered via GitRepository policyRef (consistent with
@@ -8,7 +7,7 @@
 #
 # OIDC RBAC (cluster-admin → oidc:platform-admins, view → oidc:viewers) is
 # delivered by the separate 11-oidc-rbac ClusterProfile, which also matches
-# vClusters since they have oidc.enabled=true.
+# vClusters (persona=ai) — they're the only apiservers federated to Dex.
 #
 # Prometheus scraping happens at the tenant layer (tenant OTel does
 # cluster-wide pod discovery and picks up vCluster pods automatically).
@@ -20,7 +19,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      sveltos.projectsveltos.io/type: vcluster
+      persona: ai
   policyRefs:
     - kind: GitRepository
       name: homelab

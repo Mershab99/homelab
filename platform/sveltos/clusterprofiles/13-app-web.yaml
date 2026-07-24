@@ -1,0 +1,24 @@
+# app-web — nginx serving mershab.com, as a FLAT namespace on arrakis (collapsed
+# out of the mershab k3k vCluster). The platform success barometer.
+#
+# No Helm chart — plain native manifests (ConfigMap content + Deployment +
+# ClusterIP Service). No PVC (static content). Public at apex mershab.com via the
+# TENANT Traefik edge (tenant-gateway/httproutes.yaml mershab-web route → the
+# same-cluster web/website:80 Service — no selectorless/EndpointSlice hack now).
+#
+# Selector: persona=platform (flat, no vCluster).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: app-web
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-ingress   # Traefik gateway fronts mershab.com
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./tenants/arrakis/apps/website
