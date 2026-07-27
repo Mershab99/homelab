@@ -13,21 +13,23 @@
 # ExitNode (node-02/VPS-02) or it flip-flops with the API tunnel.
 #
 # ── GATES before this profile is correct end-to-end (resolve, then fill) ──
-#  1. Traefik chart version: PIN EXACT (repo rule — wildcard "vX.Y.x" trips
-#     sveltos semver on upgrade; see 01-tls-stack.yaml:20). Fill chartVersion
-#     below with a real pinned traefik chart version. While pinning, confirm the
-#     chart installs the STANDARD Gateway API CRDs (GatewayClass/Gateway/
-#     HTTPRoute/ReferenceGrant) when the kubernetesGateway provider is on — the
-#     EXPERIMENTAL CRDs (TCPRoute/TLSRoute/BackendTLSPolicy) ship from the
-#     tenant-gateway dir (policyRef below). If the chart does NOT install the
-#     standard set, vendor them into tenant-gateway too.
+#  1. RESOLVED 2026-07-27: chartVersion pinned 41.0.2 (bare semver — traefik
+#     charts are NOT v-prefixed). Verified the chart ships ONLY *.traefik.io
+#     CRDs, NOT the standard Gateway API set — so GatewayClass/Gateway/HTTPRoute/
+#     ReferenceGrant (v1.2.1 experimental channel, matching the vendored
+#     TCPRoute/TLSRoute/BackendTLSPolicy) are now vendored into tenant-gateway/.
 #  2. external-dns HTTPRoute source on the tenant: 01-dns.yaml:42 gates the
 #     `gateway-httproute` source to mgmt ONLY (it crashloops where Gateway CRDs
 #     are absent). Once Traefik installs the Gateway CRDs here, flip that gate to
 #     also enable the source on arrakis, else tenant HTTPRoute hostnames never
 #     publish to Cloudflare.
-#  3. VPS-02: provision it, fill node-02.yaml spec.host + the node-02-credentials
-#     Secret (applied against the tenant).
+#  3. VPS-02 (STILL OPEN): provision it, fill node-02.yaml spec.host + the
+#     node-02-credentials Secret (applied against the tenant). Until then the
+#     node-02 ExitNode APPLIES cleanly (CRD now installs via chisel-operator) but
+#     is INERT — chisel-operator can't tunnel to the placeholder host, so
+#     Traefik's public LB has no external path. No addon-controller error, just
+#     no public reachability. Also flip GATE 2 (external-dns) only AFTER VPS-02,
+#     else HTTPRoute hostnames publish to Cloudflare pointing at a dead tunnel.
 #
 # RESOLVED (no longer gates):
 #  - cert-manager + letsencrypt-prod already run on arrakis (persona=platform,
@@ -51,7 +53,7 @@ spec:
     - repositoryURL: https://traefik.github.io/charts
       repositoryName: traefik
       chartName: traefik/traefik
-      chartVersion: REPLACE_WITH_PINNED_TRAEFIK_CHART_VERSION
+      chartVersion: 41.0.2   # PINNED EXACT (traefik charts are bare semver, not v-prefixed). Chart does NOT ship standard Gateway API CRDs — vendored into tenant-gateway/ (GATE 1).
       releaseName: traefik
       releaseNamespace: traefik
       helmChartAction: Install
