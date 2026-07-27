@@ -17,6 +17,7 @@ resources:
   - 06-auth-stack.yaml          # Dex with password-db connector (runs on platform)
   - 08-netbird.yaml             # self-hosted NetBird overlay + operator (private access backbone)
   - 09-db-operators.yaml        # vended DBs — CloudNativePG (Postgres) + MOCO (MySQL) operators
+  - 10-tenant-secrets.yaml      # propagate mgmt-held tenant secrets → arrakis (templateResourceRefs)
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
   # minimal: - 07-observability-backend.yaml  # Loki (MinIO S3) + Grafana operator + CR
   - 10-tenant-arrakis.yaml      # delivers CAPI resources for tenant cluster

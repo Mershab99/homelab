@@ -1,249 +1,34 @@
 # NOTE: sveltos policyRefs parse EVERY file in this dir as YAML — no
 # README.md allowed here (it broke tenant-baseline). Docs live below.
 #
-# # kubevirt-csi — vendored manifest
+# # kubevirt-csi — TENANT side (node plugin only) — Mode B
 #
-# KubeVirt CSI doesn't ship a Helm chart. The `tenant-baseline`
-# ClusterProfile reads from this directory via GitRepository policyRef and
-# applies the manifests to the tenant cluster.
+# KubeVirt CSI runs in a SPLIT topology (upstream "controller-infra" overlay):
+#   - CONTROLLER runs on the INFRA cluster (contraxia/mgmt), in the `tenants`
+#     namespace, watching arrakis PVCs via the CAPI-generated `arrakis-kubeconfig`
+#     and creating DataVolumes locally. See tenants/arrakis/infra/kubevirt-csi-controller.yaml.
+#   - NODE plugin (this file) runs on the TENANT (arrakis) — one pod per worker,
+#     staging/mounting the block devices KubeVirt hot-plugs into the worker VMs.
 #
-# ## Files here
+# Why Mode B: it eliminates the old out-of-band `infra-cluster-credentials`
+# secret that had to be hand-applied to arrakis (chicken/egg after a rebuild).
+# The controller now uses the tenant kubeconfig CAPI already mints on mgmt —
+# zero hand-applied secret, rebuild-proof.
 #
-# - `kubevirt-csi.yaml` — controller + node + RBAC + CSIDriver, vendored from
-#   `kubevirt/csi-driver` `deploy/{controller-tenant,tenant}/base` at a pinned
-#   commit (upstream has no release tags / helm chart). The header records the SHA.
-# - `driver-config.yaml` — the `kubevirt-csi-driver` Namespace + `driver-config`
-#   ConfigMap (all 3 keys; infraClusterNamespace=`tenants`).
-# - `storageclass.yaml` — the `kubevirt` StorageClass → bare-metal `longhorn`.
+# ## Files here (all delivered to the TENANT by 11-tenant-baseline)
+# - `kubevirt-csi.yaml`  — node DaemonSet + CSIDriver + node RBAC (this file)
+# - `driver-config.yaml` — the `kubevirt-csi-driver` Namespace (the ConfigMap
+#   moved to the infra controller, which is the only thing that reads it)
+# - `storageclass.yaml`  — the `kubevirt` StorageClass → bare-metal `longhorn`
 #
-# ## Required out-of-band Secret
-#
-# The controller needs a kubeconfig to the mgmt (infra) cluster, applied **to the
-# tenant**: `secrets/infrastructure/kubevirt-csi/infra-cluster-credentials.example.yaml`
-# → `.secret.yaml`, applied with `KUBECONFIG` pointed at arrakis (not mgmt, so
-# `./secrets/apply.sh` does not cover it).
-#
-# ## Upgrade procedure
-#
-# Re-vendor from a newer commit:
-# ```bash
-# SHA=<new-commit>
-# yq eval-all 'select(.kind != "StorageClass" and .kind != "ConfigMap")' \
-#   <(curl -fsSL "https://raw.githubusercontent.com/kubevirt/csi-driver/$SHA/deploy/controller-tenant/base/deploy.yaml") \
-#   <(curl -fsSL "https://raw.githubusercontent.com/kubevirt/csi-driver/$SHA/deploy/tenant/base/deploy.yaml") \
-#   > /tmp/csi.yaml   # then re-add the header + commit
-# ```
-#
-# ## What it does
-#
-# - Installs the kubevirt-csi-node DaemonSet on every tenant worker
-# - The CSI talks back to KubeVirt on the bare-metal (infra) cluster to
-#   attach/detach KubeVirt DataVolumes to the worker VMs
-# - Tenant PVCs that request the `kubevirt` storageClass route through this
-#   CSI to a backing Longhorn PVC on the bare-metal (infra) cluster
-#
-# ## StorageClass
-#
-# `storageclass.yaml` (already committed) defines a `kubevirt` StorageClass
-# on the tenant pointing at the bare-metal `longhorn` StorageClass.
-# kubevirt-csi driver (tenant-side) — controller Deployment + node DaemonSet +
-# RBAC + CSIDriver + VolumeSnapshotClass + ServiceAccounts.
-# Vendored from kubevirt/csi-driver deploy/{controller-tenant,tenant}/base
-#   @ commit 27b52aa22da761ce973cc04976b37762d88e6c78  (upstream ships no release tags / helm chart).
-#
-# Stripped from upstream base: its duplicate 'kubevirt' StorageClass (repo's
-# storageclass.yaml is authoritative → longhorn) and its incomplete
-# 'driver-config' ConfigMap (see driver-config.yaml here, with all 3 keys set).
-#
-# Runs on the tenant (arrakis); provisions PVCs by creating DataVolumes on the
-# INFRA cluster (mgmt). Needs one out-of-band Secret 'infra-cluster-credentials'
-# (kubeconfig to mgmt) — template: secrets/infrastructure/kubevirt-csi/.
+# Vendored from kubevirt/csi-driver deploy/{controller-infra,tenant}/base
+#   @ commit 27b52aa22da761ce973cc04976b37762d88e6c78 (no release tags / helm chart).
+#   Node half from deploy/tenant/base; controller half (infra) lives on mgmt.
 #
 # TODO(pin): upstream pins the driver image to :latest — pin
 # quay.io/kubevirt/kubevirt-csi-driver to a digest once a tag is chosen.
 ---
----
-kind: Deployment
-apiVersion: apps/v1
-metadata:
-  name: kubevirt-csi-controller
-  namespace: kubevirt-csi-driver
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: kubevirt-csi-driver
-  template:
-    metadata:
-      labels:
-        app: kubevirt-csi-driver
-    spec:
-      enableServiceLinks: false
-      serviceAccount: kubevirt-csi-controller-sa
-      priorityClassName: system-cluster-critical
-      # No control-plane nodeSelector: k0smotron clusters have no CP nodes
-      # (CP runs as pods on the hub) — controller runs on workers.
-      tolerations:
-        - key: CriticalAddonsOnly
-          operator: Exists
-        - key: node-role.kubernetes.io/master
-          operator: Exists
-          effect: "NoSchedule"
-        - key: node-role.kubernetes.io/control-plane
-          operator: Exists
-          effect: "NoSchedule"
-      containers:
-        - name: csi-driver
-          imagePullPolicy: Always
-          image: quay.io/kubevirt/kubevirt-csi-driver:latest
-          args:
-            - "--endpoint=$(CSI_ENDPOINT)"
-            - "--infra-cluster-namespace=$(INFRACLUSTER_NAMESPACE)"
-            - "--infra-cluster-kubeconfig=/var/run/secrets/infracluster/kubeconfig"
-            - "--infra-cluster-labels=$(INFRACLUSTER_LABELS)"
-            - "--run-node-service=false"
-            - "--run-controller-service=true"
-            - "--v=5"
-          ports:
-            - name: healthz
-              containerPort: 10301
-              protocol: TCP
-          env:
-            - name: CSI_ENDPOINT
-              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: INFRACLUSTER_NAMESPACE
-              valueFrom:
-                configMapKeyRef:
-                  name: driver-config
-                  key: infraClusterNamespace
-            - name: INFRACLUSTER_LABELS
-              valueFrom:
-                configMapKeyRef:
-                  name: driver-config
-                  key: infraClusterLabels
-            - name: INFRA_STORAGE_CLASS_ENFORCEMENT
-              valueFrom:
-                configMapKeyRef:
-                  name: driver-config
-                  key: infraStorageClassEnforcement
-                  optional: true
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
-            - name: infracluster
-              mountPath: "/var/run/secrets/infracluster"
-          resources:
-            requests:
-              memory: 50Mi
-              cpu: 10m
-        - name: csi-provisioner
-          image: quay.io/openshift/origin-csi-external-provisioner:latest
-          args:
-            - "--csi-address=$(ADDRESS)"
-            - "--default-fstype=ext4"
-            - "--v=5"
-            - "--timeout=3m"
-            - "--retry-interval-max=1m"
-          env:
-            - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
-          resources:
-            requests:
-              memory: 50Mi
-              cpu: 10m
-        - name: csi-attacher
-          image: quay.io/openshift/origin-csi-external-attacher:latest
-          args:
-            - "--csi-address=$(ADDRESS)"
-            - "--v=5"
-            - "--timeout=3m"
-            - "--retry-interval-max=1m"
-          env:
-            - name: ADDRESS
-              value: /var/lib/csi/sockets/pluginproxy/csi.sock
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /var/lib/csi/sockets/pluginproxy/
-          resources:
-            requests:
-              memory: 50Mi
-              cpu: 10m
-        - name: csi-liveness-probe
-          image: quay.io/openshift/origin-csi-livenessprobe:latest
-          args:
-            - "--csi-address=/csi/csi.sock"
-            - "--probe-timeout=3s"
-            - "--health-port=10301"
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /csi
-          resources:
-            requests:
-              memory: 50Mi
-              cpu: 10m
-        - name: csi-snapshotter
-          args:
-            - "--v=3"
-            - "--csi-address=/csi/csi.sock"
-            - "--timeout=3m"
-          image: k8s.gcr.io/sig-storage/csi-snapshotter:v4.2.1
-          imagePullPolicy: IfNotPresent
-          securityContext:
-            privileged: true
-          terminationMessagePath: /dev/termination-log
-          terminationMessagePolicy: File
-          volumeMounts:
-            - mountPath: /csi
-              name: socket-dir
-          resources:
-            requests:
-              memory: 20Mi
-              cpu: 10m
-        - name: csi-resizer
-          image: registry.k8s.io/sig-storage/csi-resizer:v1.13.1
-          args:
-            - "-csi-address=/csi/csi.sock"
-            - "-v=5"
-            - "-timeout=3m"
-            - '-handle-volume-inuse-error=false'
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /csi
-          resources:
-            requests:
-              cpu: 10m
-              memory: 20Mi
-          securityContext:
-            capabilities:
-              drop:
-                - ALL
-      volumes:
-        - name: socket-dir
-          emptyDir: {}
-        - name: infracluster
-          secret:
-            secretName: infra-cluster-credentials
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-snapshotter-role
-subjects:
-  - kind: ServiceAccount
-    name: kubevirt-csi-controller-sa
-    namespace: kubevirt-csi-driver
-roleRef:
-  kind: ClusterRole
-  name: external-snapshotter-runner
-  apiGroup: rbac.authorization.k8s.io
----
+# CSIDriver registration (tenant-side — the driver the node plugin registers).
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
@@ -256,87 +41,7 @@ spec:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kubevirt-csi-controller-sa
-  namespace: kubevirt-csi-driver
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: kubevirt-csi-controller-cr
-rules:
-  - apiGroups: ['']
-    resources: ['persistentvolumes']
-    verbs: ['create', 'delete', 'get', 'list', 'watch', 'update', 'patch']
-  - apiGroups: ['']
-    resources: ['secrets']
-    verbs: ['get', 'list']
-  - apiGroups: ['']
-    resources: ['persistentvolumeclaims']
-    verbs: ['get', 'list', 'watch', 'update']
-  - apiGroups: [""]
-    resources: ["persistentvolumeclaims/status"]
-    verbs: ["update", "patch"]
-  - apiGroups: ['']
-    resources: ['nodes']
-    verbs: ['get', 'list', 'watch']
-  - apiGroups: ['storage.k8s.io']
-    resources: ['volumeattachments']
-    verbs: ['get', 'list', 'watch', 'update', 'patch']
-  - apiGroups: ['storage.k8s.io']
-    resources: ['storageclasses']
-    verbs: ['get', 'list', 'watch']
-  - apiGroups: ['csi.storage.k8s.io']
-    resources: ['csidrivers']
-    verbs: ['get', 'list', 'watch', 'update', 'create']
-  - apiGroups: ['']
-    resources: ['events']
-    verbs: ['list', 'watch', 'create', 'update', 'patch']
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotcontents"]
-    verbs: ["create", "get", "list", "watch", "update", "delete"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshots"]
-    verbs: ["get", "list", "watch", "update"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshots/status"]
-    verbs: ["update"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["volumeattachments/status"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  - apiGroups: ["storage.k8s.io"]
-    resources: ["csinodes"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["security.openshift.io"]
-    resources: ["securitycontextconstraints"]
-    verbs: ["use"]
-    resourceNames: ["privileged"]
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: kubevirt-csi-controller-binding
-subjects:
-  - kind: ServiceAccount
-    name: kubevirt-csi-controller-sa
-    namespace: kubevirt-csi-driver
-roleRef:
-  kind: ClusterRole
-  name: kubevirt-csi-controller-cr
-  apiGroup: rbac.authorization.k8s.io
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
   name: kubevirt-csi-node-sa
-  namespace: kubevirt-csi-driver
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kubevirt-csi-snapshot-sa
   namespace: kubevirt-csi-driver
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -375,27 +80,6 @@ rules:
     resources: ["securitycontextconstraints"]
     verbs: ["use"]
     resourceNames: ["privileged"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotclasses"]
-    verbs: ["list"]
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: external-snapshotter-runner
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["list", "watch", "create", "update", "patch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotclasses"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotcontents"]
-    verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]
-  - apiGroups: ["snapshot.storage.k8s.io"]
-    resources: ["volumesnapshotcontents/status"]
-    verbs: ["update", "patch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -408,20 +92,6 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: kubevirt-csi-node-cr
-  apiGroup: rbac.authorization.k8s.io
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: csi-snapshotter-role
-subjects:
-  - kind: ServiceAccount
-    name: kubevirt-csi-snapshot-sa
-    namespace: kubevirt-csi-driver
-roleRef:
-  kind: ClusterRole
-  # change the name also here if the ClusterRole gets renamed
-  name: external-snapshotter-runner
   apiGroup: rbac.authorization.k8s.io
 ---
 kind: DaemonSet
@@ -545,12 +215,3 @@ spec:
         - name: udev
           hostPath:
             path: /run/udev
----
-# VolumeSnapshotClass dropped: the tenant has no external-snapshotter CRDs
-# and nothing snapshots yet. Re-add (plus the snapshot.storage.k8s.io CRDs)
-# when snapshots are actually wanted:
-#   apiVersion: snapshot.storage.k8s.io/v1
-#   kind: VolumeSnapshotClass
-#   metadata: {name: kubevirt-csi-snapclass}
-#   driver: csi.kubevirt.io
-#   deletionPolicy: Delete

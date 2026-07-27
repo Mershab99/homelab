@@ -160,8 +160,10 @@ Charts consume these by name (cloudflare token, dex-config, grafana OIDC,
 minio). Their namespaces are created by the charts, so
 `apply.sh` is **re-runnable** — run it once after the root profile has created
 the namespaces, and Sveltos requeues any chart that was waiting on its secret.
-The tenant's `infra-cluster-credentials` (kubevirt-csi) is applied separately,
-against the tenant — not by this script.
+Tenant-consumed secrets are applied here too (ns `tenant-secrets`) and propagated
+to arrakis by the `tenant-secrets` ClusterProfile — nothing is applied against the
+arrakis context by hand. kubevirt-csi needs no secret (Mode B: the controller runs
+on mgmt and uses the CAPI-minted `arrakis-kubeconfig`).
 
 **Verify**:
 ```bash

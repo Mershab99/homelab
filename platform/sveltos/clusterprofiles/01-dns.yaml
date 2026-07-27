@@ -6,7 +6,8 @@
 # clobbering each other's TXT registry (external-dns multi-instance docs).
 #
 # CF token Secret (cloudflare-api-token, ns external-dns) must exist on each
-# matched cluster — for the tenant, apply it there by hand too.
+# matched cluster: mgmt via ./secrets/apply.sh; arrakis via the `tenant-secrets`
+# ClusterProfile (Sveltos propagates it) — no hand-apply on the tenant.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:

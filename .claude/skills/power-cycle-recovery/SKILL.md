@@ -30,6 +30,38 @@ kubectl --context admin@contraxia -n flux-system get helmrelease sveltos
 Fresh-install marker: events show `Helm install succeeded ... projectsveltos.v1`
 → Sveltos was reinstalled, expect fallout below.
 
+## 1b. Sveltos mgmt-token deadlock (seen 2026-07-19)
+
+If step 1 looks clean but git pushes stop propagating and ClusterSummaries
+sit in Provisioning, check the mgmt SveltosCluster connection:
+
+```bash
+kubectl --context admin@contraxia get sveltoscluster mgmt -n mgmt \
+  -o jsonpath='{.status.connectionStatus} {.status.failureMessage} {.status.lastReconciledTokenRequestAt}'
+```
+
+`Down ... the server has asked for the client to provide credentials` with a
+frozen `lastReconciledTokenRequestAt` = the token deadlock: the kubeconfig in
+secret `mgmt-sveltos-kubeconfig` (key `re-kubeconfig`) holds a 5h TokenRequest
+token for SA `projectsveltos/projectsveltos`, renewed hourly by sc-manager. If
+one renewal window is missed (node stall, outage), the token expires and
+sc-manager's health probe fails *before* its renewal logic runs — it never
+recovers on its own. Fix by minting a token manually:
+
+```bash
+NEW_TOK=$(kubectl --context admin@contraxia create token projectsveltos \
+  -n projectsveltos --duration=5h)
+kubectl --context admin@contraxia get secret mgmt-sveltos-kubeconfig -n mgmt \
+  -o jsonpath='{.data.re-kubeconfig}' | base64 -d \
+  | sed "s|token: .*|token: $NEW_TOK|" > /tmp/re-kubeconfig
+kubectl --context admin@contraxia patch secret mgmt-sveltos-kubeconfig -n mgmt \
+  --type=merge -p "{\"data\":{\"re-kubeconfig\":\"$(base64 < /tmp/re-kubeconfig | tr -d '\n')\"}}"
+rm /tmp/re-kubeconfig
+```
+
+sc-manager reconnects within ~1 min and resumes hourly renewal; stuck
+profiles then deploy on their own.
+
 ## 2. Compare desired vs actual profiles
 
 ```bash

@@ -6,8 +6,10 @@
 # Re-runnable: if a Secret's namespace doesn't exist yet (its chart hasn't
 # created it), that resource errors — re-run once the ClusterProfile has.
 #
-# Tenant-only secrets (kubevirt-csi infra kubeconfig, tenant cloudflare token)
-# are NOT in the kustomization — apply those with KUBECONFIG pointed at arrakis.
+# Tenant-consumed secrets are ALSO applied here (ns tenant-secrets) and
+# propagated to arrakis by the `tenant-secrets` ClusterProfile — nothing is
+# applied against the arrakis context by hand. (kubevirt-csi needs no secret:
+# Mode B uses the CAPI-minted arrakis-kubeconfig.)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
