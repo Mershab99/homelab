@@ -65,6 +65,19 @@ spec:
           kubernetesGateway:
             enabled: true
             experimentalChannel: true   # TCPRoute is Experimental-channel only
+        # DO NOT let the chart render its own Gateway/GatewayClass. Two reasons:
+        #  1. Deadlock — chart-rendered Gateway/GatewayClass need the standard
+        #     Gateway API CRDs AT HELM-INSTALL TIME, but those CRDs arrive via the
+        #     Resources feature (tenant-gateway policyRef), which can't apply until
+        #     chisel-operator (this same Helm feature) installs the ExitNode CRD.
+        #     Helm↔Resources deadlock. Disabling these makes Helm CRD-independent.
+        #  2. Collision — chart's GatewayClass is also named "traefik", same as our
+        #     tenant-gateway/gateway.yaml GatewayClass. We own the Gateway ("shared")
+        #     + GatewayClass here; the provider (above) still watches them at runtime.
+        gateway:
+          enabled: false
+        gatewayClass:
+          enabled: false
         # Extra TCP entrypoints for the public DB product (Phase 5). Each must
         # match a Gateway TCP listener port (tenant-gateway/gateway.yaml).
         ports:
