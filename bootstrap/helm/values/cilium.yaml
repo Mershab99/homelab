@@ -72,11 +72,14 @@ ipv6:
 routingMode: tunnel
 tunnelProtocol: vxlan
 
-# FULL-REMOTE: no LAN LoadBalancer. Keep L2 announce + externalIPs OFF; no LB
-# IPAM pools or L2AnnouncementPolicy CRs are delivered. Public = chisel tunnel,
-# private = Netbird overlay.
+# LAN LoadBalancer for the arrakis k0s CP endpoint (2026-07-28). l2announcements
+# ON so a CiliumLoadBalancerIPPool (192.168.2.240-250) + L2AnnouncementPolicy
+# (bootstrap/helm/cilium-lb-lan.yaml) hand the arrakis CP a stable home-LAN IP
+# (192.168.2.240) — the raw-IP externalAddress that fixes konnectivity (no DNS)
+# and drops the VPS from the API path. externalIPs stays OFF (LB-IPAM only).
+# Public app ingress still = chisel tunnel; private = Netbird overlay.
 l2announcements:
-  enabled: false
+  enabled: true
 externalIPs:
   enabled: false
 

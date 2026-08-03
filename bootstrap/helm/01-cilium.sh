@@ -8,9 +8,10 @@
 #   - KUBECONFIG pointed at the bare-metal cluster
 set -euo pipefail
 
-CILIUM_VERSION="${CILIUM_VERSION:-1.17.0}"
+CILIUM_VERSION="${CILIUM_VERSION:-1.19.5}"   # match the deployed version — 1.17.0 would DOWNGRADE
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VALUES="${SCRIPT_DIR}/values/cilium.yaml"
+LB_LAN="${SCRIPT_DIR}/cilium-lb-lan.yaml"
 
 if ! command -v helm >/dev/null; then
   echo "ERROR: helm not installed" >&2
@@ -40,6 +41,9 @@ helm upgrade --install cilium cilium/cilium \
   --values "${VALUES}" \
   --wait \
   --timeout 10m
+
+echo "==> Applying LAN LoadBalancer pool + L2 policy"
+kubectl apply -f "${LB_LAN}"
 
 echo "==> Verifying Cilium status"
 if command -v cilium >/dev/null; then

@@ -88,21 +88,20 @@ spec:
   # (K0sWorkerConfigTemplates) use the '+k0s.' form of the same release.
   version: v1.36.2-k0s.0
   replicas: 1   # bump to 3 once R820 lands
-  # LoadBalancer with the chisel class — chisel-operator tunnels 6443 (and
-  # 8132) straight to the VPS, no Traefik/Gateway hop. k0smotron's service
-  # schema has no loadBalancerClass/annotations fields, so both are injected
-  # via spec.patches below. external-dns picks the FQDN off the annotation.
+  # LoadBalancer gets a stable home-LAN IP from Cilium LB-IPAM (2026-07-28),
+  # NOT the chisel/VPS tunnel. k0smotron's service schema has no
+  # loadBalancerClass/annotations fields, so the Cilium pin annotation is
+  # injected via spec.patches below.
   #
-  # externalAddress = cluster-local svc DNS: workers join INTERNALLY (they
-  # sit on the mgmt pod network via masquerade and, with the serviceCIDR
-  # overlap gone, resolve mgmt DNS). Never point workers at the VPS — the
-  # provider filters most inbound ports and a filter flap orphans every
-  # kubelet (2026-07-16). Off-LAN access: ssh -L tunnel to the VPS chisel
-  # port until RackNerd opens 6443 (then k8s-home.mershab.com works, SAN
-  # already present).
-  # NB: with type LoadBalancer k0smotron names the Service kmc-<name>-lb
-  # (the plain kmc-arrakis ClusterIP svc no longer exists).
-  externalAddress: kmc-arrakis-lb.tenants.svc.cluster.local
+  # externalAddress = 192.168.2.240 (a RAW LAN IP from the Cilium lan-pool,
+  # bootstrap/helm/cilium-lb-lan.yaml). This is BOTH the API endpoint AND the
+  # konnectivity-agent's --proxy-server-host. A raw IP means NO DNS resolution:
+  # the konnectivity-agent (a pod on arrakis, dnsPolicy ClusterFirst) previously
+  # NXDOMANIed on the old kmc-arrakis-lb.tenants.svc.cluster.local (a contraxia
+  # svc, absent in arrakis) and never connected. Workers + kubelet dial the IP
+  # directly over the LAN/masquerade. The VPS is OUT of the API path entirely;
+  # external kubectl is the Netbird overlay (routing-peer advertises this /24).
+  externalAddress: 192.168.2.240
   service:
     type: LoadBalancer
     apiPort: 6443
@@ -116,9 +115,11 @@ spec:
         content: |
           metadata:
             annotations:
-              external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
-          spec:
-            loadBalancerClass: chisel.mershab.com/external
+              # Pin to a specific LAN IP from the Cilium lan-pool. No
+              # loadBalancerClass -> Cilium LB-IPAM claims it (chisel-operator
+              # only claims its own class, so it releases node-01 for app use).
+              # No external-dns annotation: a private IP must NOT hit Cloudflare.
+              io.cilium/lb-ipam-ips: "192.168.2.240"
   # CP pod data dir is disposable — cluster CA/SA keys live in CAPI secrets
   # (arrakis-ca etc.) and state lives in etcd, which gets its own PVC.
   persistence:
@@ -134,9 +135,11 @@ spec:
     kind: ClusterConfig
     spec:
       api:
-        # Extra SAN so the apiserver cert is valid for the FQDN under TLS
-        # passthrough. k0smotron appends its own service SANs automatically.
+        # SANs for the apiserver cert. 192.168.2.240 = the LAN LB IP (the raw
+        # externalAddress). k8s-home.mershab.com kept for the Netbird/off-LAN
+        # path. k0smotron appends its own service SANs automatically.
         sans:
+          - 192.168.2.240
           - k8s-home.mershab.com
         # NO OIDC on this apiserver — arrakis HOSTS Dex, so it cannot federate
         # its own apiserver auth to it (bootstrap circular + Dex-down locks out

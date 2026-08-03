@@ -1,0 +1,31 @@
+# Cilium LAN LoadBalancer — hands the arrakis k0s CP a stable home-LAN IP.
+#
+# Applied by 01-cilium.sh (manual bootstrap, NOT gitops — cilium is hand-managed;
+# see the cilium-bootstrap-manual rule). Requires l2announcements.enabled: true
+# (values/cilium.yaml).
+#
+# Why: the arrakis k0smotron CP Service (kmc-arrakis-lb) drops its chisel
+# loadBalancerClass and gets 192.168.2.240 from this pool, L2-announced on the
+# home LAN (192.168.2.0/24). That raw IP becomes k0smotron externalAddress ->
+# konnectivity-agent + workers dial it directly (no DNS -> no NXDOMAIN), and the
+# API leaves the RackNerd VPS path entirely. External kubectl = Netbird overlay.
+#
+# Pool storage version is cilium.io/v2 on 1.19; L2 policy is still v2alpha1.
+apiVersion: cilium.io/v2
+kind: CiliumLoadBalancerIPPool
+metadata:
+  name: lan-pool
+spec:
+  blocks:
+    - start: "192.168.2.240"
+      stop: "192.168.2.250"
+---
+apiVersion: cilium.io/v2alpha1
+kind: CiliumL2AnnouncementPolicy
+metadata:
+  name: lan-l2
+spec:
+  # Announce LoadBalancer IPs only (not k8s ExternalIPs). No interface/node
+  # selector: single-node r730, Cilium ARP-responds on the device owning the
+  # LB IP's subnet (eth = 192.168.2.70/24).
+  loadBalancerIPs: true
