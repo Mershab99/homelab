@@ -49,10 +49,19 @@ spec:
             loadBalancerClass: chisel.mershab.com/external
             annotations:
               # chisel-operator auto-provisions a DO droplet exit node for this LB.
-              # NAMESPACE/NAME form — the provisioner lives in chisel-operator-system,
-              # not this Service's ns (ingress-nginx); bare name -> CloudProvisionerNotFound.
-              chisel-operator.io/exit-node-provisioner: chisel-operator-system/digitalocean-provisioner
+              # Bare name — the provisioner lives in THIS Service's ns (ingress-nginx),
+              # because chisel-operator v0.7.1 resolves it in the Service's ns only.
+              chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
           # publish the DO LB address into Ingress status so external-dns can read
           # it off Ingresses attached to this controller.
           publishService:
             enabled: true
+  policyRefs:
+    # DigitalOcean ExitNodeProvisioner — MUST land in this profile's ns
+    # (ingress-nginx) so chisel-operator (v0.7.1, resolves in the Service ns)
+    # finds it for the annotated controller Service. Its DO token Secret
+    # (digitalocean-auth) also lives in ingress-nginx.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/ingress-nginx-hub

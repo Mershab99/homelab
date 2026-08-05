@@ -37,11 +37,7 @@ spec:
       helmChartAction: Install
       values: |
         loadBalancerClass: chisel.mershab.com/external
-  policyRefs:
-    # Delivers the DigitalOcean ExitNodeProvisioner (exit-nodes/
-    # digitalocean-provisioner.yaml). chisel-operator creates ExitNodes on
-    # demand from LB-Service annotations — no static ExitNode files needed.
-    - kind: GitRepository
-      name: homelab
-      namespace: flux-system
-      path: ./clusters/baremetal/addons/chisel-operator/exit-nodes
+  # No policyRefs — chisel-operator (chart only) watches LB Services cluster-wide
+  # and creates ExitNodes on demand. The DigitalOcean ExitNodeProvisioner lives
+  # beside each public-edge Service (e.g. ingress-nginx ns, via 02c-ingress-nginx),
+  # because chisel-operator v0.7.1 resolves the provisioner in the Service's ns.
