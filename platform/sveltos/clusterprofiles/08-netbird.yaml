@@ -31,18 +31,25 @@ spec:
       values: |
         management:
           enabled: true
-          # env: NB_SETUP_PAT_ENABLED lets the setup API mint the bootstrap PAT
-          # headlessly (S2 operator). Store encryption key from the secret.
           env:
             NB_SETUP_PAT_ENABLED: "true"
-          envRaw:
-            - name: NETBIRD_DATASTORE_ENC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: netbird-management-secrets
-                  key: NETBIRD_DATASTORE_ENC_KEY
-          # management.json — OIDC → hub Dex. Relay/TURN/Stun omitted in S1 (added
-          # in S1b with their secrets); peers register + connect P2P via signal.
+          # --config points at the WRITABLE PVC (/var/lib/netbird) so netbird can
+          # persist its generated store-encryption key. The chart mounts
+          # management.json from a READ-ONLY ConfigMap at /etc/netbird; the
+          # seed-config initContainer (spec.patches below) copies it onto the PVC
+          # once (cp-if-absent). No secret in git — netbird generates + persists
+          # the key on the PVC itself; it survives restarts (PVC is persistent).
+          podCommand:
+            args:
+              - --port=80
+              - --log-file=console
+              - --log-level=info
+              - --disable-anonymous-metrics=false
+              - --single-account-mode-domain=netbird.selfhosted
+              - --dns-domain=netbird.selfhosted
+              - --config=/var/lib/netbird/management.json
+          # management.json — OIDC → hub Dex. Relay/TURN/Stun omitted in S1; peers
+          # register + connect P2P via signal.
           configmap: |
             {
               "Signal": {"Proto":"https","URI":"signal.mershab.com:443"},
@@ -146,3 +153,32 @@ spec:
                 hosts: [signal.mershab.com]
         relay:
           enabled: false   # S1b — needs NETBIRD_RELAY_AUTH_SECRET wired
+  # Make management.json writable without a git secret: seed the read-only
+  # ConfigMap copy onto the writable PVC (/var/lib/netbird) ONCE, so netbird can
+  # generate + persist its store-encryption key there (--config points at the PVC).
+  # cp-if-absent → netbird's persisted key survives restarts; a config change needs
+  # a one-time PVC reset (delete /var/lib/netbird/management.json).
+  patches:
+    - target:
+        group: apps
+        version: v1
+        kind: Deployment
+        name: netbird-management
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: netbird-management
+        spec:
+          template:
+            spec:
+              initContainers:
+                - name: seed-config
+                  image: busybox:1.37
+                  command:
+                    - sh
+                    - -c
+                    - "[ -f /var/lib/netbird/management.json ] || cp /etc/netbird/management.json /var/lib/netbird/management.json"
+                  volumeMounts:
+                    - {mountPath: /etc/netbird, name: config}
+                    - {mountPath: /var/lib/netbird, name: management}
