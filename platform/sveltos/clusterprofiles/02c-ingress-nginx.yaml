@@ -49,7 +49,9 @@ spec:
             loadBalancerClass: chisel.mershab.com/external
             annotations:
               # chisel-operator auto-provisions a DO droplet exit node for this LB.
-              chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
+              # NAMESPACE/NAME form — the provisioner lives in chisel-operator-system,
+              # not this Service's ns (ingress-nginx); bare name -> CloudProvisionerNotFound.
+              chisel-operator.io/exit-node-provisioner: chisel-operator-system/digitalocean-provisioner
           # publish the DO LB address into Ingress status so external-dns can read
           # it off Ingresses attached to this controller.
           publishService:
