@@ -1,0 +1,25 @@
+# DigitalOcean ExitNodeProvisioner (contraxia edge).
+#
+# chisel-operator auto-provisions a DO droplet as an exit node for ANY
+# LoadBalancer Service annotated:
+#   chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
+# It creates the droplet, manages the corresponding ExitNode, and binds it 1:1
+# to that Service. Replaces the static RackNerd node-01 (retired): DO passes
+# inbound 443 (RackNerd upstream-filters all but 22+9090 — verified 2026-08-05
+# with a live :443 listener + open local firewall still timing out), so this is
+# the real public edge for the netbird server + Dex (auth.mershab.com).
+#
+# Requires Secret `digitalocean-auth` (key DIGITALOCEAN_TOKEN) in THIS namespace
+# (secrets/infrastructure/chisel-operator/digitalocean-auth.example.yaml).
+# 1:1 ExitNode<->Service still holds — consolidate public HTTP(S) behind ONE
+# nginx LoadBalancer per cluster so this provisions ONE droplet, not many.
+apiVersion: chisel-operator.io/v1
+kind: ExitNodeProvisioner
+metadata:
+  name: digitalocean-provisioner
+  namespace: chisel-operator-system
+spec:
+  DigitalOcean:
+    auth: digitalocean-auth        # Secret name; key DIGITALOCEAN_TOKEN
+    region: tor1                   # nearest DO region — adjust (tor1/nyc1/nyc3...)
+    size: s-1vcpu-1gb              # cheapest; a chisel exit node needs no more

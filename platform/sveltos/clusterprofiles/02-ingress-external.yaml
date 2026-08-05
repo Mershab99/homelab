@@ -1,14 +1,20 @@
-# ingress-external — chisel-operator + ExitNode(s) on mgmt.
+# ingress-external — chisel-operator + a DigitalOcean ExitNodeProvisioner on mgmt.
 #
-# mgmt exposes ONLY the tenant control-plane LoadBalancers (kmc-<tenant>-lb)
-# through chisel — no Gateway/Traefik on mgmt. chisel-operator binds ONE
-# Service per ExitNode (1:1 — hard-learned 2026-07-16: two LB Services and
-# one ExitNode flip-flop, whoever reconciles last steals the tunnel and the
-# other goes dark).
+# The contraxia (hub) PUBLIC edge. chisel-operator auto-provisions a DO droplet
+# exit node for any LoadBalancer Service annotated
+#   chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
+# (see exit-nodes/digitalocean-provisioner.yaml). DO passes inbound 443; the old
+# RackNerd VPS-01 did NOT (only 22+9090 — verified 2026-08-05), so the static
+# node-01 ExitNode was retired. This edge fronts the netbird SERVER + Dex
+# (auth.mershab.com / netbird.mershab.com).
 #
-# App ingress (Traefik + Gateway API) belongs on the tenant (arrakis) —
-# delivered by a tenant-targeted profile, with its own chisel-operator +
-# ExitNode there when it lands.
+# NOTE: the arrakis API no longer rides chisel — Phase 0 (2026-08-03) moved
+# kmc-arrakis-lb to a Cilium LAN L2 IP (192.168.2.240). External kubectl to
+# arrakis is via the Netbird overlay now.
+#
+# chisel-operator still binds ONE Service per ExitNode (1:1 — hard-learned
+# 2026-07-16: two LB Services + one ExitNode flip-flop). So consolidate public
+# HTTP(S) behind ONE nginx LoadBalancer here → one droplet, not many.
 #
 # Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
@@ -32,8 +38,9 @@ spec:
       values: |
         loadBalancerClass: chisel.mershab.com/external
   policyRefs:
-    # One ExitNode per VPS. With one VPS + 1:1 binding, node-01 carries the
-    # arrakis API (kmc-arrakis-lb, 6443/8132).
+    # Delivers the DigitalOcean ExitNodeProvisioner (exit-nodes/
+    # digitalocean-provisioner.yaml). chisel-operator creates ExitNodes on
+    # demand from LB-Service annotations — no static ExitNode files needed.
     - kind: GitRepository
       name: homelab
       namespace: flux-system
