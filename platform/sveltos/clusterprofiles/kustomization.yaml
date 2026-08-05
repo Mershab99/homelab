@@ -7,16 +7,15 @@ kind: Kustomization
 resources:
   - 01-tls-stack.yaml           # cert-manager + ClusterIssuers
   - 01-dns.yaml                 # external-dns
-  - 02-ingress-external.yaml    # chisel-operator + DigitalOcean ExitNodeProvisioner (hub public edge tunnels)
-  - 02c-ingress-nginx.yaml      # ingress-nginx-hub — hub PUBLIC HTTP(S) edge (Dex + netbird), DO-provisioned LB
+  - 02-ingress-external.yaml    # chisel-operator + DigitalOcean ExitNodeProvisioner (ARRAKIS edge)
   - 03-multus.yaml              # secondary CNI (tenant-only; HCO gives mgmt Multus)
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
   - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
-  - 06-auth-stack.yaml          # Dex — single root IdP on the HUB (infra); auth.mershab.com
-  - 08-netbird.yaml             # NetBird SERVER on the hub (S1: mgmt+dashboard+signal, OIDC→Dex)
+  - 06-auth-stack.yaml          # Dex OIDC IdP on arrakis (platform); auth.mershab.com via the arrakis edge
+  # 08-netbird.yaml removed 2026-08-05 — Netbird ripped; revisit later.
   - 09-db-operators.yaml        # vended DBs — CloudNativePG (Postgres) + MOCO (MySQL) operators
   - 10-tenant-secrets.yaml      # propagate mgmt-held tenant secrets → arrakis (templateResourceRefs)
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
@@ -26,11 +25,14 @@ resources:
   - 11-tenant-baseline.yaml     # tenant kubevirt-csi
   - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
   - 11-oidc-rbac.yaml           # ClusterRoleBindings (tenant + vClusters)
-  - 12-tenant-ingress.yaml      # Traefik (Gateway API) + tenant chisel-operator + node-02/VPS-02 (app ingress edge)
-  - 13-app-web.yaml             # nginx + mershab.com — flat `web` ns (collapsed out of mershab vCluster)
-  - 13-app-home-assistant.yaml  # HA (pajikos chart) — flat `home-assistant` ns, private via NetBird
-  - 14-app-jellyfin.yaml        # Jellyfin + P2000 transcode — PUBLIC (jellyfin.mershab.com, own auth)
-  - 15-app-coder.yaml           # Coder CDE — PUBLIC (coder.mershab.com, Dex OIDC), CNPG-backed
+  - 12-tenant-ingress.yaml      # arrakis edge: ingress-nginx + chisel→DO (HTTP + TCP 6443 API)
+  # Apps PARKED 2026-08-05 — their exposure was Traefik-Gateway / NetBird (both
+  # ripped). Re-enable after migrating each to an nginx Ingress on the arrakis edge
+  # (home-assistant needs a private path revisited with NetBird).
+  # - 13-app-web.yaml
+  # - 13-app-home-assistant.yaml
+  # - 14-app-jellyfin.yaml
+  # - 15-app-coder.yaml
   # k3k reserved for the AI/MCP layer ONLY (family/mershab vClusters collapsed to flat ns):
   - 12-vcluster-baseline.yaml   # NAD + addons for the `ai` vCluster
   - 12-k3k-operator.yaml        # k3k operator on the tenant (for the `ai` vCluster)

@@ -1,22 +1,22 @@
-# ingress-external — chisel-operator + a DigitalOcean ExitNodeProvisioner on mgmt.
+# ingress-external — chisel-operator on ARRAKIS (the ONLY edge; 2026-08-05).
 #
-# The contraxia (hub) PUBLIC edge. chisel-operator auto-provisions a DO droplet
-# exit node for any LoadBalancer Service annotated
+# chisel-operator auto-provisions a DO droplet exit node for any LoadBalancer
+# Service annotated
 #   chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
-# (see exit-nodes/digitalocean-provisioner.yaml). DO passes inbound 443; the old
-# RackNerd VPS-01 did NOT (only 22+9090 — verified 2026-08-05), so the static
-# node-01 ExitNode was retired. This edge fronts the netbird SERVER + Dex
-# (auth.mershab.com / netbird.mershab.com).
+# DO passes inbound 443/6443; RackNerd VPS-01 did NOT (only 22+9090 — verified
+# 2026-08-05). The arrakis nginx edge (12-tenant-ingress) is the one LB it serves:
+# HTTP for Dex/apps + TCP 6443 for the arrakis k8s API (k8s-home.mershab.com).
+# The ExitNodeProvisioner + digitalocean-auth secret live in that Service's ns
+# (chisel v0.7.1 resolves the provisioner in the Service's ns).
 #
-# NOTE: the arrakis API no longer rides chisel — Phase 0 (2026-08-03) moved
-# kmc-arrakis-lb to a Cilium LAN L2 IP (192.168.2.240). External kubectl to
-# arrakis is via the Netbird overlay now.
+# Moved off contraxia (was persona=infra): the hub keeps NO public edge — only the
+# hosted CP + kmc-arrakis-lb (Cilium LAN L2 192.168.2.240, konnectivity + internal
+# API endpoint). "Expose arrakis via arrakis" — one edge, on arrakis.
 #
-# chisel-operator still binds ONE Service per ExitNode (1:1 — hard-learned
-# 2026-07-16: two LB Services + one ExitNode flip-flop). So consolidate public
-# HTTP(S) behind ONE nginx LoadBalancer here → one droplet, not many.
+# chisel-operator binds ONE Service per ExitNode (1:1); consolidate behind the one
+# nginx LB → one droplet.
 #
-# Selector: persona=infra.
+# Selector: persona=platform (arrakis).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -24,7 +24,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      persona: infra
+      persona: platform
   dependsOn:
     - tls-stack
   helmCharts:
@@ -39,5 +39,5 @@ spec:
         loadBalancerClass: chisel.mershab.com/external
   # No policyRefs — chisel-operator (chart only) watches LB Services cluster-wide
   # and creates ExitNodes on demand. The DigitalOcean ExitNodeProvisioner lives
-  # beside each public-edge Service (e.g. ingress-nginx ns, via 02c-ingress-nginx),
-  # because chisel-operator v0.7.1 resolves the provisioner in the Service's ns.
+  # beside the arrakis nginx edge Service (ingress-nginx ns, delivered by
+  # 12-tenant-ingress) — chisel v0.7.1 resolves the provisioner in the Service's ns.

@@ -1,43 +1,23 @@
-# tenant-ingress — the app ingress edge, on the TENANT (arrakis), not mgmt.
+# tenant-ingress — the ONE arrakis edge (nginx + chisel→DO). Replaces Traefik.
 #
-# Closes the delivery gap: today no ClusterProfile installs Traefik and the
-# gateway manifests are delivered by nothing (mershab.com 503s). This profile
-# puts Traefik + Gateway API + a TENANT-side chisel-operator on arrakis, so
-# public apps (Jellyfin/website/public-app/Coder) land as tenant namespaces
-# behind one Gateway, tunnelled out through VPS-02 (node-02).
+# ONE ingress-nginx whose LoadBalancer Service is chisel-classed + DO-provisioned,
+# so chisel-operator (02-ingress-external, on arrakis) spins up ONE DO droplet
+# and binds it 1:1. That single LB carries EVERYTHING public for arrakis:
+#   - HTTP 80/443 — Dex (auth.mershab.com) + apps (nginx Ingress, IngressClass nginx)
+#   - TCP 6443    — the arrakis k8s API, L4 passthrough via nginx `tcp` services
+#                   (6443 -> default/kubernetes:443 -> CP), so client-cert/mTLS is
+#                   preserved. external-dns publishes k8s-home.mershab.com -> the DO IP
+#                   off the controller Service annotation. Cert SAN already covers it.
 #
-# WHY a second chisel-operator (not the mgmt one from 02-ingress-external):
-# chisel-operator is per-API-server and binds 1:1 ExitNode↔Service. mgmt's
-# operator is bound to the arrakis API LB via node-01/VPS-01. Traefik's public
-# LB is a DIFFERENT Service on the tenant API — it needs its own operator +
-# ExitNode (node-02/VPS-02) or it flip-flops with the API tunnel.
+# "Expose arrakis via arrakis, save the contraxia edge": the CP stays hosted on
+# contraxia (kmc-arrakis-lb 192.168.2.240, Cilium LAN, konnectivity + internal
+# API) — this edge just tunnels the EXTERNAL kubectl + HTTP in through arrakis.
 #
-# ── GATES before this profile is correct end-to-end (resolve, then fill) ──
-#  1. RESOLVED 2026-07-27: chartVersion pinned 41.0.2 (bare semver — traefik
-#     charts are NOT v-prefixed). Verified the chart ships ONLY *.traefik.io
-#     CRDs, NOT the standard Gateway API set — so GatewayClass/Gateway/HTTPRoute/
-#     ReferenceGrant (v1.2.1 experimental channel, matching the vendored
-#     TCPRoute/TLSRoute/BackendTLSPolicy) are now vendored into tenant-gateway/.
-#  2. external-dns HTTPRoute source on the tenant: 01-dns.yaml:42 gates the
-#     `gateway-httproute` source to mgmt ONLY (it crashloops where Gateway CRDs
-#     are absent). Once Traefik installs the Gateway CRDs here, flip that gate to
-#     also enable the source on arrakis, else tenant HTTPRoute hostnames never
-#     publish to Cloudflare.
-#  3. VPS-02 (STILL OPEN): provision it, fill node-02.yaml spec.host + the
-#     node-02-credentials Secret (applied against the tenant). Until then the
-#     node-02 ExitNode APPLIES cleanly (CRD now installs via chisel-operator) but
-#     is INERT — chisel-operator can't tunnel to the placeholder host, so
-#     Traefik's public LB has no external path. No addon-controller error, just
-#     no public reachability. Also flip GATE 2 (external-dns) only AFTER VPS-02,
-#     else HTTPRoute hostnames publish to Cloudflare pointing at a dead tunnel.
+# The DO ExitNodeProvisioner + digitalocean-auth secret live in THIS Service's ns
+# (ingress-nginx) — chisel v0.7.1 resolves the provisioner in the Service's ns.
 #
-# RESOLVED (no longer gates):
-#  - cert-manager + letsencrypt-prod already run on arrakis (persona=platform,
-#    via `persona In [infra, platform]`) — Traefik's Certificates issue here already.
-#  - Dex: relocated to the tenant (06-auth-stack now persona=platform). It is
-#    a same-cluster backend; auth.mershab.com is fronted by tenant-gateway.
-#
-# Selector: persona=platform.
+# Selector: persona=platform. (Apps migrate onto this nginx IngressClass
+# incrementally; Traefik/Gateway-API + netbird-private are gone.)
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -47,82 +27,41 @@ spec:
     matchLabels:
       persona: platform
   dependsOn:
-    - tenant-baseline   # needs schedulable pods (CNI + CSI up)
+    - tenant-baseline    # schedulable pods (CNI + CSI up)
+    - tls-stack          # cert-manager + letsencrypt-prod for Ingress TLS
+    - ingress-external   # chisel-operator (arrakis) must exist to claim the LB
   helmCharts:
-    # Traefik (Gateway API provider). PIN chartVersion EXACT — see GATE 1.
-    - repositoryURL: https://traefik.github.io/charts
-      repositoryName: traefik
-      chartName: traefik/traefik
-      chartVersion: 41.0.2   # PINNED EXACT (traefik charts are bare semver, not v-prefixed). Chart does NOT ship standard Gateway API CRDs — vendored into tenant-gateway/ (GATE 1).
-      releaseName: traefik
-      releaseNamespace: traefik
+    - repositoryURL: https://kubernetes.github.io/ingress-nginx
+      repositoryName: ingress-nginx
+      chartName: ingress-nginx/ingress-nginx
+      chartVersion: 4.15.1          # controller 1.15.1; PIN EXACT
+      releaseName: ingress-nginx
+      releaseNamespace: ingress-nginx
       helmChartAction: Install
       values: |
-        # Gateway API provider on; experimentalChannel enables TCPRoute (the
-        # public DB path — Phase 5). expose via the chisel external LB class so
-        # the tenant chisel-operator tunnels the ports out through node-02/VPS-02.
-        providers:
-          kubernetesGateway:
+        controller:
+          ingressClassResource:
+            name: nginx
+            default: true
+          service:
+            type: LoadBalancer
+            loadBalancerClass: chisel.mershab.com/external   # chisel claims it, not Cilium
+            annotations:
+              chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
+              # publish the arrakis API hostname to the DO LB IP (external-dns
+              # `service` source). Apps publish their own hostnames via Ingress.
+              external-dns.alpha.kubernetes.io/hostname: k8s-home.mershab.com
+          publishService:
             enabled: true
-            experimentalChannel: true   # TCPRoute is Experimental-channel only
-        # DO NOT let the chart render its own Gateway/GatewayClass. Two reasons:
-        #  1. Deadlock — chart-rendered Gateway/GatewayClass need the standard
-        #     Gateway API CRDs AT HELM-INSTALL TIME, but those CRDs arrive via the
-        #     Resources feature (tenant-gateway policyRef), which can't apply until
-        #     chisel-operator (this same Helm feature) installs the ExitNode CRD.
-        #     Helm↔Resources deadlock. Disabling these makes Helm CRD-independent.
-        #  2. Collision — chart's GatewayClass is also named "traefik", same as our
-        #     tenant-gateway/gateway.yaml GatewayClass. We own the Gateway ("shared")
-        #     + GatewayClass here; the provider (above) still watches them at runtime.
-        gateway:
-          enabled: false
-        gatewayClass:
-          enabled: false
-        # Extra TCP entrypoints for the public DB product (Phase 5). Each must
-        # match a Gateway TCP listener port (tenant-gateway/gateway.yaml).
-        ports:
-          postgres:
-            port: 5432
-            expose:
-              default: true
-            protocol: TCP
-          mysql:
-            port: 3306
-            expose:
-              default: true
-            protocol: TCP
-        service:
-          type: LoadBalancer
-          annotations:
-            external-dns.alpha.kubernetes.io/hostname: "*.mershab.com"
-        # loadBalancerClass set on the Service so the tenant chisel-operator
-        # (below) claims it, not any LAN LB (there is none — FULL-REMOTE). ONE
-        # LB Service carries 80/443/5432/3306 -> ONE ExitNode (node-02); the 1:1
-        # rule is per-Service, so extra ports don't need extra ExitNodes.
-        # traefik chart exposes this under service.spec — verify key names against
-        # the pinned chart version before apply.
-    # Tenant-side chisel-operator (separate from mgmt's). Binds Traefik's LB to
-    # node-02/VPS-02.
-    - repositoryURL: oci://ghcr.io/fyralabs/chisel-operator
-      repositoryName: chisel-operator
-      chartName: chisel-operator/chisel-operator
-      chartVersion: v0.7.1
-      releaseName: chisel-operator
-      releaseNamespace: chisel-operator-system
-      helmChartAction: Install
-      values: |
-        loadBalancerClass: chisel.mershab.com/external
+        # L4 TCP passthrough for the k8s API: nginx forwards raw 6443 to the
+        # in-cluster kubernetes Service (-> CP 192.168.2.240:6443). No TLS
+        # termination here, so client certs reach the apiserver intact.
+        tcp:
+          "6443": "default/kubernetes:443"
   policyRefs:
-    # node-02 ExitNode (VPS-02) — the tenant public edge.
+    # DigitalOcean ExitNodeProvisioner — MUST land in this profile's edge ns
+    # (ingress-nginx) so chisel-operator finds it for the annotated LB Service.
     - kind: GitRepository
       name: homelab
       namespace: flux-system
-      path: ./tenants/arrakis/ingress/exit-nodes
-    # Tenant Gateway + certs + HTTPRoutes + the experimental Gateway API CRDs
-    # (TCPRoute/TLSRoute/BackendTLSPolicy). Backends are tenant namespaces
-    # (Dex, website, ...). The old mgmt manifests/gateway dir was retired — the
-    # whole edge lives on the tenant now.
-    - kind: GitRepository
-      name: homelab
-      namespace: flux-system
-      path: ./platform/sveltos/manifests/tenant-gateway
+      path: ./platform/sveltos/manifests/arrakis-edge

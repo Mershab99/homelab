@@ -1,0 +1,16 @@
+# DigitalOcean ExitNodeProvisioner for the ARRAKIS edge. Lives in the
+# ingress-nginx ns (the nginx LB Service's ns) because chisel-operator v0.7.1
+# resolves the exit-node-provisioner annotation ONLY in the Service's namespace.
+#
+# Delivered by 12-tenant-ingress. Requires Secret `digitalocean-auth` (key
+# DIGITALOCEAN_TOKEN) in THIS namespace (propagated from mgmt via tenant-secrets).
+apiVersion: chisel-operator.io/v1
+kind: ExitNodeProvisioner
+metadata:
+  name: digitalocean-provisioner
+  namespace: ingress-nginx
+spec:
+  DigitalOcean:
+    auth: digitalocean-auth        # Secret name; key DIGITALOCEAN_TOKEN
+    region: tor1                   # nearest DO region — adjust
+    size: s-1vcpu-1gb

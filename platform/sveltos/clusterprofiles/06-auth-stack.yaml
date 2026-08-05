@@ -1,29 +1,28 @@
-# auth-stack — Dex, the SINGLE root IdP for the whole estate, on the HUB (contraxia).
+# auth-stack — Dex, the OIDC IdP for the estate, on ARRAKIS (persona=platform).
 #
-# Moved off arrakis 2026-08-05 (was persona=platform). Collapsed to ONE Dex: the
-# hub is the stable always-on cluster, so identity lives here and every app —
-# hub, tenant (arrakis), and vClusters — federates to auth.mershab.com. No
-# tenant-local Dex, no chaining. Downstream apps don't care where Dex runs; they
-# only need the public issuer, which is reachable from anywhere via the hub edge.
+# Moved back to arrakis 2026-08-05 (the netbird-driven collapse-to-hub is reverted
+# with Netbird). Co-located with the one arrakis edge. Every app — tenant,
+# vClusters, and hub-side grafana — federates to auth.mershab.com (they only need
+# the public issuer, reachable via the arrakis edge).
 #
-# Served at auth.mershab.com by an nginx Ingress on the contraxia public edge
-# (02c-ingress-nginx → chisel → DO droplet). TLS via cert-manager
-# (letsencrypt-prod, Cloudflare DNS-01 — 01-tls-stack); external-dns publishes
-# the record off the Ingress.
+# Served at auth.mershab.com by an nginx Ingress on the ARRAKIS edge
+# (12-tenant-ingress → chisel → DO droplet). TLS via cert-manager
+# (letsencrypt-prod, Cloudflare DNS-01 — 01-tls-stack); external-dns publishes the
+# record off the Ingress.
 #
 # Users + bcrypt'd passwords + per-app OAuth2 client registry live in a plaintext
-# Secret `dex-config` in the `dex` namespace on THIS (hub) cluster, applied by
-# hand via ./secrets/apply.sh (no longer propagated to arrakis) — see
-# secrets/infrastructure/dex/README.md.
+# Secret `dex-config` in the arrakis `dex` namespace, applied to mgmt ns
+# tenant-secrets and PROPAGATED to arrakis by the tenant-secrets ClusterProfile —
+# see secrets/infrastructure/dex/README.md.
 #
 # Federation model: every downstream app gets its OWN staticClients entry
 # (client_id + secret + redirect URIs). Adding an upstream IdP (GitHub/LLDAP)
 # later touches only the Dex `connectors:` block, no app config.
 #
 # Clients (all in dex-config): kubernetes (tenant apiserver + every vCluster),
-# grafana, coder, netbird. New apps add an entry when their profile lands.
+# grafana, coder. New apps add an entry when their profile lands.
 #
-# Selector: persona=infra.
+# Selector: persona=platform (arrakis).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -31,9 +30,9 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      persona: infra
+      persona: platform
   dependsOn:
-    - ingress-nginx-hub   # the hub nginx edge (+ its DO LB) fronts auth.mershab.com
+    - tenant-ingress   # the arrakis nginx edge (+ its DO LB) fronts auth.mershab.com
   helmCharts:
     - repositoryURL: https://charts.dexidp.io
       repositoryName: dex

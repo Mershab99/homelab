@@ -21,8 +21,7 @@ spec:
       persona: platform
   dependsOn:
     - tenant-ingress
-    # auth-stack dropped 2026-08-05 — Dex is on the hub now; coder just uses the
-    # public issuer auth.mershab.com (no same-cluster Dex dependency on arrakis).
+    - auth-stack      # Dex back on arrakis (same cluster) — coder OIDC client lives in dex-config
     - db-operators
   helmCharts:
     - repositoryURL: https://helm.coder.com/v2
