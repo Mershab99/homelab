@@ -16,12 +16,7 @@ resources:
   - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
   - 06-auth-stack.yaml          # Dex — single root IdP on the HUB (infra); auth.mershab.com
-  # 08-netbird.yaml — PARKED 2026-08-05 pending the hub-netbird refactor (server +
-  # operator move to contraxia/infra, OIDC -> hub Dex, NB_SETUP_PAT_ENABLED, nginx
-  # Ingress, routing-peer advertising 192.168.2.0/24 for API-over-mesh). The old
-  # profile targeted arrakis + the now-moved auth-stack, so it's removed from
-  # delivery (clears the Failed placeholder) until re-authored with the cluster up.
-  # - 08-netbird.yaml
+  - 08-netbird.yaml             # NetBird SERVER on the hub (S1: mgmt+dashboard+signal, OIDC→Dex)
   - 09-db-operators.yaml        # vended DBs — CloudNativePG (Postgres) + MOCO (MySQL) operators
   - 10-tenant-secrets.yaml      # propagate mgmt-held tenant secrets → arrakis (templateResourceRefs)
   # minimal: - 07-observability-core.yaml  # prom-CRDs + OTel operator + DaemonSet collector
