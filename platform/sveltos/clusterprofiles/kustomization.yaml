@@ -7,7 +7,8 @@ kind: Kustomization
 resources:
   - 01-tls-stack.yaml           # cert-manager + ClusterIssuers
   - 01-dns.yaml                 # external-dns
-  - 02-ingress-external.yaml    # Traefik (Gateway API) + chisel-operator + ExitNode
+  - 02-ingress-external.yaml    # chisel-operator + DigitalOcean ExitNodeProvisioner (hub public edge tunnels)
+  - 02c-ingress-nginx.yaml      # ingress-nginx-hub — hub PUBLIC HTTP(S) edge (Dex + netbird), DO-provisioned LB
   - 03-multus.yaml              # secondary CNI (tenant-only; HCO gives mgmt Multus)
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
   - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
