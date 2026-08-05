@@ -43,6 +43,10 @@ spec:
             default: true          # only IngressClass on the hub
           service:
             type: LoadBalancer
+            # MUST set the chisel class so Cilium LB-IPAM (the 192.168.2.240-250
+            # lan-pool) IGNORES this Service and leaves it for chisel-operator —
+            # without it Cilium grabs a LAN IP (.241) and the DO annotation is moot.
+            loadBalancerClass: chisel.mershab.com/external
             annotations:
               # chisel-operator auto-provisions a DO droplet exit node for this LB.
               chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
