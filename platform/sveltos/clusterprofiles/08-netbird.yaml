@@ -136,8 +136,9 @@ spec:
                 hosts: [netbird.mershab.com]
         signal:
           enabled: true
-          # signal gRPC on signal.mershab.com.
-          ingressGrpc:
+          # signal gRPC on signal.mershab.com (chart key is `ingress`, not
+          # ingressGrpc — signal has no separate gRPC ingress; set GRPC here).
+          ingress:
             enabled: true
             className: nginx
             annotations:
