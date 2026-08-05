@@ -12,24 +12,9 @@
 # the mershab vCluster collapses to a flat namespace (Phase 4). Until then it
 # 503s (no endpoints) — harmless pre-launch.
 
-# --- dex (OIDC issuer, auth.mershab.com; same-cluster now that Dex runs on the
-# tenant — no selectorless-Service/EndpointSlice hack) ---
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata: {name: dex, namespace: traefik}
-spec:
-  parentRefs: [{name: shared, namespace: traefik}]
-  hostnames: ["auth.mershab.com"]
-  rules:
-    - backendRefs: [{name: dex, namespace: dex, port: 5556}]
----
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata: {name: allow-traefik-httproutes, namespace: dex}
-spec:
-  from: [{group: gateway.networking.k8s.io, kind: HTTPRoute, namespace: traefik}]
-  to: [{group: "", kind: Service}]
----
+# dex (auth.mershab.com) route removed 2026-08-05 — Dex collapsed to the hub
+# (contraxia), served by the hub nginx edge, not this tenant gateway.
+
 # --- mershab.com (public website; nginx in the `web` namespace, same cluster) ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

@@ -15,7 +15,7 @@ resources:
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
-  - 06-auth-stack.yaml          # Dex with password-db connector (runs on platform)
+  - 06-auth-stack.yaml          # Dex — single root IdP on the HUB (infra); auth.mershab.com
   - 08-netbird.yaml             # self-hosted NetBird overlay + operator (private access backbone)
   - 09-db-operators.yaml        # vended DBs — CloudNativePG (Postgres) + MOCO (MySQL) operators
   - 10-tenant-secrets.yaml      # propagate mgmt-held tenant secrets → arrakis (templateResourceRefs)

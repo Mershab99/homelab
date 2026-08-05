@@ -1,32 +1,29 @@
-# auth-stack — Dex with the built-in password-db connector, served at
-# auth.mershab.com via an HTTPRoute on the tenant Traefik Gateway (see
-# manifests/tenant-gateway/httproutes.yaml — same cluster, Dex runs on the
-# tenant). TLS terminates at the gateway's *.mershab.com wildcard listener;
-# external-dns publishes the record from the HTTPRoute's gateway-httproute
-# source. No Ingress, no per-Dex cert.
+# auth-stack — Dex, the SINGLE root IdP for the whole estate, on the HUB (contraxia).
 #
-# Users + bcrypt'd passwords + per-app OAuth2 client registry live in a
-# plaintext Secret named `dex-config` in the dex namespace, applied by hand —
-# see secrets/infrastructure/dex/README.md.
+# Moved off arrakis 2026-08-05 (was persona=platform). Collapsed to ONE Dex: the
+# hub is the stable always-on cluster, so identity lives here and every app —
+# hub, tenant (arrakis), and vClusters — federates to auth.mershab.com. No
+# tenant-local Dex, no chaining. Downstream apps don't care where Dex runs; they
+# only need the public issuer, which is reachable from anywhere via the hub edge.
 #
-# Federation model: every downstream app gets its OWN entry in Dex's
-# `staticClients` list (one client_id, one client_secret, its own redirect
-# URIs). Downstream apps bind to Dex via client_id + issuer URL — they don't
-# know or care what backend Dex uses to verify the user. This lets us add
-# an upstream IdP (GitHub / LLDAP / etc.) later without touching ANY
-# downstream app's config: only the Dex `connectors:` block changes.
+# Served at auth.mershab.com by an nginx Ingress on the contraxia public edge
+# (02c-ingress-nginx → chisel → DO droplet). TLS via cert-manager
+# (letsencrypt-prod, Cloudflare DNS-01 — 01-tls-stack); external-dns publishes
+# the record off the Ingress.
 #
-# Day-1 clients (all in dex-config Secret):
-#   - kubernetes — shared by tenant apiserver (k0s) + every vCluster
-#   - grafana    — Grafana generic_oauth
-# Future apps (home-assistant, ...) add a staticClients entry each when their
-# ClusterProfile lands.
+# Users + bcrypt'd passwords + per-app OAuth2 client registry live in a plaintext
+# Secret `dex-config` in the `dex` namespace on THIS (hub) cluster, applied by
+# hand via ./secrets/apply.sh (no longer propagated to arrakis) — see
+# secrets/infrastructure/dex/README.md.
 #
-# Runs on the TENANT (arrakis), NOT mgmt: contraxia is a pure private-cloud
-# provider with no auth surface; arrakis is the AIO estate. auth.mershab.com is
-# then a SAME-CLUSTER backend on the tenant Traefik gateway (no cross-cluster
-# hack). Selector: persona=platform (arrakis, which hosts Dex). Apply the
-# dex-config Secret on arrakis.
+# Federation model: every downstream app gets its OWN staticClients entry
+# (client_id + secret + redirect URIs). Adding an upstream IdP (GitHub/LLDAP)
+# later touches only the Dex `connectors:` block, no app config.
+#
+# Clients (all in dex-config): kubernetes (tenant apiserver + every vCluster),
+# grafana, coder, netbird. New apps add an entry when their profile lands.
+#
+# Selector: persona=infra.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -34,9 +31,9 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      persona: platform
+      persona: infra
   dependsOn:
-    - tenant-ingress  # the tenant Gateway (+ wildcard TLS) must be wired first
+    - ingress-nginx-hub   # the hub nginx edge (+ its DO LB) fronts auth.mershab.com
   helmCharts:
     - repositoryURL: https://charts.dexidp.io
       repositoryName: dex
@@ -46,16 +43,13 @@ spec:
       releaseNamespace: dex
       helmChartAction: Install
       values: |
-        # The Helm chart reads its config from the `dex-config` Secret (applied
-        # by hand). All static passwords + client secrets are in the Secret; no
-        # plaintext in this values block.
+        # Dex reads its whole runtime config (connectors, staticClients,
+        # staticPasswords) from the `dex-config` Secret (applied by hand). No
+        # secrets in this values block.
         configSecret:
           create: false
           name: dex-config
         config:
-          # Issuer URL is hardcoded so Dex generates correctly-formed tokens.
-          # The full config (connectors, staticClients, staticPasswords) is
-          # in the dex-config Secret keyed `config.yaml`.
           issuer: https://auth.mershab.com
           storage:
             type: kubernetes
@@ -64,10 +58,21 @@ spec:
           oauth2:
             skipApprovalScreen: true
             alwaysShowLoginScreen: false
-        # Routing is an HTTPRoute on the tenant Gateway
-        # (manifests/tenant-gateway), not a chart-managed Ingress.
+        # Public route: nginx Ingress on the hub edge (was the tenant Traefik
+        # Gateway when Dex ran on arrakis). cert-manager issues the TLS cert.
         ingress:
-          enabled: false
-        # ServiceMonitor flips on once observability-core lands.
+          enabled: true
+          className: nginx
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: auth.mershab.com
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - hosts: [auth.mershab.com]
+              secretName: auth-mershab-tls
+        # ServiceMonitor flips on with observability-core.
         serviceMonitor:
           enabled: false
