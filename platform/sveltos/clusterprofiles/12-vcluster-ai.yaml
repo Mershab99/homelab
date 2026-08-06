@@ -2,12 +2,14 @@
 # k3k. Blast-radius boundary for the AI/MCP layer; every other workload is a
 # flat namespace.
 #
-# SHARED-OPERATOR model (the resource win): kagent + kmcp + cert-manager run
-# ONCE on the arrakis host (16-ai-helpers / 01-tls-stack). This vcluster syncs
-# their CRs toHost (`sync.toHost.customResources`) — vcluster auto-copies each
-# host CRD into the virtual cluster, tenants author CRs inside, the syncer
-# lands them in host ns `vcluster-ai`, host operators reconcile. No operators
-# duplicated per virtual cluster.
+# Sharing model (OSS reality, verified 2026-08-06): generic
+# `sync.toHost.customResources` is a vCluster PRO feature ("Generic Sync" —
+# syncer crashloops on it in OSS), so kagent/kmcp CRs can NOT be host-shared.
+# What IS shared from the host: cert-manager via the BUILT-IN
+# `integrations.certManager` (host CRDs appear inside; Certificates/Issuers
+# sync toHost, ClusterIssuers fromHost), plus storage/ingress/DB operators as
+# host services. kagent + kmcp run INSIDE the vcluster (16-ai-helpers,
+# persona=ai) — single instance, nothing duplicated on the host.
 #
 # API exposure: multiplex the ONE edge LB — nginx Ingress with SNI
 # ssl-passthrough on 443 (k8s-ai.mershab.com; needs --enable-ssl-passthrough
@@ -32,8 +34,7 @@ spec:
       persona: platform
   dependsOn:
     - tenant-baseline    # schedulable pods (CNI + CSI up)
-    - tls-stack          # cert-manager CRDs on host (certificates/issuers sync)
-    - ai-helpers         # kagent CRDs on host (kagent.dev CR sync)
+    - tls-stack          # host cert-manager (certManager integration)
     - tenant-ingress     # nginx IngressClass + ssl-passthrough for the API
   helmCharts:
     - repositoryURL: https://charts.loft.sh
@@ -44,34 +45,13 @@ spec:
       releaseNamespace: vcluster-ai
       helmChartAction: Install
       values: |
-        sync:
-          toHost:
-            # Host CRD is auto-copied into the vcluster for each entry; CR
-            # instances sync out to host ns vcluster-ai where the SHARED host
-            # operators (kagent, kmcp, cert-manager) reconcile them.
-            customResources:
-              agentharnesses.kagent.dev:
-                enabled: true
-              agents.kagent.dev:
-                enabled: true
-              mcpservers.kagent.dev:
-                enabled: true
-              memories.kagent.dev:
-                enabled: true
-              modelconfigs.kagent.dev:
-                enabled: true
-              modelproviderconfigs.kagent.dev:
-                enabled: true
-              remotemcpservers.kagent.dev:
-                enabled: true
-              sandboxagents.kagent.dev:
-                enabled: true
-              toolservers.kagent.dev:
-                enabled: true
-              certificates.cert-manager.io:
-                enabled: true
-              issuers.cert-manager.io:
-                enabled: true
+        # NOTE: sync.toHost.customResources is vCluster PRO — do not re-add.
+        integrations:
+          # Reuse the HOST cert-manager: its CRDs appear inside the vcluster,
+          # Certificates/Issuers sync toHost, ClusterIssuers (letsencrypt-prod)
+          # sync fromHost.
+          certManager:
+            enabled: true
         controlPlane:
           distro:
             k8s:

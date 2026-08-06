@@ -1,7 +1,11 @@
-# ai-helpers — kagent + KMCP on the ARRAKIS HOST (shared-operator model).
-# One kagent + one kmcp serve the host AND every vcluster: the `ai` vcluster
-# (12-vcluster-ai) syncs kagent.dev CRs toHost where these operators reconcile
-# them. Nothing AI-related is installed inside virtual clusters anymore.
+# ai-helpers — kagent + KMCP INSIDE the `ai` vcluster (persona=ai, fans in
+# after auto-registration). Single instance — the host runs NO kagent/kmcp.
+#
+# Why inside, not host-shared: generic CR sync toHost
+# (sync.toHost.customResources) is a vCluster PRO feature, so host operators
+# can't see in-vcluster kagent.dev CRs on OSS. cert-manager IS host-shared via
+# the built-in certManager integration (12-vcluster-ai). Workload pods still
+# materialize on the host via the syncer — the vcluster only isolates the API.
 #
 # kmcp-crds chart is DELIBERATELY absent: kmcp-crds 0.3.0 ships exactly one
 # CRD (mcpservers.kagent.dev) that kagent-crds 0.9.12 also ships (same served
@@ -10,7 +14,7 @@
 #
 # ── FILL ──
 #   - A ModelConfig + its API-key Secret (secrets/infrastructure/kagent/)
-#     applied on the host (or inside the ai vcluster — it syncs toHost).
+#     applied inside the ai vcluster.
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -18,9 +22,7 @@ metadata:
 spec:
   clusterSelector:
     matchLabels:
-      persona: platform
-  dependsOn:
-    - tenant-baseline
+      persona: ai
   helmCharts:
     # OCI: sveltos appends chartName to repositoryURL — base URL only here.
     - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm

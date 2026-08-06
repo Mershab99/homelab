@@ -34,9 +34,10 @@ resources:
   # - 14-app-jellyfin.yaml
   # - 15-app-coder.yaml
   # vcluster reserved for the AI/MCP layer ONLY (family/mershab vClusters collapsed to flat ns).
-  # Shared-operator model: kagent/kmcp/cert-manager run ONCE on the host; the
-  # vcluster syncs their CRs toHost. Auto-registered via exportKubeConfig +
-  # the hub EventTrigger (clusters/baremetal/infrastructure/vcluster-autoregister.yaml).
+  # cert-manager is host-shared via the certManager integration; kagent/kmcp run
+  # INSIDE the vcluster (generic CR sync toHost = vCluster PRO, not available).
+  # Auto-registered via exportKubeConfig + the hub EventTrigger
+  # (clusters/baremetal/infrastructure/vcluster-autoregister.yaml).
   - 12-vcluster-baseline.yaml   # in-vcluster NAD (persona=ai, fans in after registration)
   - 12-vcluster-ai.yaml         # the `ai` vcluster (Loft OSS) on arrakis + host-ns NAD
-  - 16-ai-helpers.yaml          # kagent + KMCP on the HOST (shared operators)
+  - 16-ai-helpers.yaml          # kagent + KMCP inside the ai vcluster (persona=ai)

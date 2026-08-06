@@ -14,11 +14,11 @@ and (today) only one.
   vCluster, per the steps below. (Start by just adding CRs to `ai`; split only
   when a real trust boundary appears.)
 
-vClusters run on **arrakis** via **Loft vcluster (OSS)** in the
-**shared-operator model**: kagent + kmcp + cert-manager run ONCE on the host
-(`16-ai-helpers`, `01-tls-stack`); each vcluster syncs their CRs toHost
-(`sync.toHost.customResources` — the host CRD is auto-copied into the
-vcluster). No operators are duplicated per virtual cluster.
+vClusters run on **arrakis** via **Loft vcluster (OSS)**. cert-manager is
+host-shared via the built-in `certManager` integration (host CRDs inside,
+Certificates/Issuers toHost, ClusterIssuers fromHost). kagent + kmcp run
+INSIDE each vcluster (`16-ai-helpers`, persona=ai) — generic CR sync toHost
+(`sync.toHost.customResources`) is a vCluster PRO feature, not available OSS.
 
 ## Steps
 
@@ -37,9 +37,9 @@ vcluster). No operators are duplicated per virtual cluster.
    [registering-an-ai-vcluster.md](registering-an-ai-vcluster.md). Then
    `12-vcluster-baseline` + `11-oidc-rbac` fan in.
 
-3. **AI CRs, not helper charts:** author kagent/kmcp CRs inside the vcluster
-   (they sync toHost where the shared operators reconcile) — a per-vcluster
-   helpers profile is only needed for extra in-vcluster resources.
+3. **Helpers fan in automatically:** `16-ai-helpers` (persona=ai) installs
+   kagent + kmcp inside every registered vcluster; author kagent/kmcp CRs
+   there. Only add a per-vcluster profile for extras beyond that.
 
 ## Verify
 
