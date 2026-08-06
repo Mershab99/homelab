@@ -31,13 +31,17 @@ spec:
       releaseName: kagent-crds
       releaseNamespace: kagent
       helmChartAction: Install
-    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
-      repositoryName: kagent-oci
-      chartName: kagent
-      chartVersion: 0.9.12
-      releaseName: kagent
-      releaseNamespace: kagent
-      helmChartAction: Install
+    # kagent controller PARKED 2026-08-06 — heavy default-agent fleet
+    # (~10 pods + postgres + ui), not needed yet. Uncomment + apply the
+    # ModelConfig API-key secret when wanted. CRDs stay (kmcp needs
+    # mcpservers.kagent.dev).
+    # - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
+    #   repositoryName: kagent-oci
+    #   chartName: kagent
+    #   chartVersion: 0.9.12
+    #   releaseName: kagent
+    #   releaseNamespace: kagent
+    #   helmChartAction: Install
     - repositoryURL: oci://ghcr.io/kagent-dev/kmcp/helm
       repositoryName: kmcp-oci
       chartName: kmcp
