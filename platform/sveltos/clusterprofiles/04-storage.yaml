@@ -22,7 +22,7 @@ spec:
     - repositoryURL: https://charts.longhorn.io
       repositoryName: longhorn
       chartName: longhorn/longhorn
-      chartVersion: 1.7.x
+      chartVersion: 1.7.3   # EXACT (deployed rev) — Sveltos v1.12 rejects .x wildcards
       releaseName: longhorn
       releaseNamespace: longhorn-system
       helmChartAction: Install

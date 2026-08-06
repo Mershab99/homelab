@@ -25,7 +25,7 @@ spec:
     - repositoryURL: https://kubernetes-sigs.github.io/node-feature-discovery/charts
       repositoryName: nfd
       chartName: nfd/node-feature-discovery
-      chartVersion: 0.16.x
+      chartVersion: 0.16.9   # EXACT — Sveltos v1.12 rejects .x wildcards
       releaseName: nfd
       releaseNamespace: node-feature-discovery
       helmChartAction: Install
@@ -37,7 +37,7 @@ spec:
     - repositoryURL: https://helm.ngc.nvidia.com/nvidia
       repositoryName: nvidia
       chartName: nvidia/gpu-operator
-      chartVersion: v24.6.x
+      chartVersion: v24.6.2   # EXACT — Sveltos v1.12 rejects .x wildcards
       releaseName: gpu-operator
       releaseNamespace: gpu-operator
       helmChartAction: Install

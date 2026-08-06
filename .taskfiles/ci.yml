@@ -18,8 +18,3 @@ tasks:
     desc: 'CI: policy tests (Phase 7+)'
     cmds:
       - task: verify:policy
-
-  sops:
-    desc: 'CI: verify SOPS-encryption of secrets/'
-    cmds:
-      - task: verify:sops

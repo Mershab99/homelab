@@ -1,0 +1,43 @@
+# arrakis (tenant cluster) access.
+#
+# The arrakis API is PUBLIC at https://k8s-home.mershab.com:6443 — an nginx
+# TCP passthrough on the arrakis edge (ingress-nginx, loadBalancerClass chisel
+# -> DigitalOcean droplet). L4 passthrough, so the client cert in the kubeconfig
+# authenticates directly (mTLS preserved). Reachable from anywhere; no tunnel.
+#
+# The kubeconfig lives in a secret on the HUB (contraxia) that CAPI generates.
+# `task arrakis:kubeconfig` pulls it and rewrites the server to the public edge.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  HOST: k8s-home.mershab.com
+  PORT: '6443'
+  HUB_CONTEXT: admin@contraxia
+  KCFG: '{{.KCFG | default "$HOME/.kube/arrakis.yaml"}}'
+
+tasks:
+  kubeconfig:
+    desc: 'Fetch arrakis kubeconfig pointed at the public edge -> {{.KCFG}}'
+    cmds:
+      - |
+        mkdir -p "$(dirname {{.KCFG}})"
+        kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s \
+          get secret arrakis-kubeconfig -n tenants -o jsonpath='{.data.value}' \
+          | base64 -d \
+          | sed -E 's#server: https://[^ ]+#server: https://{{.HOST}}:{{.PORT}}#' \
+          > {{.KCFG}}
+        echo "wrote {{.KCFG}}"
+        echo "use it:  export KUBECONFIG={{.KCFG}}   (or kubectl --kubeconfig {{.KCFG}} ...)"
+
+  status:
+    desc: arrakis edge + API health (public endpoint)
+    cmds:
+      - 'curl -sS --max-time 10 -k https://{{.HOST}}:{{.PORT}}/version || echo "edge DOWN — check chisel/DO droplet + tenant-ingress summary on the hub"'
+      - echo ""
+      - 'test -f {{.KCFG}} && kubectl --kubeconfig {{.KCFG}} --request-timeout=20s get nodes || echo "no kubeconfig yet — run: task arrakis:kubeconfig"'
+
+  top:
+    desc: arrakis node metrics (verifies konnectivity tunnel)
+    cmds:
+      - 'kubectl --kubeconfig {{.KCFG}} --request-timeout=20s top nodes'

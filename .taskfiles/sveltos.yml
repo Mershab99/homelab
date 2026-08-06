@@ -1,0 +1,30 @@
+# Sveltos operations on the hub (contraxia).
+#
+# ClusterProfiles are delivered from git by the root ClusterProfile
+# (clusters/baremetal/sveltos-root.yaml, ContinuousWithDriftDetection) — NEVER
+# hand-applied. These tasks only READ state and nudge reconciliation.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  HUB_CONTEXT: admin@contraxia
+
+tasks:
+  list:
+    desc: ClusterProfiles + per-cluster ClusterSummaries (hub)
+    cmds:
+      - kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s get clusterprofiles
+      - kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s get clustersummaries -A
+
+  failing:
+    desc: ClusterSummaries whose features are not Provisioned
+    cmds:
+      - |
+        kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s get clustersummary -A \
+          -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {range .status.featureSummaries[?(@.status!="Provisioned")]}{.featureID}={.status} {end}{"\n"}{end}' \
+          | grep -v ': $' || echo "all features Provisioned"
+
+  reconcile:
+    desc: Force the hub to re-pull git (root re-delivers profiles)
+    cmds:
+      - kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s annotate gitrepository homelab -n flux-system reconcile.fluxcd.io/requestedAt="$(git rev-parse HEAD)" --overwrite

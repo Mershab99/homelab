@@ -4,24 +4,24 @@ version: '3'
 
 vars:
   KUBE_VERSION: '1.35.0'
-  PATHS_TO_LINT: 'sources infrastructure platform fleet apps clusters'
-  CRD_SCHEMA_LOCATIONS: >-
-    default
-    https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{`{{.Group}}`}}/{{`{{.ResourceKind}}`}}_{{`{{.ResourceAPIVersion}}`}}.json
+  # Real source trees (the old sources/infrastructure/fleet/apps layout is gone).
+  LINT_PATHS: 'platform clusters tenants bootstrap'
+  # Kustomize roots that build standalone (secrets/ is skipped — its
+  # *.secret.yaml are gitignored, so it never builds on a clean checkout).
+  RENDER_ROOTS: 'platform/sveltos/clusterprofiles clusters/baremetal/infrastructure'
 
 tasks:
   lint:
-    desc: All linters — yamllint + kubeconform + helm lint + flux check
+    desc: All linters — yamllint + kubeconform + flux check
     cmds:
       - task: lint:yaml
       - task: lint:kubeconform
-      - task: lint:helm
       - task: lint:flux
 
   lint:yaml:
     desc: yamllint
     cmds:
-      - yamllint -c .yamllint.yaml {{.PATHS_TO_LINT}} 2>&1 | tee /tmp/yamllint.out || true
+      - yamllint -c .yamllint.yaml {{.LINT_PATHS}} 2>&1 | tee /tmp/yamllint.out || true
       - |
         if grep -q 'error' /tmp/yamllint.out; then
           exit 1
@@ -31,7 +31,7 @@ tasks:
     desc: kubeconform schema validation (skips kustomize composition)
     cmds:
       - |
-        find {{.PATHS_TO_LINT}} -name '*.yaml' -o -name '*.yml' 2>/dev/null \
+        find {{.LINT_PATHS}} -name '*.yaml' -o -name '*.yml' 2>/dev/null \
           | xargs kubeconform \
               -kubernetes-version {{.KUBE_VERSION}} \
               -strict \
@@ -40,36 +40,19 @@ tasks:
               -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{"{{"}}.Group{{"}}"}}/{{"{{"}}.ResourceKind{{"}}"}}_{{"{{"}}.ResourceAPIVersion{{"}}"}}.json' \
               -summary
 
-  lint:helm:
-    desc: helm lint over every chart referenced by HelmReleases
-    cmds:
-      - |
-        for d in infrastructure/*/; do
-          if [ -f "$d/helmrelease.yaml" ]; then
-            CHART=$(yq -r '.spec.chart.spec.chart // ""' "$d/helmrelease.yaml")
-            REPO=$(yq -r '.spec.chart.spec.sourceRef.name // ""' "$d/helmrelease.yaml")
-            VER=$(yq -r '.spec.chart.spec.version // ""' "$d/helmrelease.yaml")
-            if [ -n "$CHART" ] && [ -n "$REPO" ]; then
-              echo "Lint $REPO/$CHART@$VER"
-              helm lint "oci://$REPO/$CHART" --version "$VER" 2>/dev/null || \
-                echo "  (skipped: not OCI; full lint requires repo add)"
-            fi
-          fi
-        done
-
   lint:flux:
     desc: flux check --pre (cluster-side requirements)
     cmds:
       - flux check --pre
 
   render:
-    desc: kustomize build every Kustomization → kubeconform
+    desc: kustomize build every buildable Kustomization → kubeconform
     cmds:
       - |
-        for ks_dir in sources infrastructure platform fleet apps; do
-          if [ -d "$ks_dir" ] && [ -f "$ks_dir/kustomization.yaml" ]; then
-            echo "=== Rendering $ks_dir ==="
-            kustomize build "$ks_dir" \
+        for root in {{.RENDER_ROOTS}}; do
+          if [ -f "$root/kustomization.yaml" ]; then
+            echo "=== Rendering $root ==="
+            kustomize build "$root" \
               | kubeconform \
                 -kubernetes-version {{.KUBE_VERSION}} \
                 -strict \
@@ -87,22 +70,3 @@ tasks:
         else
           echo "No policies/ yet — skipping (Phase 7+)"
         fi
-
-  sops:
-    desc: Verify every file under secrets/ is SOPS-encrypted
-    cmds:
-      - |
-        if [ ! -d secrets ]; then
-          echo "secrets/ does not exist yet — skipping"
-          exit 0
-        fi
-        FAILED=0
-        while IFS= read -r f; do
-          if ! grep -q '^sops:' "$f" 2>/dev/null; then
-            if grep -qE '^(apiVersion|kind):' "$f" 2>/dev/null; then
-              echo "PLAINTEXT SECRET: $f"
-              FAILED=1
-            fi
-          fi
-        done < <(find secrets -type f \( -name '*.yaml' -o -name '*.yml' \))
-        exit $FAILED

@@ -2,12 +2,12 @@
 version: '3'
 
 includes:
-  tunnel: .taskfiles/tunnel.yml
+  arrakis: .taskfiles/arrakis.yml
   talos: .taskfiles/talos.yml
   bootstrap: .taskfiles/bootstrap.yml
   sops: .taskfiles/sops.yml
   backup: .taskfiles/backup.yml
-  fleet: .taskfiles/fleet.yml
+  sveltos: .taskfiles/sveltos.yml
   verify: .taskfiles/verify.yml
   tools: .taskfiles/tools.yml
   ci: .taskfiles/ci.yml
