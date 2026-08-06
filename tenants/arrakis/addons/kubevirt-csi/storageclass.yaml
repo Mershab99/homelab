@@ -5,6 +5,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: kubevirt
+  annotations:
+    # Cluster default — charts that omit storageClass (vcluster, kagent
+    # postgres, …) must not strand PVCs with no class at all.
+    storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.kubevirt.io
 parameters:
   infraStorageClassName: longhorn
