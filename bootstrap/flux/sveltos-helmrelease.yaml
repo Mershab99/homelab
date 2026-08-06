@@ -17,7 +17,7 @@ spec:
   chart:
     spec:
       chart: projectsveltos
-      version: 1.11.x
+      version: 1.12.x   # 1.12.0 adds CAPI v1beta2 support (arrakis is v1beta2; 1.11 read the removed status.controlPlaneReady field → never matched arrakis)
       sourceRef:
         kind: HelmRepository
         name: projectsveltos

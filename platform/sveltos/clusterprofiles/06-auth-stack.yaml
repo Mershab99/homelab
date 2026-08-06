@@ -37,7 +37,7 @@ spec:
     - repositoryURL: https://charts.dexidp.io
       repositoryName: dex
       chartName: dex/dex
-      chartVersion: 0.19.x
+      chartVersion: 0.24.1   # EXACT — Sveltos v1.12 rejects .x wildcards ("invalid semantic version")
       releaseName: dex
       releaseNamespace: dex
       helmChartAction: Install
