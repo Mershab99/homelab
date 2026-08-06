@@ -1,0 +1,59 @@
+# vcluster access — fetch any vcluster's kubeconfig, parameterized by VC.
+#
+# Every vcluster (12-vcluster-<name>.yaml) exports a SELF-CONTAINED kubeconfig
+# (certs inline, server pre-rewritten to https://k8s-<name>.mershab.com:443 —
+# the edge SNI ssl-passthrough, reachable from anywhere). Auto-registration
+# copies it to the hub at projectsveltos/<name>-export-kubeconfig (key
+# `config`), so fetching = pull + base64 decode, no rewriting.
+#
+#   task vc:kubeconfig                     # default VC=ai -> ~/.kube/vc-ai.yaml
+#   task vc:kubeconfig VC=foo              # any vcluster
+#   task vc:kubeconfig VC=ai OUT=/tmp/x    # custom output path
+#   task vc:status VC=ai
+#
+# (Override var is OUT, not KCFG — taskfile-level vars from other includes
+# (arrakis.yml KCFG) leak across include namespaces and would hijack it.)
+#
+# Slinging to clients (mobile etc.): AirDrop/scp the file, or
+# `pbcopy < ~/.kube/vc-ai.yaml` and paste into the client. QR is deliberately
+# not offered — a client-cert kubeconfig (~10KB) exceeds single-QR capacity.
+#
+# SECURITY: the kubeconfig is a long-lived cluster-admin client cert for that
+# vcluster. Treat like a password.
+# https://taskfile.dev
+version: '3'
+
+vars:
+  VC: '{{.VC | default "ai"}}'
+  HUB_CONTEXT: admin@contraxia
+
+tasks:
+  kubeconfig:
+    desc: 'Fetch vcluster kubeconfig (VC=<name>, default ai) -> ~/.kube/vc-<name>.yaml'
+    vars:
+      DEST: '{{.OUT | default (printf "$HOME/.kube/vc-%s.yaml" .VC)}}'
+    cmds:
+      - |
+        mkdir -p "$(dirname {{.DEST}})"
+        if ! kubectl --context {{.HUB_CONTEXT}} --request-timeout=20s \
+            get secret {{.VC}}-export-kubeconfig -n projectsveltos \
+            -o jsonpath='{.data.config}' | base64 -d > {{.DEST}} \
+            || ! test -s {{.DEST}}; then
+          rm -f {{.DEST}}
+          echo "no hub copy of {{.VC}}-export-kubeconfig (vcluster not auto-registered yet?)"
+          echo "check the source secret:  kubectl --context admin@arrakis get secret {{.VC}}-export-kubeconfig -n vcluster-{{.VC}}"
+          exit 1
+        fi
+        chmod 600 {{.DEST}}
+        echo "wrote {{.DEST}}"
+        echo "use it:   kubectl --kubeconfig {{.DEST}} get ns"
+        echo "sling it: pbcopy < {{.DEST}}   (or AirDrop/scp the file)"
+
+  status:
+    desc: 'vcluster edge + API health (VC=<name>, default ai)'
+    vars:
+      DEST: '{{.OUT | default (printf "$HOME/.kube/vc-%s.yaml" .VC)}}'
+    cmds:
+      - 'curl -sS --max-time 10 -k https://k8s-{{.VC}}.mershab.com/version || echo "edge DOWN — check chisel/DO droplet + the {{.VC}} vcluster Ingress"'
+      - echo ""
+      - 'test -f {{.DEST}} && kubectl --kubeconfig {{.DEST}} --request-timeout=20s get ns || echo "no kubeconfig yet — run: task vc:kubeconfig VC={{.VC}}"'

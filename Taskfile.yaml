@@ -3,6 +3,7 @@ version: '3'
 
 includes:
   arrakis: .taskfiles/arrakis.yml
+  vc: .taskfiles/vcluster.yml
   talos: .taskfiles/talos.yml
   bootstrap: .taskfiles/bootstrap.yml
   sops: .taskfiles/sops.yml
