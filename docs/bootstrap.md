@@ -269,8 +269,7 @@ kubectl get sveltoscluster -n projectsveltos ai
 
 Once registered, matching ClusterProfiles fire into the vCluster (Multus NAD,
 OIDC RBAC bindings — the vCluster apiserver federates to Dex using the same
-`kubernetes` OAuth2Client, kagent + kmcp via 16-ai-helpers). cert-manager is
-shared from the host via the certManager integration.
+`kubernetes` OAuth2Client, kagent + kmcp via 16-ai-helpers).
 
 **Verify**:
 ```bash

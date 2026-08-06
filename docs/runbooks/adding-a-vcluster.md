@@ -14,11 +14,12 @@ and (today) only one.
   vCluster, per the steps below. (Start by just adding CRs to `ai`; split only
   when a real trust boundary appears.)
 
-vClusters run on **arrakis** via **Loft vcluster (OSS)**. cert-manager is
-host-shared via the built-in `certManager` integration (host CRDs inside,
-Certificates/Issuers toHost, ClusterIssuers fromHost). kagent + kmcp run
-INSIDE each vcluster (`16-ai-helpers`, persona=ai) — generic CR sync toHost
-(`sync.toHost.customResources`) is a vCluster PRO feature, not available OSS.
+vClusters run on **arrakis** via **Loft vcluster (OSS)** — plain API
+isolation. Both generic CR sync (`sync.toHost.customResources`) and the
+`integrations.*` (certManager etc.) are vCluster PRO — the OSS syncer
+crashloops on them. kagent + kmcp therefore run INSIDE each vcluster
+(`16-ai-helpers`, persona=ai); shared from the host: nodes/CNI/CSI, storage
+classes, the edge.
 
 ## Steps
 

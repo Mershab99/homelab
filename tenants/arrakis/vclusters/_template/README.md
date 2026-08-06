@@ -3,10 +3,10 @@
 vClusters are **reserved for the AI/MCP layer** (kagent + KMCP groups that want a
 hard blast-radius boundary). Normal workloads live in **flat namespaces** on
 arrakis (`tenants/arrakis/apps/<app>/` + a tenant-selector ClusterProfile) — NOT
-vClusters. The `ai` vCluster is the running example. cert-manager is shared
-from the host (certManager integration); kagent/kmcp install INSIDE each
-vcluster via `16-ai-helpers` (generic CR sync toHost = vCluster PRO, so host
-operators can't serve in-vcluster CRs).
+vClusters. The `ai` vCluster is the running example. kagent/kmcp install
+INSIDE each vcluster via `16-ai-helpers` — generic CR sync toHost and the
+certManager integration are both vCluster PRO, so OSS host operators can't
+serve in-vcluster CRs.
 
 To add a NEW AI/MCP vCluster (only when a group needs isolating from `ai`):
 

@@ -2,14 +2,15 @@
 # k3k. Blast-radius boundary for the AI/MCP layer; every other workload is a
 # flat namespace.
 #
-# Sharing model (OSS reality, verified 2026-08-06): generic
-# `sync.toHost.customResources` is a vCluster PRO feature ("Generic Sync" —
-# syncer crashloops on it in OSS), so kagent/kmcp CRs can NOT be host-shared.
-# What IS shared from the host: cert-manager via the BUILT-IN
-# `integrations.certManager` (host CRDs appear inside; Certificates/Issuers
-# sync toHost, ClusterIssuers fromHost), plus storage/ingress/DB operators as
-# host services. kagent + kmcp run INSIDE the vcluster (16-ai-helpers,
-# persona=ai) — single instance, nothing duplicated on the host.
+# Sharing model (OSS reality, verified live 2026-08-06): BOTH generic
+# `sync.toHost.customResources` ("Generic Sync") AND `integrations.certManager`
+# ("Cert Manager Integration") are vCluster PRO — the OSS syncer crashloops on
+# either. OSS vcluster = plain API isolation; no CR sharing of any kind.
+# So: kagent + kmcp run INSIDE the vcluster (16-ai-helpers, persona=ai) —
+# single instance, nothing on the host. What the vcluster still shares from
+# the host: node/CNI/CSI (workload pods materialize in host ns vcluster-ai),
+# storage classes, and the edge. No cert-manager inside — nothing in the AI
+# layer terminates public TLS (the edge does).
 #
 # API exposure: multiplex the ONE edge LB — nginx Ingress with SNI
 # ssl-passthrough on 443 (k8s-ai.mershab.com; needs --enable-ssl-passthrough
@@ -34,7 +35,6 @@ spec:
       persona: platform
   dependsOn:
     - tenant-baseline    # schedulable pods (CNI + CSI up)
-    - tls-stack          # host cert-manager (certManager integration)
     - tenant-ingress     # nginx IngressClass + ssl-passthrough for the API
   helmCharts:
     - repositoryURL: https://charts.loft.sh
@@ -45,13 +45,8 @@ spec:
       releaseNamespace: vcluster-ai
       helmChartAction: Install
       values: |
-        # NOTE: sync.toHost.customResources is vCluster PRO — do not re-add.
-        integrations:
-          # Reuse the HOST cert-manager: its CRDs appear inside the vcluster,
-          # Certificates/Issuers sync toHost, ClusterIssuers (letsencrypt-prod)
-          # sync fromHost.
-          certManager:
-            enabled: true
+        # NOTE: sync.toHost.customResources AND integrations.* are vCluster
+        # PRO (verified: OSS syncer crashloops) — do not re-add either.
         controlPlane:
           distro:
             k8s:

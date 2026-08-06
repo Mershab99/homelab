@@ -1,11 +1,10 @@
 # ai-helpers — kagent + KMCP INSIDE the `ai` vcluster (persona=ai, fans in
 # after auto-registration). Single instance — the host runs NO kagent/kmcp.
 #
-# Why inside, not host-shared: generic CR sync toHost
-# (sync.toHost.customResources) is a vCluster PRO feature, so host operators
-# can't see in-vcluster kagent.dev CRs on OSS. cert-manager IS host-shared via
-# the built-in certManager integration (12-vcluster-ai). Workload pods still
-# materialize on the host via the syncer — the vcluster only isolates the API.
+# Why inside, not host-shared: generic CR sync toHost AND the certManager
+# integration are both vCluster PRO features, so host operators can't see
+# in-vcluster CRs on OSS at all. Workload pods still materialize on the host
+# via the syncer — the vcluster only isolates the API.
 #
 # kmcp-crds chart is DELIBERATELY absent: kmcp-crds 0.3.0 ships exactly one
 # CRD (mcpservers.kagent.dev) that kagent-crds 0.9.12 also ships (same served
