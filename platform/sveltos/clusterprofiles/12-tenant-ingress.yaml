@@ -43,6 +43,11 @@ spec:
           ingressClassResource:
             name: nginx
             default: true
+          # SNI L4 passthrough for Ingresses annotated ssl-passthrough (the
+          # ai vcluster API at k8s-ai.mershab.com rides 443 this way —
+          # multiplexing the one LB instead of burning a tcp: port each).
+          extraArgs:
+            enable-ssl-passthrough: "true"
           service:
             type: LoadBalancer
             loadBalancerClass: chisel.mershab.com/external   # chisel claims it, not Cilium

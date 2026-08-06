@@ -1,6 +1,6 @@
 # app-coder — Coder CDE, flat on the tenant. Provisions dev workspaces as
 # pods/PVCs on the same arrakis API (kubernetes template, in-cluster SA auth).
-# Public UI at coder.mershab.com; workspaces stay private (reached over NetBird).
+# Public UI at coder.mershab.com; workspaces stay private (LAN / port-forward).
 # Federates login to our Dex. Postgres from the CNPG operator (Phase 5).
 #
 # dependsOn tenant-ingress (public route) + auth-stack (Dex) + db-operators (CNPG).

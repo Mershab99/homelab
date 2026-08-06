@@ -46,9 +46,8 @@ the CAPI-minted `arrakis-kubeconfig`).
 | `grafana-oidc` | monitoring | — | Grafana generic_oauth (mgmt) |
 | `loki-minio` | monitoring | — | MinIO + Loki S3 (mgmt) |
 | `node-01-credentials` | chisel-operator-system | — | mgmt chisel ExitNode (02-ingress-external) |
-| `node-02-credentials` | tenant-secrets | chisel-operator-system | tenant chisel ExitNode (12-tenant-ingress) |
+| `digitalocean-auth` | tenant-secrets | ingress-nginx | chisel DO exit-node provisioner (12-tenant-ingress) |
 | `coder-oidc` | tenant-secrets | coder | Coder OIDC (15-app-coder) |
-| `netbird-management-secrets` / `netbird-operator` / `netbird-setup-key` | tenant-secrets | netbird | NetBird (08-netbird) |
 
 The `dex-config` client secrets must match their consumers' secrets
 (`grafana-oidc.clientSecret` == dex `grafana` staticClient secret, etc.).

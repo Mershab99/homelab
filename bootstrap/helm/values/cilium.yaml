@@ -1,12 +1,12 @@
-# Cilium bootstrap values — Talos-compatible. FULL-REMOTE: no LAN LoadBalancer.
+# Cilium bootstrap values — Talos-compatible.
 #
 # Most knobs here are required for Cilium to come up on Talos at all (cgroup,
 # securityContext, kubeProxyReplacement). Hubble is enabled.
 #
-# There is NO LAN LoadBalancer path: no LB IPAM pool, no L2AnnouncementPolicy,
-# no `internal` LB class. The only ingress paths are the chisel reverse tunnel
-# (public, → VPS) and the Netbird overlay (private). l2announcements/externalIPs
-# stay OFF below and no Cilium LB CRs are delivered by Flux/Sveltos.
+# LAN LB path: l2announcements ON below; cilium-lb-lan.yaml (applied by
+# 01-cilium.sh, not gitops) delivers the LB-IPAM pool + L2AnnouncementPolicy
+# that hand the arrakis CP its 192.168.2.240 LAN IP. Public ingress = chisel
+# reverse tunnel → DO droplet.
 
 # Cilium replaces kube-proxy entirely (cluster.proxy.disabled: true in Talos
 # machineconfig). Cilium needs to know where the apiserver is, since
@@ -77,7 +77,8 @@ tunnelProtocol: vxlan
 # (bootstrap/helm/cilium-lb-lan.yaml) hand the arrakis CP a stable home-LAN IP
 # (192.168.2.240) — the raw-IP externalAddress that fixes konnectivity (no DNS)
 # and drops the VPS from the API path. externalIPs stays OFF (LB-IPAM only).
-# Public app ingress still = chisel tunnel; private = Netbird overlay.
+# Public app ingress still = chisel tunnel; off-LAN kubectl = the chisel edge
+# (k8s-home.mershab.com:6443 nginx TCP passthrough, 12-tenant-ingress).
 l2announcements:
   enabled: true
 externalIPs:

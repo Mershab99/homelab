@@ -39,21 +39,23 @@ Bare-metal Talos cluster (R730 → +R820)
 | Tenant pools                | 3: `general` (autoscale 1–5), `gpu-k80` (2), `gpu-p2000` (1) |
 | DNS                         | Cloudflare only (ExternalDNS). No internal CoreDNS. |
 | Domain                      | `mershab.com` |
-| Sveltos registration        | CAPI integration (push) for tenant; agent mode (pull) for vClusters |
+| Sveltos registration        | CAPI integration (push) for tenant; event-driven auto-registration for vClusters (exportKubeConfig Secret → hub EventTrigger → SveltosCluster) |
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
 | Storage                     | ZFS LocalPV (zpool `tank`, 7 mirrors) on bare-metal; kubevirt-csi passthrough in tenant |
 | GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
 | Secrets                     | plaintext manifests, gitignored, applied by hand (`secrets/`); SOPS only for Talos machineconfig |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
-| LB classes                  | `external` (chisel-operator → VPS) only. FULL-REMOTE: no `internal`/LAN LB. Private services reach via the Netbird overlay. |
+| LB classes                  | `external` (chisel-operator → DO droplet) for public; Cilium LB-IPAM + L2 announce (`lan-pool` 192.168.2.240–250, hub only) for LAN — the arrakis CP Service claims 192.168.2.240. |
 
 ## 3. Network
 
 - **Edge:** Bell Hub 3000 (DHCP, NAT). **Switch:** Aruba S2500 (L2 only).
   Single flat subnet, no VLANs.
 - Talos node IPs pinned in machineconfig — do not rely on Bell Hub DHCP.
-- FULL-REMOTE: no Cilium LB IPAM pool and no L2 announcer. Nothing is reachable
-  via a LAN LoadBalancer IP. Public = chisel tunnel → VPS; private = Netbird overlay.
+- Cilium LB-IPAM `lan-pool` (192.168.2.240–250) + L2 announcer on the hub
+  (`bootstrap/helm/cilium-lb-lan.yaml`, applied by `01-cilium.sh`). The arrakis
+  CP Service claims 192.168.2.240 — the LAN kubectl path. Public = chisel
+  tunnel → DO droplet (`k8s-home.mershab.com`).
 - **LAN-attached pods:** host bridge `br0` on every Talos node. Bare-metal NAD
   `lan-bridge` (macvlan over br0). Every tenant worker VM gets a secondary NIC
   on `br0`. Tenant-side Sveltos profile installs a DaemonSet that builds
@@ -68,7 +70,7 @@ cluster IS one persona; a profile targets the persona that owns its bundle.
 | `persona` | Cluster | Owns |
 |---|---|---|
 | `infra` | contraxia (hub) | hypervisor/provider plane: olm, storage, virt-host, capi, autoscaler, arrakis-API tunnel, tenant-arrakis (CAPI), observability-backend |
-| `platform` | arrakis (AIO estate) | multus, cilium, kubevirt-csi, gpu, tenant-ingress, auth (Dex), netbird, db, k3k, all apps |
+| `platform` | arrakis (AIO estate) | multus, cilium, kubevirt-csi, gpu, tenant-ingress, auth (Dex), db, vcluster, all apps |
 | `ai` | ai vCluster | ai-helpers (kagent/KMCP), vcluster-baseline, oidc-rbac |
 
 Cross-persona bundles use `matchExpressions: {key: persona, operator: In, values: […]}`:

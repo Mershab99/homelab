@@ -8,7 +8,8 @@
 # loadBalancerClass and gets 192.168.2.240 from this pool, L2-announced on the
 # home LAN (192.168.2.0/24). That raw IP becomes k0smotron externalAddress ->
 # konnectivity-agent + workers dial it directly (no DNS -> no NXDOMAIN), and the
-# API leaves the RackNerd VPS path entirely. External kubectl = Netbird overlay.
+# workers/konnectivity leave the VPS path entirely. Off-LAN kubectl = the
+# chisel edge (k8s-home.mershab.com:6443 nginx TCP passthrough).
 #
 # Pool storage version is cilium.io/v2 on 1.19; L2 policy is still v2alpha1.
 apiVersion: cilium.io/v2

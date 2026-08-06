@@ -1,25 +1,26 @@
-# vCluster template (k3k shared mode — AI/MCP only)
+# vCluster template (Loft vcluster OSS — AI/MCP only)
 
 vClusters are **reserved for the AI/MCP layer** (kagent + KMCP groups that want a
 hard blast-radius boundary). Normal workloads live in **flat namespaces** on
 arrakis (`tenants/arrakis/apps/<app>/` + a tenant-selector ClusterProfile) — NOT
-vClusters. The `ai` vCluster is the running example.
+vClusters. The `ai` vCluster is the running example. Operators (kagent, kmcp,
+cert-manager) are SHARED on the host — vclusters sync CRs toHost, never install
+their own.
 
 To add a NEW AI/MCP vCluster (only when a group needs isolating from `ai`):
 
-1. Add a k3k `Cluster` CR at
-   `platform/sveltos/manifests/k3k-clusters/<name>.yaml` (model on `ai.yaml`).
-   It is delivered to arrakis by the existing `12-k3k-clusters` ClusterProfile.
-2. Add a helpers ClusterProfile `<NN>-<name>.yaml` (model on `16-ai-helpers.yaml`)
-   and list it in `clusterprofiles/kustomization.yaml`.
-3. Register the vCluster with the hub Sveltos — see
-   [docs/runbooks/registering-a-k3k-vcluster.md](../../../../docs/runbooks/registering-a-k3k-vcluster.md).
+1. Copy `platform/sveltos/clusterprofiles/12-vcluster-ai.yaml` to
+   `12-vcluster-<name>.yaml` (new release ns, Ingress host, and export secret
+   `<name>-export-kubeconfig`), list it in `clusterprofiles/kustomization.yaml`.
+2. Push — the vcluster self-registers via the exported kubeconfig + hub
+   EventTrigger, see
+   [docs/runbooks/registering-an-ai-vcluster.md](../../../../docs/runbooks/registering-an-ai-vcluster.md).
 
 Full workflow: [docs/runbooks/adding-a-vcluster.md](../../../../docs/runbooks/adding-a-vcluster.md).
 
 ## Per-vCluster SveltosCluster label
 
-Set on the `SveltosCluster` created during registration — ONE label drives every
+Set by the auto-registration template — ONE label drives every
 cross-cluster ClusterProfile selector:
 
 | Label | Value |

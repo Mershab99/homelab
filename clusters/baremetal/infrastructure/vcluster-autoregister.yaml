@@ -1,0 +1,81 @@
+# vcluster auto-registration — hands-free SveltosCluster creation for every
+# vcluster that exports a kubeconfig (12-vcluster-ai `exportKubeConfig`).
+#
+# Flow (Sveltos event framework, all on the hub):
+#   1. EventSource matches Secrets named *-export-kubeconfig on managed
+#      clusters (persona=platform, i.e. arrakis) and collects them.
+#   2. EventTrigger secretGenerator copies the collected Secret into the mgmt
+#      cluster (ns projectsveltos, same name — key stays `config`).
+#   3. EventTrigger deploys the instantiated SveltosCluster template into the
+#      mgmt cluster itself (destinationCluster = SveltosCluster mgmt/mgmt),
+#      labeled persona=ai → vcluster-baseline + oidc-rbac fan in.
+#
+# Convention: export secret MUST be named <vcluster>-export-kubeconfig; the
+# SveltosCluster is registered as projectsveltos/<vcluster>.
+apiVersion: lib.projectsveltos.io/v1beta1
+kind: EventSource
+metadata:
+  name: vcluster-exported-kubeconfig
+spec:
+  collectResources: true
+  resourceSelectors:
+    - group: ""
+      version: v1
+      kind: Secret
+      evaluate: |
+        function evaluate()
+          hs = {}
+          hs.matching = false
+          if string.match(obj.metadata.name, "%-export%-kubeconfig$") then
+            hs.matching = true
+          end
+          return hs
+        end
+---
+apiVersion: lib.projectsveltos.io/v1beta1
+kind: EventTrigger
+metadata:
+  name: vcluster-autoregister
+spec:
+  sourceClusterSelector:
+    matchLabels:
+      persona: platform
+  eventSourceName: vcluster-exported-kubeconfig
+  oneForEvent: true
+  syncMode: Continuous
+  # Copy the exported kubeconfig Secret (from the managed cluster, referenced
+  # by the event resource's own name/ns) into mgmt ns projectsveltos.
+  secretGenerator:
+    - name: "{{ .Resource.metadata.name }}"
+      namespace: "{{ .Resource.metadata.namespace }}"
+      nameFormat: "{{ .Resource.metadata.name }}"
+  # Deploy the SveltosCluster INTO the mgmt cluster (registered as mgmt/mgmt).
+  destinationCluster:
+    apiVersion: lib.projectsveltos.io/v1beta1
+    kind: SveltosCluster
+    name: mgmt
+    namespace: mgmt
+  policyRefs:
+    - kind: ConfigMap
+      name: vcluster-sveltoscluster-template
+      namespace: projectsveltos
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vcluster-sveltoscluster-template
+  namespace: projectsveltos
+  annotations:
+    projectsveltos.io/instantiate: "ok"   # render with event data
+data:
+  sveltoscluster.yaml: |
+    apiVersion: lib.projectsveltos.io/v1beta1
+    kind: SveltosCluster
+    metadata:
+      name: "{{ trimSuffix "-export-kubeconfig" .Resource.metadata.name }}"
+      namespace: projectsveltos
+      labels:
+        persona: ai
+    spec:
+      kubeconfigName: "{{ .Resource.metadata.name }}"
+      kubeconfigKeyName: config

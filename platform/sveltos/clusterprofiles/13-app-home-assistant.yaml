@@ -1,14 +1,13 @@
 # Home Assistant — FLAT namespace on arrakis (collapsed out of the `family`
-# vCluster). PRIVATE: no Ingress, no LoadBalancer — the UI is reached over the
-# NetBird overlay via a NetworkResource. HA keeps a Multus LAN NIC for device
-# control (mDNS / Matter / Zigbee-Zwave coordinators) — full-remote drops LAN
-# *exposure*, not device connectivity.
+# vCluster). PRIVATE: no Ingress, no LoadBalancer — the UI is reached in-home
+# via its Multus LAN NIC (the same NIC HA needs anyway for mDNS / Matter /
+# Zigbee-Zwave coordinators). No off-LAN path since the Netbird rip 2026-08-05;
+# revisit if remote HA access is ever wanted.
 #
 # Two delivery channels:
 #   1. helmCharts — pajikos/home-assistant. Namespace, PVC, Deployment, Service.
 #      Pod annotated with Multus to attach to the LAN. Ingress OFF.
-#   2. policyRefs — tenants/arrakis/apps/home-assistant/ for the `lan` NAD + the
-#      NetBird NetworkResource that publishes HA on the overlay.
+#   2. policyRefs — tenants/arrakis/apps/home-assistant/ for the `lan` NAD.
 #
 # Selector: persona=platform (flat, no vCluster).
 apiVersion: config.projectsveltos.io/v1beta1
@@ -21,7 +20,6 @@ spec:
       persona: platform
   dependsOn:
     - tenant-baseline   # kubevirt-csi for the PVC
-    - netbird           # NetworkResource CRD + the homelab routing peer
   helmCharts:
     - repositoryURL: https://pajikos.github.io/home-assistant-helm-chart/
       repositoryName: pajikos
@@ -35,8 +33,7 @@ spec:
           enabled: true
           storageClass: kubevirt   # routes via kubevirt-csi to bare-metal longhorn
           size: 10Gi
-        # PRIVATE — no Ingress. Reached over NetBird (see the NetworkResource in
-        # tenants/arrakis/apps/home-assistant/). FULL-REMOTE: no internal LB class.
+        # PRIVATE — no Ingress. Reached in-home via the Multus LAN NIC.
         ingress:
           enabled: false
         # Multus LAN attach — HA needs LAN for mDNS / zwave coordinator / etc.

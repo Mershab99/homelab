@@ -9,51 +9,47 @@ and (today) only one.
 - **Normal app** (public or private) → flat namespace. Add
   `tenants/arrakis/apps/<app>/` manifests + a tenant-selector ClusterProfile
   (model on `13-app-web.yaml` for public, `13-app-home-assistant.yaml` for a
-  private/NetBird app). No vCluster involved.
+  private LAN app). No vCluster involved.
 - **A new AI/MCP group** that must be isolated from the `ai` vCluster → a new
   vCluster, per the steps below. (Start by just adding CRs to `ai`; split only
   when a real trust boundary appears.)
 
-vClusters run on **arrakis** via **k3k in shared mode** (workloads reflected onto
-arrakis nodes; host Cilium CNI; NetworkPolicy isolation).
+vClusters run on **arrakis** via **Loft vcluster (OSS)** in the
+**shared-operator model**: kagent + kmcp + cert-manager run ONCE on the host
+(`16-ai-helpers`, `01-tls-stack`); each vcluster syncs their CRs toHost
+(`sync.toHost.customResources` — the host CRD is auto-copied into the
+vcluster). No operators are duplicated per virtual cluster.
 
 ## Steps
 
-1. **Add a k3k `Cluster` CR** at
-   `platform/sveltos/manifests/k3k-clusters/<name>.yaml` (model on `ai.yaml` — a
-   `Namespace` + a `Cluster` with `mode: shared`, `nodeSelector`
-   `node.mershab.com/pool: general`, OIDC `serverArgs`). Delivered to arrakis by
-   the existing `12-k3k-clusters` ClusterProfile (it applies the whole
-   `k3k-clusters/` dir — no new profile needed for the CR itself).
+1. **Add a vcluster ClusterProfile** — copy
+   `platform/sveltos/clusterprofiles/12-vcluster-ai.yaml` to
+   `12-vcluster-<name>.yaml`: change releaseName/ns to `<name>`/
+   `vcluster-<name>`, the Ingress host, and the export secret name
+   `<name>-export-kubeconfig` (the suffix is the auto-registration
+   convention). Add a host-ns NAD dir if the workloads attach to the LAN
+   (model on `platform/sveltos/manifests/vcluster-ai/`). List the profile in
+   `clusterprofiles/kustomization.yaml`.
 
-2. **Helpers ClusterProfile** at
-   `platform/sveltos/clusterprofiles/<NN>-<name>.yaml` (model on
-   `16-ai-helpers.yaml`): `clusterRefs` the `<name>` SveltosCluster in ns
-   `vclusters`, install the controllers/charts, deliver any samples via a
-   GitRepository policyRef. Add it to `clusterprofiles/kustomization.yaml`.
+2. **Push.** Flux reconciles → Sveltos installs the vcluster chart on arrakis
+   → the exported kubeconfig Secret appears → the hub EventTrigger registers
+   `SveltosCluster projectsveltos/<name>` (persona=ai) automatically — see
+   [registering-an-ai-vcluster.md](registering-an-ai-vcluster.md). Then
+   `12-vcluster-baseline` + `11-oidc-rbac` fan in.
 
-3. **Push.** Flux reconciles → `12-k3k-clusters` creates the k3k `Cluster` on
-   arrakis.
-
-4. **Register the vCluster** with the hub Sveltos (the one runtime step — k3k
-   can't self-register) — see
-   [registering-a-k3k-vcluster.md](registering-a-k3k-vcluster.md). Once the
-   `SveltosCluster` is Ready, `12-vcluster-baseline` + `11-oidc-rbac` + your
-   helpers profile fan in.
-
-5. **Expose privately** if the vCluster's Services need reaching from outside:
-   a NetBird `NetworkResource` (see `platform/sveltos/manifests/netbird/README.md`).
-   No public Gateway route for AI/MCP internals.
+3. **AI CRs, not helper charts:** author kagent/kmcp CRs inside the vcluster
+   (they sync toHost where the shared operators reconcile) — a per-vcluster
+   helpers profile is only needed for extra in-vcluster resources.
 
 ## Verify
 
 ```bash
-# k3k Cluster is Ready on arrakis
-kubectl --context admin@arrakis get clusters.k3k.io -n k3k-<name> <name>
+# vcluster Running on arrakis
+kubectl --context admin@arrakis get pods -n vcluster-<name>
 
-# vCluster registered with the hub
-kubectl --context admin@contraxia get sveltoscluster -n vclusters <name> -o yaml | yq .status
+# auto-registered with the hub
+kubectl --context admin@contraxia get sveltoscluster -n projectsveltos <name> -o yaml | yq .status
 
-# Controllers running inside (pods reflected onto arrakis general pool)
-kubectl --kubeconfig=<name>.kubeconfig get all -A
+# API through the edge (SNI ssl-passthrough)
+curl -k https://k8s-<name>.mershab.com/version   # 401 = reachable
 ```

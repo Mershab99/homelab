@@ -80,9 +80,10 @@ talosctl --nodes 192.168.2.70 read /proc/cmdline       # pcirebind.rebind=... pr
 bootstrap/helm/01-cilium.sh
 ```
 
-This installs Cilium with kube-proxy replacement and Hubble enabled.
-FULL-REMOTE: L2 announce + LB IPAM stay OFF and no LB CRs are delivered —
-there is no LAN LoadBalancer path.
+This installs Cilium with kube-proxy replacement and Hubble enabled, plus the
+LAN LB path: `cilium-lb-lan.yaml` delivers a `CiliumLoadBalancerIPPool`
+(192.168.2.240–250) and `CiliumL2AnnouncementPolicy` — the arrakis CP Service
+claims 192.168.2.240.
 
 **Verify**:
 ```bash
@@ -257,20 +258,19 @@ kubectl --kubeconfig=$TKUBECONFIG run scaletest --image=pause --replicas=20
 kubectl get machinedeployment -A -w     # general replicas climb
 ```
 
-## 10. First vCluster — home-assistant
+## 10. The `ai` vCluster (auto-registered)
 
 ```bash
-# k3k creates the vCluster on the tenant; register it with the bare-metal
-# Sveltos controller by hand (kubeconfig Secret + SveltosCluster) — see
-# docs/runbooks/registering-a-k3k-vcluster.md. Matching ClusterProfiles then
-# fan in.
-kubectl get sveltoscluster -n vclusters home-assistant
+# Sveltos installs the vcluster chart on arrakis (12-vcluster-ai); the
+# exported kubeconfig Secret triggers hands-free registration — see
+# docs/runbooks/registering-an-ai-vcluster.md. NO manual step.
+kubectl get sveltoscluster -n projectsveltos ai
 ```
 
 Once registered, matching ClusterProfiles fire into the vCluster (Multus NAD,
 OIDC RBAC bindings — the vCluster apiserver federates to Dex using the same
-`kubernetes` OAuth2Client, prometheus annotations). The `apps/` Flux
-Kustomization (targeting the vCluster kubeconfig) deploys HA.
+`kubernetes` OAuth2Client). kagent/kmcp CRs authored inside sync toHost where
+the shared host operators reconcile them.
 
 **Verify**:
 ```bash

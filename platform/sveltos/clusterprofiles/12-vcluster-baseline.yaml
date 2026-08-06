@@ -1,6 +1,6 @@
 # vcluster-baseline — runs INSIDE every vCluster (selected by persona=ai, set
-# when the k3k vCluster is registered with the hub from its kubeconfig — see
-# docs/runbooks/registering-a-k3k-vcluster.md).
+# by the auto-registration EventTrigger when the vcluster's exported kubeconfig
+# appears — see docs/runbooks/registering-an-ai-vcluster.md).
 #
 # Manifests delivered via GitRepository policyRef (consistent with
 # tenant-arrakis, virt-host, etc. — no inline ConfigMap wrangling).

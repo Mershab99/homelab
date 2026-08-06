@@ -60,24 +60,18 @@ spec:
 
 ## Publishing a DB PUBLICLY (the internet-facing product)
 
-The tenant Traefik has TCP entrypoints `postgres` (:5432) and `mysql` (:3306)
-and matching Gateway TCP listeners (see `tenant-gateway/gateway.yaml`), forwarded
-out through node-02/VPS-02 (add `--port` 5432/3306 to the VPS chisel server, or
-they ride the existing Traefik LB Service — one ExitNode). To expose ONE cluster,
-add a `TCPRoute` (experimental CRD, already shipped in tenant-gateway):
+The arrakis edge (12-tenant-ingress) exposes raw TCP via the ingress-nginx
+`tcp:` block — the same mechanism as the 6443 API passthrough — riding the one
+chisel→DO edge LB Service. To expose ONE cluster, add its port to the
+ingress-nginx values in 12-tenant-ingress:
 
 ```yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
-kind: TCPRoute
-metadata: {name: pg-public, namespace: traefik}
-spec:
-  parentRefs: [{name: shared, namespace: traefik, sectionName: postgres}]
-  rules:
-    - backendRefs: [{name: pg-rw, namespace: myapp, port: 5432}]   # + a ReferenceGrant in myapp
+tcp:
+  "5432": "myapp/pg-rw:5432"
 ```
 
 **Security (do NOT skip):** Postgres/MySQL wire protocols have no SNI, so ONE
 public port fronts ONE cluster — multiple public DBs need distinct ports. Enforce
 TLS (`spec.certificates` on the CNPG Cluster / MOCO TLS), strong roles, and a
-NetworkPolicy. Prefer Netbird-only for admin; reserve the public port for a DB
+NetworkPolicy. Prefer LAN-only for admin; reserve the public port for a DB
 you genuinely intend to vend to the internet.

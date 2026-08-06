@@ -4,9 +4,9 @@
 #
 # Two exposure lanes per DB:
 #   - in-cluster: apps consume the operator-generated Service + credentials Secret.
-#   - PUBLIC product: a Traefik TCPRoute (tenant-gateway) fronts the DB's primary
-#     Service on a dedicated port through node-02/VPS-02 — same Traefik LB Service
-#     (extra ports), so ONE ExitNode still (the 1:1 rule is per-Service).
+#   - PUBLIC product: an ingress-nginx `tcp:` port (12-tenant-ingress, same
+#     mechanism as the 6443 API passthrough) fronts the DB's primary Service
+#     through the one chisel→DO edge LB — extra ports on the same Service.
 #
 # MOCO requires cert-manager (mTLS controller<->agents) — already on the tenant
 # (persona=platform runs cert-manager). dependsOn tls-stack for that +

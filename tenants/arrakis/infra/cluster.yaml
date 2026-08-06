@@ -26,7 +26,7 @@ metadata:
     sveltos.projectsveltos.io/type: tenant
     tier: workload
     # persona — the ONE selector ClusterProfiles match. arrakis is the AIO
-    # estate: tls/dns/multus/csi/gpu/ingress/auth(Dex)/netbird/db/apps all fan in
+    # estate: tls/dns/multus/csi/gpu/ingress/auth(Dex)/db/apps all fan in
     # on persona=platform. No `needs.*` sprawl, no oidc.enabled (arrakis hosts Dex
     # so its own apiserver does NOT federate to it — see api.sans comment below).
     persona: platform
@@ -99,8 +99,9 @@ spec:
   # the konnectivity-agent (a pod on arrakis, dnsPolicy ClusterFirst) previously
   # NXDOMANIed on the old kmc-arrakis-lb.tenants.svc.cluster.local (a contraxia
   # svc, absent in arrakis) and never connected. Workers + kubelet dial the IP
-  # directly over the LAN/masquerade. The VPS is OUT of the API path entirely;
-  # external kubectl is the Netbird overlay (routing-peer advertises this /24).
+  # directly over the LAN/masquerade. The droplet is OUT of the worker/CP path;
+  # off-LAN kubectl rides the chisel edge (k8s-home.mershab.com:6443 → nginx
+  # TCP 6443 passthrough, 12-tenant-ingress).
   externalAddress: 192.168.2.240
   service:
     type: LoadBalancer
@@ -136,7 +137,7 @@ spec:
     spec:
       api:
         # SANs for the apiserver cert. 192.168.2.240 = the LAN LB IP (the raw
-        # externalAddress). k8s-home.mershab.com kept for the Netbird/off-LAN
+        # externalAddress). k8s-home.mershab.com = the chisel-edge off-LAN
         # path. k0smotron appends its own service SANs automatically.
         sans:
           - 192.168.2.240
@@ -144,7 +145,7 @@ spec:
         # NO OIDC on this apiserver — arrakis HOSTS Dex, so it cannot federate
         # its own apiserver auth to it (bootstrap circular + Dex-down locks out
         # the apiserver). cert-auth only. OIDC-to-Dex is for vClusters ONLY
-        # (see k3k ai.yaml serverArgs + 11-oidc-rbac, persona=ai).
+        # (see 12-vcluster-ai apiServer extraArgs + 11-oidc-rbac, persona=ai).
       network:
         # custom = no bundled CNI (kube-router/calico) — Sveltos delivers
         # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).

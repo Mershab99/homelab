@@ -50,10 +50,11 @@ copies off-box; they are re-applied by hand on restore (see `secrets/README.md`)
    `KamajiControlPlane` CR; etcd PVCs reattach with prior state.
 8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (`zfs` PVCs
    intact); they boot, `kubeadm join`-ed nodes show up.
-9. **vClusters come back** when the k3k operator reconciles their `Cluster`
-   CRs on the tenant. Re-register each with the bare-metal Sveltos controller
-   (kubeconfig Secret + SveltosCluster) per
-   `docs/runbooks/registering-a-k3k-vcluster.md`; profiles re-fire.
+9. **vClusters come back** when Sveltos re-installs each `12-vcluster-*`
+   helm release on the tenant. Registration is hands-free: the exported
+   kubeconfig Secret re-appears and the hub EventTrigger re-creates the
+   SveltosCluster (`docs/runbooks/registering-an-ai-vcluster.md`); profiles
+   re-fire.
 
 ## Dry-run
 
