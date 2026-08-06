@@ -19,10 +19,13 @@ rules:
     resources: ["datavolumes"]
     verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: ["kubevirt.io"]
-    resources: ["virtualmachineinstances"]
+    # driver hotplugs via the VM object (persistent hotplug), not just the VMI
+    resources: ["virtualmachines", "virtualmachineinstances"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["subresources.kubevirt.io"]
     resources:
+      - virtualmachines/addvolume
+      - virtualmachines/removevolume
       - virtualmachineinstances/addvolume
       - virtualmachineinstances/removevolume
     verbs: ["update"]
