@@ -22,23 +22,24 @@ spec:
   dependsOn:
     - tenant-baseline
   helmCharts:
-    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm/kagent-crds
-      repositoryName: kagent-crds
-      chartName: kagent-crds/kagent-crds
+    # OCI: sveltos appends chartName to repositoryURL — base URL only here.
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
+      repositoryName: kagent-oci
+      chartName: kagent-crds
       chartVersion: 0.9.12
       releaseName: kagent-crds
       releaseNamespace: kagent
       helmChartAction: Install
-    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm/kagent
-      repositoryName: kagent
-      chartName: kagent/kagent
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
+      repositoryName: kagent-oci
+      chartName: kagent
       chartVersion: 0.9.12
       releaseName: kagent
       releaseNamespace: kagent
       helmChartAction: Install
-    - repositoryURL: oci://ghcr.io/kagent-dev/kmcp/helm/kmcp
-      repositoryName: kmcp
-      chartName: kmcp/kmcp
+    - repositoryURL: oci://ghcr.io/kagent-dev/kmcp/helm
+      repositoryName: kmcp-oci
+      chartName: kmcp
       chartVersion: 0.3.0
       releaseName: kmcp
       releaseNamespace: kmcp-system
