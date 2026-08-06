@@ -1,7 +1,7 @@
 # `lan` NAD in the HOST ns of the `ai` vcluster. vcluster pods sync to host
 # here, and host multus resolves `k8s.v1.cni.cncf.io/networks: lan` against
-# the HOST pod's namespace — the in-vcluster NAD (vcluster-baseline) is only
-# for visibility inside the virtual API.
+# the HOST pod's namespace. (No NAD inside the vcluster — a plain vcluster has
+# no NAD CRD; the annotation on the virtual pod is metadata the syncer copies.)
 apiVersion: k8s.cni.cncf.io/v1
 kind: NetworkAttachmentDefinition
 metadata:

@@ -8,7 +8,7 @@
 #   2. EventTrigger deploys the instantiated template into the mgmt cluster
 #      itself (destinationCluster = SveltosCluster mgmt/mgmt): a copy of the
 #      kubeconfig Secret + the SveltosCluster (persona=ai) referencing it →
-#      vcluster-baseline + oidc-rbac + ai-helpers fan in.
+#      oidc-rbac + ai-helpers fan in.
 #      (NOT secretGenerator — generators reference template Secrets that must
 #      already exist in the MGMT cluster; they cannot read the event resource.)
 #

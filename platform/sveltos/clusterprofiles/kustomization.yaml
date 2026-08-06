@@ -38,6 +38,7 @@ resources:
   # integration are vCluster PRO) — kagent/kmcp run INSIDE the vcluster.
   # Auto-registered via exportKubeConfig + the hub EventTrigger
   # (clusters/baremetal/infrastructure/vcluster-autoregister.yaml).
-  - 12-vcluster-baseline.yaml   # in-vcluster NAD (persona=ai, fans in after registration)
+  # (12-vcluster-baseline retired: no NAD CRD inside a plain vcluster; the
+  #  functional `lan` NAD lives in the HOST ns via 12-vcluster-ai's policyRef.)
   - 12-vcluster-ai.yaml         # the `ai` vcluster (Loft OSS) on arrakis + host-ns NAD
   - 16-ai-helpers.yaml          # kagent + KMCP inside the ai vcluster (persona=ai)

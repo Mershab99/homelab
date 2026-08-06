@@ -36,7 +36,7 @@ classes, the edge.
    → the exported kubeconfig Secret appears → the hub EventTrigger registers
    `SveltosCluster projectsveltos/<name>` (persona=ai) automatically — see
    [registering-an-ai-vcluster.md](registering-an-ai-vcluster.md). Then
-   `12-vcluster-baseline` + `11-oidc-rbac` fan in.
+   `16-ai-helpers` + `11-oidc-rbac` fan in.
 
 3. **Helpers fan in automatically:** `16-ai-helpers` (persona=ai) installs
    kagent + kmcp inside every registered vcluster; author kagent/kmcp CRs

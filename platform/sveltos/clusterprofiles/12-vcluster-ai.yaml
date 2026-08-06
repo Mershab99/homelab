@@ -21,7 +21,7 @@
 # `ai-export-kubeconfig` (server rewritten to the edge hostname); the hub
 # EventTrigger (clusters/baremetal/infrastructure/vcluster-autoregister.yaml)
 # copies it to mgmt and creates the SveltosCluster (persona=ai) — then
-# vcluster-baseline + oidc-rbac fan in via Sveltos as with any cluster.
+# ai-helpers + oidc-rbac fan in via Sveltos as with any cluster.
 #
 # Selector: persona=platform (this profile deploys the vcluster ONTO arrakis;
 # persona=ai profiles deploy INTO it once registered).

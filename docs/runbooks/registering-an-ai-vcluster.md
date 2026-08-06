@@ -21,7 +21,7 @@ machinery and how to verify/debug it.
    - deploys the instantiated `SveltosCluster projectsveltos/<name>` (labeled
      `persona: ai`) into the mgmt cluster itself (`destinationCluster:
      mgmt/mgmt`).
-4. persona=ai profiles (`12-vcluster-baseline`, `11-oidc-rbac`) fan in — the
+4. persona=ai profiles (`16-ai-helpers`, `11-oidc-rbac`) fan in — the
    vcluster apiservers are the only ones federated to Dex.
 
 ## Naming convention

@@ -71,7 +71,7 @@ cluster IS one persona; a profile targets the persona that owns its bundle.
 |---|---|---|
 | `infra` | contraxia (hub) | hypervisor/provider plane: olm, storage, virt-host, capi, autoscaler, arrakis-API tunnel, tenant-arrakis (CAPI), observability-backend |
 | `platform` | arrakis (AIO estate) | multus, cilium, kubevirt-csi, gpu, tenant-ingress, auth (Dex), db, vcluster, all apps |
-| `ai` | ai vCluster | ai-helpers (kagent/KMCP), vcluster-baseline, oidc-rbac |
+| `ai` | ai vCluster | ai-helpers (kagent/KMCP), oidc-rbac |
 
 Cross-persona bundles use `matchExpressions: {key: persona, operator: In, values: […]}`:
 - `tls-stack`, `dns`, `observability-core` → `In [infra, platform]`.
