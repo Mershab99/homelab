@@ -1,0 +1,107 @@
+# mershab-apps — Mershab's personal stack, INSIDE the `mershab` vcluster
+# (selector vcluster=mershab, stamped by the autoregister template).
+# MCP servers ride separately: kmcp comes from 16-mcp-baseline (persona=ai);
+# MCPServer CRs are hand-applied into the vcluster
+# (platform/sveltos/manifests/mcp-baseline/README.md).
+#
+# Exposure: same as family-apps — Ingresses sync to host ns vcluster-mershab,
+# the arrakis edge nginx + cert-manager + external-dns do the rest.
+#
+# Secrets: the Vaultwarden ADMIN_TOKEN is NOT in git — merged in via
+# valuesFrom from the mgmt Secret vaultwarden-admin-values (ns tenant-secrets,
+# filled from secrets/apps/vaultwarden/, applied by ./secrets/apply.sh).
+# Trade-off: it lands as a plain env value in the pod spec (inside the
+# vcluster only). If that ever bothers: hand-apply a Secret inside the
+# vcluster + switch env.ADMIN_TOKEN to valueFrom.secretKeyRef.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: mershab-apps
+spec:
+  clusterSelector:
+    matchLabels:
+      vcluster: mershab
+  helmCharts:
+    # ── Vaultwarden ───────────────────────────────────────────────────────
+    - repositoryURL: https://charts.gabe565.com
+      repositoryName: gabe565
+      chartName: gabe565/vaultwarden
+      chartVersion: 0.14.0          # PIN EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: vaultwarden
+      releaseNamespace: vaultwarden
+      helmChartAction: Install
+      valuesFrom:
+        # env.ADMIN_TOKEN — mgmt Secret vaultwarden-admin-values.
+        - kind: Secret
+          name: vaultwarden-admin-values
+          namespace: tenant-secrets
+      values: |
+        # env.ADMIN_TOKEN via valuesFrom (vaultwarden-admin-values)
+        ingress:
+          main:
+            enabled: true
+            ingressClassName: nginx
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+            hosts:
+              - host: vault.mershab.com
+                paths:
+                  - path: /
+                    pathType: ImplementationSpecific
+            tls:
+              - hosts:
+                  - vault.mershab.com
+                secretName: vault-mershab-tls
+        persistence:
+          data:
+            enabled: true
+            retain: true
+            storageClass: kubevirt
+            accessMode: ReadWriteOnce
+            size: 10Gi
+    # ── Personal website ──────────────────────────────────────────────────
+    # Chart lives in the website repo — pulled through the Flux GitRepository
+    # source (clusters/baremetal/infrastructure/app-chart-sources.yaml).
+    - repositoryURL: gitrepository://flux-system/website/charts/website
+      repositoryName: website
+      chartName: website
+      chartVersion: 0.1.0           # matches charts/website/Chart.yaml on main
+      releaseName: website
+      releaseNamespace: website
+      helmChartAction: Install
+      values: |
+        image:
+          repository: mershab99/website
+          pullPolicy: Always
+          tag: "main"
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 5001
+            scheme: HTTP
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 5001
+            scheme: HTTP
+        service:
+          type: ClusterIP
+        ingress:
+          enabled: true
+          className: nginx
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+            nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+            # external-dns only reads spec.rules hosts — publish the bare
+            # domain explicitly so mershab.com resolves for the redirect.
+            external-dns.alpha.kubernetes.io/hostname: mershab.com
+          hosts:
+            - host: www.mershab.com
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - hosts:
+                - www.mershab.com
+                - mershab.com
+              secretName: www-mershab-tls

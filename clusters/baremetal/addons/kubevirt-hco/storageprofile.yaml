@@ -1,0 +1,16 @@
+# CDI StorageProfile override for fast-block (LocalPV-ZFS zvols).
+#
+# Without this CDI defaults DataVolumes on fast-block to Filesystem mode —
+# a disk.img file on ext4 on a zvol (three stacked layers). Block mode hands
+# the raw zvol to the VM / kubevirt-csi hot-plug instead.
+#
+# CDI auto-creates a StorageProfile per StorageClass with the same name; this
+# manifest just sets the spec on it.
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: StorageProfile
+metadata:
+  name: fast-block
+spec:
+  claimPropertySets:
+    - accessModes: ["ReadWriteOnce"]
+      volumeMode: Block

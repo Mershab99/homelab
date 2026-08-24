@@ -1,0 +1,263 @@
+# family-apps — everything the family persona runs, INSIDE the `family`
+# vcluster (selector vcluster=family, stamped by the autoregister template).
+#
+# Exposure: the vcluster syncs Ingresses to host ns vcluster-family
+# (sync.toHost.ingresses, OSS) — the arrakis edge nginx serves them,
+# cert-manager (letsencrypt-prod, DNS-01) mints TLS, external-dns publishes
+# the hostnames. Nothing terminates TLS inside the vcluster.
+#
+# Storage: everything `kubevirt` (RWO via kubevirt-csi → bare-metal fast-block
+# zvols on the tank pool). NO RWX exists — the shared media PVC is RWO, so all
+# mediaserver pods co-schedule onto one worker node (fine; volume binding
+# enforces it). Caps are historical (Longhorn-era one-replica-per-SSD limit);
+# the pool is ~14TB thin-provisioned now — expand when needed.
+#
+# Home Assistant: Multus LAN NIC (macvlan/DHCP) via the host-ns `lan` NAD
+# (platform/sveltos/manifests/vcluster-family, delivered by 12-vcluster-family)
+# for mDNS / Matter / coordinators, PLUS a public ingress velvet.mershab.com.
+#
+# Secrets: transmission VPN creds + photoprism admin password are NOT in git —
+# they merge in via valuesFrom from mgmt Secrets (ns tenant-secrets), filled
+# from secrets/apps/* and applied by ./secrets/apply.sh.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: family-apps
+spec:
+  clusterSelector:
+    matchLabels:
+      vcluster: family
+  helmCharts:
+    # ── Home Assistant ────────────────────────────────────────────────────
+    - repositoryURL: https://pajikos.github.io/home-assistant-helm-chart/
+      repositoryName: pajikos
+      chartName: pajikos/home-assistant
+      chartVersion: 0.2.82          # PIN EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: home-assistant
+      releaseNamespace: home-assistant
+      helmChartAction: Install
+      values: |
+        # Multus LAN attach — resolved against the HOST ns (vcluster-family),
+        # where the `lan` NAD lives. No hostNetwork; the macvlan NIC is the
+        # LAN path (mDNS / Matter / Zigbee-Zwave coordinators).
+        podAnnotations:
+          k8s.v1.cni.cncf.io/networks: lan
+        env:
+          - name: TZ
+            value: "America/New_York"
+        ingress:
+          enabled: true
+          className: nginx
+          annotations:
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+          hosts:
+            - host: velvet.mershab.com
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+          tls:
+            - hosts:
+                - velvet.mershab.com
+              secretName: velvet-mershab-tls
+        configuration:
+          enabled: true
+          forceInit: false
+        persistence:
+          enabled: true
+          storageClass: kubevirt
+          accessMode: ReadWriteOnce
+          size: 5Gi
+    # ── Mediaserver (jellyfin + *arr stack, openvpn-transmission fork) ────
+    # Chart lives in git, not a helm repo — sveltos pulls it through the Flux
+    # GitRepository source (clusters/baremetal/infrastructure/app-chart-sources.yaml).
+    # Apps share watch.mershab.com at the chart's default subpaths
+    # (/sonarr, /radarr, /jackett, /transmission, /prowlarr; jellyfin at /) —
+    # the pasted-over path:'/' + rewrite-target setup collides on one host.
+    - repositoryURL: gitrepository://flux-system/k8s-mediaserver-operator/helm-charts/k8s-mediaserver
+      repositoryName: k8s-mediaserver-operator
+      chartName: k8s-mediaserver
+      chartVersion: 0.7.1           # matches Chart.yaml on the openvpn-transmission branch
+      releaseName: mediaserver
+      releaseNamespace: mediaserver
+      helmChartAction: Install
+      valuesFrom:
+        # transmission.config.openvpn.username/password — mgmt Secret
+        # mediaserver-vpn-values (secrets/apps/mediaserver/, hand-filled).
+        - kind: Secret
+          name: mediaserver-vpn-values
+          namespace: tenant-secrets
+      values: |
+        general:
+          ingress_host: watch.mershab.com
+          jellyfin_ingress_host: watch.mershab.com
+          image_tag: latest
+          puid: 1000
+          pgid: 1000
+          storage:
+            customVolume: false
+            pvcName: mediaserver-pvc
+            size: 1536Gi            # historical Longhorn-era cap — pool is ~14TB thin now, expand when needed
+            pvcStorageClass: kubevirt
+            accessMode: ReadWriteOnce
+            subPaths:
+              tv: media/tv
+              movies: media/movies
+              downloads: downloads
+              transmission: transmission
+              sabnzbd: sabnzbd
+              config: config
+            volumes: {}
+          ingress:
+            ingressClassName: nginx
+        jackett:
+          enabled: true
+          service:
+            type: ClusterIP
+            port: 9117
+          ingress:
+            enabled: true
+          volume:
+            name: pvc-jackett-config
+            storageClassName: kubevirt
+            annotations: {}
+            labels: {}
+            accessModes: ReadWriteOnce
+            storage: 1Gi
+        sonarr:
+          enabled: true
+          ingress:
+            enabled: true
+          volume:
+            name: pvc-sonarr-config
+            storageClassName: kubevirt
+            annotations: {}
+            labels: {}
+            accessModes: ReadWriteOnce
+            storage: 1Gi
+        radarr:
+          enabled: true
+          service:
+            type: ClusterIP
+            port: 7878
+          ingress:
+            enabled: true
+          volume:
+            name: pvc-radarr-config
+            storageClassName: kubevirt
+            annotations: {}
+            labels: {}
+            accessModes: ReadWriteOnce
+            storage: 1Gi
+        prowlarr:
+          enabled: true
+          service:
+            type: ClusterIP
+            port: 9696
+          ingress:
+            enabled: true
+        sabnzbd:
+          enabled: false
+        plex:
+          enabled: false
+        transmission:
+          enabled: true
+          ingress:
+            enabled: true
+          config:
+            openvpn:
+              provider: "protonvpn"
+              config: "fr.protonvpn.tcp"
+              # username/password via valuesFrom (mediaserver-vpn-values)
+            auth:
+              enabled: false
+              username: ""
+              password: ""
+          resources:
+            limits:
+              cpu: 1500m
+              memory: 512Mi
+            requests:
+              cpu: 500m
+              memory: 128Mi
+          volume:
+            name: pvc-transmission-config
+            storageClassName: kubevirt
+            annotations: {}
+            labels: {}
+            accessModes: ReadWriteOnce
+            storage: 1Gi
+            selector: {}
+        jellyfin:
+          enabled: true
+          replicaCount: 1
+          ingress:
+            enabled: true
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              # Websockets for live progress bars and real-time interactions
+              nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+              # Ensure proper buffering of streaming media
+              nginx.ingress.kubernetes.io/proxy-buffering: "off"
+              # Long-lived connection handling for streaming
+              nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+              nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+              # Optimize response size
+              nginx.ingress.kubernetes.io/proxy-body-size: "0"
+            tls:
+              # One cert for watch.mershab.com — the sibling *arr ingresses on
+              # the same host ride this SNI entry.
+              enabled: true
+              secretName: watch-mershab-tls
+          volume:
+            name: pvc-jellyfin-config
+            storageClassName: kubevirt
+            annotations: {}
+            labels: {}
+            accessModes: ReadWriteOnce
+            storage: 1Gi
+          resources: {}
+    # ── PhotoPrism ────────────────────────────────────────────────────────
+    - repositoryURL: https://djjudas21.github.io/charts/
+      repositoryName: djjudas21
+      chartName: djjudas21/photoprism
+      chartVersion: 7.4.18          # PIN EXACT
+      releaseName: photoprism
+      releaseNamespace: photoprism
+      helmChartAction: Install
+      valuesFrom:
+        # env.PHOTOPRISM_ADMIN_PASSWORD — mgmt Secret photoprism-admin-values
+        # (secrets/apps/photoprism/, hand-filled).
+        - kind: Secret
+          name: photoprism-admin-values
+          namespace: tenant-secrets
+      values: |
+        persistence:
+          config:
+            enabled: true
+            storageClass: kubevirt
+            size: 5Gi
+            accessMode: ReadWriteOnce
+            retain: false
+          originals:
+            enabled: true
+            storageClass: kubevirt   # was ceph-fs RWX — gone; RWO, fits one SSD
+            size: 1024Gi
+            accessMode: ReadWriteOnce
+            retain: true
+        env:
+          TZ: "America/New_York"
+          # PHOTOPRISM_ADMIN_PASSWORD via valuesFrom (photoprism-admin-values)
+        ingress:
+          main:
+            enabled: true
+            ingressClassName: nginx
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+            hosts:
+              - host: photos.mershab.com
+                paths:
+                  - path: /
+            tls:
+              - hosts:
+                  - photos.mershab.com
+                secretName: photos-mershab-tls

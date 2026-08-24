@@ -9,12 +9,23 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: privileged
 ---
-# Longhorn needs privileged PSA (host mounts, iscsi). Pre-created here so the
-# label is set before the storage ClusterProfile installs the chart.
+# OpenEBS LocalPV-ZFS needs privileged PSA (node plugin drives kernel ZFS on
+# the host). Pre-created here so the label is set before the storage
+# ClusterProfile installs the chart.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: longhorn-system
+  name: openebs
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+---
+# Velero node-agent (kopia data mover) mounts kubelet pod dirs — privileged.
+# Pre-created so the velero-b2 Secret (secrets/apply.sh) can land before the
+# 04b-backup ClusterProfile installs the chart.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
   labels:
     pod-security.kubernetes.io/enforce: privileged
 ---

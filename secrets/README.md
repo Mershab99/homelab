@@ -45,9 +45,19 @@ the CAPI-minted `arrakis-kubeconfig`).
 | `dex-config` | tenant-secrets | dex | Dex (06-auth-stack, on arrakis) |
 | `grafana-oidc` | monitoring | — | Grafana generic_oauth (mgmt) |
 | `loki-minio` | monitoring | — | MinIO + Loki S3 (mgmt) |
+| `velero-b2` | velero | — | Velero → Backblaze B2 off-box backups (04b-backup) |
 | `node-01-credentials` | chisel-operator-system | — | mgmt chisel ExitNode (02-ingress-external) |
 | `digitalocean-auth` | tenant-secrets | ingress-nginx | chisel DO exit-node provisioner (12-tenant-ingress) |
 | `coder-oidc` | tenant-secrets | coder | Coder OIDC (15-app-coder) |
+| `mediaserver-vpn-values` | tenant-secrets | — (valuesFrom) | transmission OpenVPN creds (17-family-apps) |
+| `photoprism-admin-values` | tenant-secrets | — (valuesFrom) | PhotoPrism admin password (17-family-apps) |
+| `vaultwarden-admin-values` | tenant-secrets | — (valuesFrom) | Vaultwarden ADMIN_TOKEN (18-mershab-apps) |
+
+**App helm-values fragments (`secrets/apps/`)** are a third shape: not consumed
+by any pod on mgmt and not propagated as Secrets — Sveltos merges their
+`values.yaml` key into the chart values at deploy time (`helmCharts[].valuesFrom`).
+Sensitive helm values stay out of git; same fill + `apply.sh` flow. A missing
+fragment fails that profile's chart deploy until applied.
 
 The `dex-config` client secrets must match their consumers' secrets
 (`grafana-oidc.clientSecret` == dex `grafana` staticClient secret, etc.).

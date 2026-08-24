@@ -1,6 +1,7 @@
-# Tenant StorageClass — `kubevirt` — backed by the bare-metal `longhorn`
-# StorageClass. PVCs that request this class get a KubeVirt DataVolume that
-# wraps a Longhorn volume on bare-metal.
+# Tenant StorageClass — `kubevirt` — backed by the bare-metal `fast-block`
+# StorageClass (LocalPV-ZFS zvol). PVCs that request this class get a KubeVirt
+# DataVolume that wraps a raw zvol on bare-metal (Block volumeMode via the CDI
+# StorageProfile in clusters/baremetal/addons/kubevirt-hco/).
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -11,7 +12,7 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 provisioner: csi.kubevirt.io
 parameters:
-  infraStorageClassName: longhorn
+  infraStorageClassName: fast-block
   bus: scsi
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete

@@ -1,34 +1,35 @@
-# vcluster-ai — the ONE virtual cluster (`ai`, Loft vcluster OSS), replacing
-# k3k. Blast-radius boundary for the AI/MCP layer; every other workload is a
-# flat namespace.
+# vcluster-family — the family persona's context (Loft vcluster OSS): Home
+# Assistant, mediaserver, PhotoPrism (17-family-apps), plus kmcp for any
+# future family MCP servers (16-mcp-baseline). One vcluster per persona;
+# sibling: 12-vcluster-mershab.
 #
 # Sharing model (OSS reality, verified live 2026-08-06): BOTH generic
-# `sync.toHost.customResources` ("Generic Sync") AND `integrations.certManager`
-# ("Cert Manager Integration") are vCluster PRO — the OSS syncer crashloops on
-# either. OSS vcluster = plain API isolation; no CR sharing of any kind.
-# So: kagent + kmcp run INSIDE the vcluster (16-ai-helpers, persona=ai) —
-# single instance, nothing on the host. What the vcluster still shares from
-# the host: node/CNI/CSI (workload pods materialize in host ns vcluster-ai),
-# storage classes, and the edge. No cert-manager inside — nothing in the AI
-# layer terminates public TLS (the edge does).
+# `sync.toHost.customResources` ("Generic Sync") AND `integrations.*`
+# (certManager etc.) are vCluster PRO — the OSS syncer crashloops on either.
+# OSS vcluster = plain API isolation; no CR sharing of any kind. So kmcp +
+# kagent-crds run INSIDE each vcluster (16-mcp-baseline, persona=ai).
+#
+# Lean rule — nothing else runs inside. `sync.toHost.ingresses` (OSS)
+# materializes app Ingresses in the HOST ns vcluster-family, where the one
+# arrakis edge nginx + cert-manager + external-dns handle class, TLS and DNS.
+# Also shared from the host: nodes/CNI/CSI, storage classes (kubevirt).
 #
 # API exposure: multiplex the ONE edge LB — nginx Ingress with SNI
-# ssl-passthrough on 443 (k8s-ai.mershab.com; needs --enable-ssl-passthrough
-# on the controller, set in 12-tenant-ingress). L4 passthrough keeps
-# client-cert auth intact; same public-but-mTLS posture as arrakis 6443.
+# ssl-passthrough on 443 (k8s-family.mershab.com; --enable-ssl-passthrough is
+# set in 12-tenant-ingress). L4 passthrough keeps client-cert auth intact.
 #
 # Registration is hands-free: exportKubeConfig writes the kubeconfig Secret
-# `ai-export-kubeconfig` (server rewritten to the edge hostname); the hub
-# EventTrigger (clusters/baremetal/infrastructure/vcluster-autoregister.yaml)
-# copies it to mgmt and creates the SveltosCluster (persona=ai) — then
-# ai-helpers + oidc-rbac fan in via Sveltos as with any cluster.
+# `family-export-kubeconfig`; the hub EventTrigger
+# (clusters/baremetal/infrastructure/vcluster-autoregister.yaml) registers
+# SveltosCluster projectsveltos/family with persona=ai + vcluster=family —
+# then mcp-baseline + oidc-rbac + family-apps fan in.
 #
 # Selector: persona=platform (this profile deploys the vcluster ONTO arrakis;
-# persona=ai profiles deploy INTO it once registered).
+# persona=ai / vcluster=family profiles deploy INTO it once registered).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
-  name: vcluster-ai
+  name: vcluster-family
 spec:
   clusterSelector:
     matchLabels:
@@ -41,12 +42,18 @@ spec:
       repositoryName: loft
       chartName: loft/vcluster
       chartVersion: 0.36.1          # PIN EXACT (sveltos v1.12 rejects wildcards)
-      releaseName: ai
-      releaseNamespace: vcluster-ai
+      releaseName: family
+      releaseNamespace: vcluster-family
       helmChartAction: Install
       values: |
         # NOTE: sync.toHost.customResources AND integrations.* are vCluster
         # PRO (verified: OSS syncer crashloops) — do not re-add either.
+        sync:
+          toHost:
+            # OSS. App Ingresses land in host ns vcluster-family → edge nginx
+            # + cert-manager + external-dns take it from there.
+            ingresses:
+              enabled: true
         controlPlane:
           distro:
             k8s:
@@ -64,26 +71,27 @@ spec:
                   - "--oidc-groups-prefix=oidc:"
           proxy:
             extraSANs:
-              - k8s-ai.mershab.com
+              - k8s-family.mershab.com
           ingress:
             # SNI ssl-passthrough through the one edge LB. Chart default
             # annotations already carry nginx ssl-passthrough + backend-protocol.
             enabled: true
-            host: k8s-ai.mershab.com
+            host: k8s-family.mershab.com
             spec:
               ingressClassName: nginx
         exportKubeConfig:
-          context: ai
+          context: family
           additionalSecrets:
             # Picked up by the hub EventSource (vcluster-autoregister); server
             # points at the edge so mgmt (and laptops) reach the API anywhere.
-            - name: ai-export-kubeconfig
-              context: ai
-              server: https://k8s-ai.mershab.com:443
+            - name: family-export-kubeconfig
+              context: family
+              server: https://k8s-family.mershab.com:443
   policyRefs:
-    # Host-ns `lan` NAD — vcluster pods materialize on host in vcluster-ai, so
-    # multus resolves their NAD annotation THERE, not inside the vcluster.
+    # Host-ns `lan` NAD — vcluster pods materialize on host in vcluster-family,
+    # so multus resolves their NAD annotation THERE, not inside the vcluster.
+    # Home Assistant attaches to the LAN through it (mDNS / Matter / etc.).
     - kind: GitRepository
       name: homelab
       namespace: flux-system
-      path: ./platform/sveltos/manifests/vcluster-ai
+      path: ./platform/sveltos/manifests/vcluster-family

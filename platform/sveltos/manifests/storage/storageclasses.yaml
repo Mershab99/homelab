@@ -1,0 +1,68 @@
+# LocalPV-ZFS StorageClasses — all carve out of the "tank" pool (7x2 mirrors).
+#
+# fstype "zfs"  → native ZFS dataset (quota/compression/snapshots directly, no
+#                 second filesystem on top of a COW block device).
+# fstype "ext4" → zvol + ext4, for consumers that need block semantics
+#                 (KubeVirt / kubevirt-csi hot-plug disks).
+#
+# WaitForFirstConsumer is moot on one node but stops being moot at two —
+# set now, no migration later. ashift/volblocksize/recordsize are immutable
+# per volume; recreate to change.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-zfs
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain          # real data by default — release, don't reap
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  poolname: tank
+  fstype: zfs
+  thinprovision: "yes"
+---
+# Block-ish class for KubeVirt disks (kubevirt-csi DataVolumes hot-plug these
+# into tenant VMs). 16k volblocksize suits general-purpose VM disks; a 4k-random
+# workload would want its own class.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-block
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+reclaimPolicy: Delete          # tenant deletion should free hub storage
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  poolname: tank
+  fstype: ext4
+  volblocksize: "16k"
+  thinprovision: "yes"
+---
+# Postgres & friends — 16k recordsize matches DB page sizes; the 128k default
+# is a read-modify-write amplifier under a database.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: db-zfs
+provisioner: zfs.csi.openebs.io
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  poolname: tank
+  fstype: zfs
+  recordsize: "16k"
+  thinprovision: "yes"
+---
+# CSI snapshots — near-free ZFS snapshots; Velero (EnableCSI) and manual
+# VolumeSnapshots both use this class.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: zfs-snapclass
+  annotations:
+    snapshot.storage.kubernetes.io/is-default-class: "true"
+driver: zfs.csi.openebs.io
+deletionPolicy: Delete

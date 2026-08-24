@@ -20,7 +20,7 @@ spec:
       persona: infra
   dependsOn:
     - observability-core   # prom-CRDs + OTel must be up first
-    - storage              # MinIO (S3 backend) + longhorn StorageClass
+    - storage              # MinIO (S3 backend) + fast-zfs StorageClass
     - auth-stack           # Grafana OIDC client lives in dex-config
   helmCharts:
     - repositoryURL: https://grafana.github.io/helm-charts
@@ -59,7 +59,7 @@ spec:
           replicas: 1
           persistence:
             enabled: true
-            storageClass: longhorn
+            storageClass: fast-zfs
             size: 10Gi
           extraEnvFrom:
             - secretRef:

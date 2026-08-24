@@ -10,7 +10,10 @@ resources:
   - 02-ingress-external.yaml    # chisel-operator + DigitalOcean ExitNodeProvisioner (ARRAKIS edge)
   - 03-multus.yaml              # secondary CNI (tenant-only; HCO gives mgmt Multus)
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
-  - 04-storage.yaml             # Longhorn (all 15 SSDs) + MinIO (Loki S3)
+  - 04-storage.yaml             # LocalPV-ZFS (tank pool) + MinIO (Loki S3)
+  # Velero → B2. Uncomment after filling the B2 bucket/region in 04b-backup.yaml
+  # and applying velero-b2.secret.yaml. MUST be enabled before real data lands.
+  # - 04b-backup.yaml
   - 04-virt-host.yaml           # KubeVirt HCO via OLM Subscription
   - 05-capi-stack.yaml          # cluster-api-operator + k0smotron providers
   # minimal: - 05b-cluster-autoscaler.yaml # CAS on mgmt; reads arrakis-kubeconfig auto-created by CAPI
@@ -26,19 +29,20 @@ resources:
   - 11-tenant-gpu.yaml          # NFD + GPU operator + NVIDIADriver CRs
   - 11-oidc-rbac.yaml           # ClusterRoleBindings (tenant + vClusters)
   - 12-tenant-ingress.yaml      # arrakis edge: ingress-nginx + chisel→DO (HTTP + TCP 6443 API)
-  # Apps PARKED 2026-08-05 — their exposure was Traefik-Gateway / NetBird (both
-  # ripped). Re-enable after migrating each to an nginx Ingress on the arrakis edge
-  # (home-assistant stays LAN-only via its Multus NIC).
-  # - 13-app-web.yaml
-  # - 13-app-home-assistant.yaml
-  # - 14-app-jellyfin.yaml
+  # 15-app-coder still PARKED 2026-08-05 (Traefik-era exposure; needs an nginx
+  # Ingress before re-enable). 13-app-web/13-app-home-assistant/14-app-jellyfin
+  # deleted 2026-08-06 — superseded by the persona-vcluster app profiles below.
   # - 15-app-coder.yaml
-  # vcluster reserved for the AI/MCP layer ONLY (family/mershab vClusters collapsed to flat ns).
+  # Persona vclusters (Loft OSS) — one per persona, that persona's apps + MCP
+  # servers inside (replaced the single `ai` vcluster 2026-08-06).
   # OSS vcluster = plain API isolation (generic CR sync AND certManager
-  # integration are vCluster PRO) — kagent/kmcp run INSIDE the vcluster.
-  # Auto-registered via exportKubeConfig + the hub EventTrigger
-  # (clusters/baremetal/infrastructure/vcluster-autoregister.yaml).
-  # (12-vcluster-baseline retired: no NAD CRD inside a plain vcluster; the
-  #  functional `lan` NAD lives in the HOST ns via 12-vcluster-ai's policyRef.)
-  - 12-vcluster-ai.yaml         # the `ai` vcluster (Loft OSS) on arrakis + host-ns NAD
-  - 16-ai-helpers.yaml          # kagent + KMCP inside the ai vcluster (persona=ai)
+  # integration are vCluster PRO) — kmcp runs INSIDE each vcluster; app
+  # Ingresses sync toHost (OSS) so the one edge nginx + cert-manager +
+  # external-dns serve them. Auto-registered via exportKubeConfig + the hub
+  # EventTrigger (clusters/baremetal/infrastructure/vcluster-autoregister.yaml)
+  # with labels persona=ai (any vcluster) + vcluster=<name> (this one).
+  - 12-vcluster-family.yaml     # `family` vcluster on arrakis + host-ns lan NAD
+  - 12-vcluster-mershab.yaml    # `mershab` vcluster on arrakis
+  - 16-mcp-baseline.yaml        # kagent-crds + kmcp inside every vcluster (persona=ai)
+  - 17-family-apps.yaml         # home-assistant (multus lan + velvet) + mediaserver + photoprism (vcluster=family)
+  - 18-mershab-apps.yaml        # vaultwarden + website (vcluster=mershab)

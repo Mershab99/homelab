@@ -19,7 +19,7 @@
 # - `kubevirt-csi.yaml`  — node DaemonSet + CSIDriver + node RBAC (this file)
 # - `driver-config.yaml` — the `kubevirt-csi-driver` Namespace (the ConfigMap
 #   moved to the infra controller, which is the only thing that reads it)
-# - `storageclass.yaml`  — the `kubevirt` StorageClass → bare-metal `longhorn`
+# - `storageclass.yaml`  — the `kubevirt` StorageClass → bare-metal `fast-block`
 #
 # Vendored from kubevirt/csi-driver deploy/{controller-infra,tenant}/base
 #   @ commit 27b52aa22da761ce973cc04976b37762d88e6c78 (no release tags / helm chart).

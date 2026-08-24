@@ -1,15 +1,20 @@
-# storage — Longhorn across all 15× 2TB Samsung SSDs on the R730.
+# storage — ZFS pool ("tank") + OpenEBS LocalPV-ZFS on the R730.
 #
-# Disks are Talos UserVolumes (UserVolumeConfig → /var/mnt/lh01..15, selected
-# by disk model) and auto-registered via the node's default-disks-config
-# annotation — see bootstrap/talos/controlplane.yaml. Longhorn just consumes them.
+# The pool itself is below the GitOps line: 7x 2-way mirrors across 14 of the
+# 15x 2TB Samsung SSDs (15th = warm spare), created once by
+# bootstrap/zfs/create-pool.sh. Requires the zfs system extension in the Talos
+# image (bootstrap/talos/r730-schematic.yaml) and the zfs_arc_max kernel arg.
 #
-# Single node day-1: replicas land on different DISKS (disk-level anti-affinity)
-# so a single SSD failure doesn't lose a volume. Bump node anti-affinity when the
-# R820 joins for cross-node replicas.
+# LocalPV-ZFS is control-plane only — it issues zfs/zpool commands against the
+# host kernel module; the pool survives chart uninstall (incl. Sveltos prune
+# after a power cycle). Volumes are node-pinned (single node: free).
+#
+# snapshot-controller (piraeus) owns the external-snapshotter CRDs + controller;
+# the zfs-localpv chart's copy of the snapshot CRDs is disabled to avoid double
+# ownership. StorageClasses + VolumeSnapshotClass ride the policyRef below.
 #
 # persona=infra — storage runs on the bare-metal cluster; tenants consume it via
-# kubevirt-csi (tenant-baseline bundle).
+# kubevirt-csi (tenant-baseline bundle → hub class fast-block).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
@@ -19,31 +24,32 @@ spec:
     matchLabels:
       persona: infra
   helmCharts:
-    - repositoryURL: https://charts.longhorn.io
-      repositoryName: longhorn
-      chartName: longhorn/longhorn
-      chartVersion: 1.7.3   # EXACT (deployed rev) — Sveltos v1.12 rejects .x wildcards
-      releaseName: longhorn
-      releaseNamespace: longhorn-system
+    - repositoryURL: https://piraeus.io/helm-charts/
+      repositoryName: piraeus
+      chartName: piraeus/snapshot-controller
+      chartVersion: 5.2.0   # EXACT (Sveltos v1.12 rejects .x wildcards)
+      releaseName: snapshot-controller
+      releaseNamespace: kube-system
+      helmChartAction: Install
+    - repositoryURL: https://openebs.github.io/zfs-localpv
+      repositoryName: zfs-localpv
+      chartName: zfs-localpv/zfs-localpv
+      chartVersion: 2.11.0   # EXACT (Sveltos v1.12 rejects .x wildcards)
+      releaseName: zfs-localpv
+      releaseNamespace: openebs
       helmChartAction: Install
       values: |
-        # iscsi/util-linux come from Talos system extensions (see r730-schematic).
-        persistence:
-          defaultClass: true
-          defaultClassReplicaCount: 2     # 2 replicas across different SSDs
-          defaultDataLocality: best-effort
-        defaultSettings:
-          # Single node → allow replicas on the same node, but force them onto
-          # different disks so one SSD dying doesn't take the volume.
-          replicaSoftAntiAffinity: true
-          replicaDiskSoftAntiAffinity: false
-          defaultDataPath: /var/lib/longhorn
-          createDefaultDiskLabeledNodes: true
-          # Loki/MinIO etc. are fine with Delete; flip per-PVC if needed.
-        longhornUI:
-          replicas: 1
+        crds:
+          zfsLocalPv:
+            enabled: true
+          csi:
+            volumeSnapshots:
+              enabled: false   # CRDs owned by the snapshot-controller chart above
+        analytics:
+          enabled: false
   policyRefs:
-    # MinIO (Loki S3) + the tenants-storage ResourceQuota as native manifests.
+    # StorageClasses + VolumeSnapshotClass + MinIO (Loki S3) + tenants-storage
+    # ResourceQuota as native manifests.
     - kind: GitRepository
       name: homelab
       namespace: flux-system

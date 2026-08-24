@@ -1,5 +1,5 @@
 # vcluster auto-registration — hands-free SveltosCluster creation for every
-# vcluster that exports a kubeconfig (12-vcluster-ai `exportKubeConfig`).
+# vcluster that exports a kubeconfig (12-vcluster-* `exportKubeConfig`).
 #
 # Flow (Sveltos event framework, all on the hub):
 #   1. EventSource matches Secrets named *-export-kubeconfig on managed
@@ -7,8 +7,9 @@
 #      template below sees .Resource.data.
 #   2. EventTrigger deploys the instantiated template into the mgmt cluster
 #      itself (destinationCluster = SveltosCluster mgmt/mgmt): a copy of the
-#      kubeconfig Secret + the SveltosCluster (persona=ai) referencing it →
-#      oidc-rbac + ai-helpers fan in.
+#      kubeconfig Secret + the SveltosCluster (persona=ai + vcluster=<name>)
+#      referencing it → oidc-rbac + mcp-baseline + the per-persona apps
+#      profile fan in.
 #      (NOT secretGenerator — generators reference template Secrets that must
 #      already exist in the MGMT cluster; they cannot read the event resource.)
 #
@@ -81,7 +82,11 @@ data:
       name: "{{ trimSuffix "-export-kubeconfig" .Resource.metadata.name }}"
       namespace: projectsveltos
       labels:
+        # persona=ai == "any vcluster" — shared bundles (16-mcp-baseline,
+        # 11-oidc-rbac) fan into every one. vcluster=<name> targets ONE
+        # (17-family-apps → family, 18-mershab-apps → mershab).
         persona: ai
+        vcluster: "{{ trimSuffix "-export-kubeconfig" .Resource.metadata.name }}"
     spec:
       kubeconfigName: "{{ .Resource.metadata.name }}"
       kubeconfigKeyName: config

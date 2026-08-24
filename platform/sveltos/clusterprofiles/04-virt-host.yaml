@@ -25,7 +25,7 @@ spec:
       persona: infra
   dependsOn:
     - olm         # need OLM CRDs (Subscription/OperatorGroup) before we apply Subscription
-    - storage     # CDI scratchSpace lands on the longhorn StorageClass
+    - storage     # CDI scratchSpace lands on the fast-zfs StorageClass
   policyRefs:
     - kind: GitRepository
       name: homelab

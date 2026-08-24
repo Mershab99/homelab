@@ -21,7 +21,7 @@ metadata:
 data:
   infraClusterNamespace: tenants
   infraClusterLabels: csi-driver/cluster=tenant
-  # Permissive: any infra StorageClass allowed (homelab has one — longhorn).
+  # Permissive: any infra StorageClass allowed (fast-block is the intended one).
   infraStorageClassEnforcement: |
     allowAll: true
     allowDefault: true

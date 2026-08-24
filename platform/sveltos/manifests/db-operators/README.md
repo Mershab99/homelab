@@ -17,7 +17,7 @@ spec:
   instances: 3
   storage:
     size: 10Gi
-    storageClass: kubevirt        # tenant CSI -> bare-metal Longhorn
+    storageClass: kubevirt        # tenant CSI -> bare-metal LocalPV-ZFS
   bootstrap:
     initdb:
       database: app

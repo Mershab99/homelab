@@ -24,21 +24,14 @@ machine:
         extraArgs:
             rotate-server-certificates: "true"   # paired with kubelet-serving-cert-approver in cluster.extraManifests
             max-pods: "250"
-        # Longhorn: /var/lib/longhorn holds its config/default data path; the 15
-        # data disks are UserVolumes mounted under /var/mnt/lhNN (see the
-        # UserVolumeConfig documents at the end of this file). rshared so the
-        # kubelet propagates the per-disk submounts to Longhorn pods.
+        # OpenEBS LocalPV-ZFS: the node plugin needs /var/openebs visible to the
+        # kubelet — omitting this mount is the known "Still connecting to
+        # unix:///plugin/csi.sock" failure. The 15 data disks are raw zpool
+        # members (tank, 7x2 mirrors) — no UserVolumes, no per-disk mounts.
         extraMounts:
-            - destination: /var/lib/longhorn
+            - destination: /var/openebs
               type: bind
-              source: /var/lib/longhorn
-              options:
-                - bind
-                - rshared
-                - rw
-            - destination: /var/mnt
-              type: bind
-              source: /var/mnt
+              source: /var/openebs
               options:
                 - bind
                 - rshared
@@ -139,10 +132,10 @@ machine:
     install:
         # Select the boot disk by MODEL, not /dev/sdX — megaraid_sas ordering
         # shuffles across boots. Only the boot disk (500GB WD Blue) is "WDC*";
-        # the 15 data disks (the Longhorn SSDs) are "Samsung SSD 850".
+        # the 15 data disks (the ZFS pool SSDs) are "Samsung SSD 850".
         diskSelector:
             model: WDC*
-        image: factory.talos.dev/metal-installer/29ffb20b8991b157baa2915e81572d192eafcdedbba171528e9b351afc65fbbb:v1.13.5 # Factory image: intel-ucode + iscsi-tools + util-linux-tools (Longhorn). Regenerate after editing r730-schematic.yaml.
+        image: factory.talos.dev/metal-installer/c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea:v1.13.5 # Factory image: intel-ucode + util-linux-tools + zfs. Regenerate after editing r730-schematic.yaml.
         wipe: true # Wipe the boot disk on this fresh install (data disks untouched).
         # NOTE: grubUseUKICmdline must stay OFF — it's mutually exclusive with
         # extraKernelArgs below (GRUB must build the cmdline on the host to
@@ -157,6 +150,12 @@ machine:
             - pcirebind.rebind=0000:06:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
             - pcirebind.rebind=0000:82:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
             - pcirebind.rebind=0000:82:00.1_nvidia+vfio-pci   # TODO: real PCI BDF
+            # ZFS ARC cap — MANDATORY. ARC is not kubelet-visible reclaimable
+            # memory; uncapped it OOM-kills pods under page-cache pressure.
+            # Budget 20-25% of RAM. TODO: set real bytes after
+            #   talosctl -n 192.168.2.70 memory
+            # e.g. 256GiB RAM → 64GiB ARC = 68719476736
+            - zfs.zfs_arc_max=TODO_20_PERCENT_OF_RAM_IN_BYTES
         
         # # Look up disk using disk attributes like model, size, serial and others.
         # diskSelector:
@@ -164,9 +163,11 @@ machine:
         #     model: WDC* # Disk model `/sys/block/<dev>/device/model`.
         #     busPath: /pci0000:00/0000:00:17.0/ata1/host0/target0:0:0/0:0:0:0 # Disk bus path.
 
-    # Data disks — the 15x 2TB Samsung 850 SSDs — are UserVolumeConfig documents
-    # at the end of this file, selected by disk model (megaraid_sas /dev/sdX
-    # enumeration is not stable across boots; never reference disks by name).
+    # Data disks — the 15x 2TB Samsung 850 SSDs — are raw members of the "tank"
+    # zpool (7x 2-way mirrors + 1 warm spare), created once by
+    # bootstrap/zfs/create-pool.sh using /dev/disk/by-id paths (megaraid_sas
+    # /dev/sdX enumeration is not stable across boots; never reference disks by
+    # name). The pool is below the GitOps line, like this file.
 
     # Features describe individual Talos features that can be switched on or off.
     features:
@@ -195,10 +196,6 @@ machine:
     # Configures the node labels for the machine.
     nodeLabels:
         node.kubernetes.io/exclude-from-external-load-balancers: ""
-        # Longhorn reads default-disks-config and registers all 15 mounted disks.
-        node.longhorn.io/create-default-disk: "config"
-    nodeAnnotations:
-        node.longhorn.io/default-disks-config: '[{"path":"/var/mnt/lh01","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh02","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh03","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh04","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh05","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh06","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh07","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh08","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh09","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh10","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh11","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh12","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh13","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh14","allowScheduling":true,"tags":["ssd"]},{"path":"/var/mnt/lh15","allowScheduling":true,"tags":["ssd"]}]'
     
     # # Provides machine specific control plane configuration options.
 
@@ -273,11 +270,12 @@ machine:
     #         - endpoint: tcp://1.2.3.4:12345 # Where to send logs. Supported protocols are "tcp" and "udp".
     #           format: json_lines # Logs format.
 
-    # # Configures the kernel.
-    # kernel:
-    #     # Kernel modules to load.
-    #     modules:
-    #         - name: btrfs # Module name.
+    # Configures the kernel.
+    kernel:
+        # Load zfs at boot (belt + braces alongside the zfs extension's own
+        # import service) — the tank pool must import before LocalPV-ZFS starts.
+        modules:
+            - name: zfs
 
     # # Configures the seccomp profiles for the machine.
     # seccompProfiles:
@@ -472,175 +470,3 @@ cluster:
 # NOTE: no HostnameConfig doc — the static hostname is set via
 # machine.network.hostname (r730.mershab.com). Talos 1.13 rejects setting the
 # hostname in both places ("static hostname is already set").
-# Longhorn data disks — one UserVolume per Samsung 850 SSD. Selected by disk
-# MODEL (not /dev/sdX — megaraid enumeration shuffles across boots). Same
-# selector on all 15 is intentional: the provisioner takes the first matching
-# disk with free space, and minSize 1.5TiB guarantees exactly one volume per
-# 2TB disk. After first provision each volume is pinned by partition label
-# (u-lhNN) and remounts correctly regardless of enumeration order. A missing
-# disk degrades that one volume instead of blocking boot.
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh01 # partition label u-lh01, mounted at /var/mnt/lh01
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh02 # partition label u-lh02, mounted at /var/mnt/lh02
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh03 # partition label u-lh03, mounted at /var/mnt/lh03
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh04 # partition label u-lh04, mounted at /var/mnt/lh04
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh05 # partition label u-lh05, mounted at /var/mnt/lh05
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh06 # partition label u-lh06, mounted at /var/mnt/lh06
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh07 # partition label u-lh07, mounted at /var/mnt/lh07
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh08 # partition label u-lh08, mounted at /var/mnt/lh08
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh09 # partition label u-lh09, mounted at /var/mnt/lh09
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh10 # partition label u-lh10, mounted at /var/mnt/lh10
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh11 # partition label u-lh11, mounted at /var/mnt/lh11
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh12 # partition label u-lh12, mounted at /var/mnt/lh12
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh13 # partition label u-lh13, mounted at /var/mnt/lh13
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh14 # partition label u-lh14, mounted at /var/mnt/lh14
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs
----
-apiVersion: v1alpha1
-kind: UserVolumeConfig
-name: lh15 # partition label u-lh15, mounted at /var/mnt/lh15
-provisioning:
-    diskSelector:
-        match: disk.model == "Samsung SSD 850" && !system_disk
-    minSize: 1.5TiB # one volume per 2TB disk — no two fit on one
-    grow: true
-filesystem:
-    type: xfs

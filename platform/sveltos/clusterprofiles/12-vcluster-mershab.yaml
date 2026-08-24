@@ -1,0 +1,67 @@
+# vcluster-mershab — Mershab's personal context (Loft vcluster OSS):
+# Vaultwarden, personal website (18-mershab-apps), and MCP servers via kmcp
+# (16-mcp-baseline). One vcluster per persona; sibling: 12-vcluster-family.
+#
+# Same shape and rationale as 12-vcluster-family (see its header for the OSS
+# sharing model + lean rule). No Multus NAD here — nothing in this persona
+# needs a LAN NIC.
+#
+# Selector: persona=platform (deploys the vcluster ONTO arrakis; persona=ai /
+# vcluster=mershab profiles deploy INTO it once registered).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: vcluster-mershab
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-baseline    # schedulable pods (CNI + CSI up)
+    - tenant-ingress     # nginx IngressClass + ssl-passthrough for the API
+  helmCharts:
+    - repositoryURL: https://charts.loft.sh
+      repositoryName: loft
+      chartName: loft/vcluster
+      chartVersion: 0.36.1          # PIN EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: mershab
+      releaseNamespace: vcluster-mershab
+      helmChartAction: Install
+      values: |
+        # NOTE: sync.toHost.customResources AND integrations.* are vCluster
+        # PRO (verified: OSS syncer crashloops) — do not re-add either.
+        sync:
+          toHost:
+            # OSS. App Ingresses land in host ns vcluster-mershab → edge nginx
+            # + cert-manager + external-dns take it from there.
+            ingresses:
+              enabled: true
+        controlPlane:
+          distro:
+            k8s:
+              enabled: true
+              apiServer:
+                # OIDC federation to Dex (see 12-vcluster-family header).
+                extraArgs:
+                  - --oidc-issuer-url=https://auth.mershab.com
+                  - --oidc-client-id=kubernetes
+                  - --oidc-username-claim=email
+                  - "--oidc-username-prefix=oidc:"
+                  - --oidc-groups-claim=groups
+                  - "--oidc-groups-prefix=oidc:"
+          proxy:
+            extraSANs:
+              - k8s-mershab.mershab.com
+          ingress:
+            # SNI ssl-passthrough through the one edge LB.
+            enabled: true
+            host: k8s-mershab.mershab.com
+            spec:
+              ingressClassName: nginx
+        exportKubeConfig:
+          context: mershab
+          additionalSecrets:
+            # Picked up by the hub EventSource (vcluster-autoregister).
+            - name: mershab-export-kubeconfig
+              context: mershab
+              server: https://k8s-mershab.mershab.com:443

@@ -8,8 +8,10 @@ description: Recover contraxia (R730 Talos hub) after a power cycle — diagnose
 A hard reboot can interrupt helm-controller mid-reconcile. Known failure mode
 (seen 2026-07-16): the `sveltos` HelmRelease gets remediated with a fresh
 install, the root ClusterProfile briefly prunes profiles from a stale git
-artifact, Sveltos **uninstalls the pruned addons** (CAPI, Longhorn, tenant
-cluster...), and their controllers die before clearing finalizers. Result:
+artifact, Sveltos **uninstalls the pruned addons** (CAPI, LocalPV-ZFS, tenant
+cluster...), and their controllers die before clearing finalizers. (Storage
+note: LocalPV-ZFS is control-plane only — the tank zpool and its datasets
+survive a chart uninstall untouched; reinstalling the chart re-adopts them.) Result:
 namespaces stuck Terminating, dead webhooks blocking everything, arrakis
 Cluster stuck Deleting.
 
@@ -121,11 +123,11 @@ kubectl --context admin@contraxia delete validatingwebhookconfiguration \
   capi-validating-webhook-configuration \
   capk-validating-webhook-configuration \
   k0smotron-validating-webhook-configuration-control-plane \
-  longhorn-webhook-validator --ignore-not-found
+  --ignore-not-found
 kubectl --context admin@contraxia delete mutatingwebhookconfiguration \
   capi-mutating-webhook-configuration \
   k0smotron-mutating-webhook-configuration-control-plane \
-  longhorn-webhook-mutator --ignore-not-found
+  --ignore-not-found
 ```
 
 Do NOT touch kubevirt/HCO/cdi/otel webhooks — those controllers stay alive.
@@ -150,10 +152,9 @@ kubectl --context admin@contraxia patch <kind> <name> -n <ns> \
 Known offenders by namespace:
 - `capi-system` / `k0sproject-k0smotron-*-system` / `kubevirt-infrastructure-system`:
   `coreproviders,bootstrapproviders,controlplaneproviders,infrastructureproviders`
-- `longhorn-system`: `engineimages,engines,nodes.longhorn.io,snapshots.longhorn.io,volumeattachments.longhorn.io,volumes.longhorn.io,replicas.longhorn.io`
-  (replicas only appear as a blocker after the volumes clear — re-check ns
-  conditions after the first pass). Stripping volume finalizers orphans
-  on-disk replica data — fine for a rebuild, not fine if you need the data.
+- `openebs`: `zfsvolumes.zfs.openebs.io,zfssnapshots.zfs.openebs.io` (CRs are
+  metadata — the underlying ZFS datasets/zvols in the tank pool are untouched
+  by finalizer stripping; a reinstalled driver re-lists them).
 - `tenants`: `machines,machinesets,machinedeployments,clusters.cluster.x-k8s.io`,
   the `kmc-arrakis-lb` Service (chisel finalizer), etcd PVC.
   Loop helper:

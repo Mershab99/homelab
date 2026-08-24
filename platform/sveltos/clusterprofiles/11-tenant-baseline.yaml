@@ -1,6 +1,6 @@
 # tenant-baseline — addons that EVERY tenant cluster needs inside itself.
 # Today: the kubevirt-csi NODE plugin + CSIDriver + StorageClass (passthrough CSI
-# so tenant PVCs land on the bare-metal longhorn class). Mode B: the CSI
+# so tenant PVCs land on the bare-metal fast-block class). Mode B: the CSI
 # CONTROLLER runs on mgmt (tenants/arrakis/infra/kubevirt-csi-controller.yaml,
 # delivered by 10-tenant-arrakis), not here — so no infra-credentials secret on
 # the tenant.

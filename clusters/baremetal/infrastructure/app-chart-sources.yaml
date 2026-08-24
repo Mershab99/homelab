@@ -1,0 +1,26 @@
+# Extra Flux GitRepository sources for helm charts that live in git, not a
+# helm repo. Sveltos pulls them via
+# `repositoryURL: gitrepository://flux-system/<name>/<path>` (17-family-apps,
+# 18-mershab-apps). Public repos — no secretRef (add flux-repo-pat if one
+# ever goes private).
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: k8s-mediaserver-operator
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/Mershab99/k8s-mediaserver-operator
+  ref:
+    branch: openvpn-transmission
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: website
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/Mershab99/website
+  ref:
+    branch: main

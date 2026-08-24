@@ -2,8 +2,8 @@
 #
 # Runs in the `monitoring` namespace so it shares the `loki-minio` Secret with
 # Loki (delivered by Flux from secrets/infrastructure/minio/). Backed by a
-# Longhorn PV. One replica — durability comes from Longhorn's replicas across
-# the SSDs, not from MinIO erasure coding.
+# LocalPV-ZFS dataset. One replica — durability comes from the tank pool's
+# mirrors, not from MinIO erasure coding.
 #
 # The `loki-minio` Secret carries AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY;
 # they double as MinIO's root creds and as Loki's S3 creds.
@@ -14,7 +14,7 @@ metadata:
   namespace: monitoring
 spec:
   accessModes: ["ReadWriteOnce"]
-  storageClassName: longhorn
+  storageClassName: fast-zfs
   resources:
     requests:
       storage: 50Gi

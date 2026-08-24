@@ -1,0 +1,78 @@
+# backup — Velero + kopia data mover → Backblaze B2 (off-box, offsite).
+#
+# THE durability story for the single-node tank pool: ZFS mirrors survive a
+# disk, snapshots survive a fat-fingered kubectl, only this survives the
+# chassis. Must be healthy before real data accumulates.
+#
+# How volumes travel: EnableCSI + defaultSnapshotMoveData — Velero takes a CSI
+# VolumeSnapshot (zfs-snapclass, near-free), the node-agent (kopia) streams the
+# snapshot content to B2, the local snapshot is released. Works for Filesystem
+# datasets AND the Block-mode zvols kubevirt-csi hot-plugs into tenant VMs
+# (plain fs-backup can't touch those).
+#
+# Fill before enabling (kustomization.yaml keeps this profile commented until
+# then):
+#   1. B2 bucket + app key → secrets/infrastructure/velero/velero-b2.secret.yaml
+#      + ./secrets/apply.sh (velero ns comes from infrastructure/namespaces.yaml)
+#   2. REPLACE the bucket/region/s3Url placeholders below.
+#
+# Restore drill (quarterly): task backup:restore into a scratch namespace and
+# start the app against it. An untested restore path is a hypothesis.
+#
+# persona=infra — runs on the bare-metal cluster, same as the storage it guards.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: backup
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - storage   # snapshot-controller CRDs + zfs-snapclass must exist
+  helmCharts:
+    - repositoryURL: https://vmware-tanzu.github.io/helm-charts
+      repositoryName: vmware-tanzu
+      chartName: vmware-tanzu/velero
+      chartVersion: 12.1.0   # EXACT (Sveltos v1.12 rejects .x wildcards) — Velero 1.18
+      releaseName: velero
+      releaseNamespace: velero
+      helmChartAction: Install
+      values: |
+        initContainers:
+          - name: velero-plugin-for-aws
+            image: velero/velero-plugin-for-aws:v1.14.2
+            volumeMounts:
+              - mountPath: /target
+                name: plugins
+        credentials:
+          useSecret: true
+          existingSecret: velero-b2   # secrets/infrastructure/velero/, applied by hand
+        deployNodeAgent: true         # kopia data mover
+        snapshotsEnabled: true
+        configuration:
+          features: EnableCSI
+          defaultSnapshotMoveData: true   # CSI snapshot -> kopia -> B2, then release local snap
+          backupStorageLocation:
+            - name: default
+              provider: aws
+              default: true
+              bucket: REPLACE_WITH_B2_BUCKET
+              config:
+                region: REPLACE_WITH_B2_REGION            # e.g. us-west-004
+                s3Url: https://s3.REPLACE_WITH_B2_REGION.backblazeb2.com
+                checksumAlgorithm: ""                     # B2 rejects AWS checksum headers
+          volumeSnapshotLocation:
+            - name: default
+              provider: velero.io/csi
+        schedules:
+          daily:
+            disabled: false
+            schedule: "0 3 * * *"
+            template:
+              ttl: 720h   # 30 days in B2
+              # tenants = kubevirt-csi DataVolume PVCs (all tenant app data
+              # lands there on the hub) + the k0smotron etcd PVC.
+              includedNamespaces:
+                - tenants
+                - monitoring

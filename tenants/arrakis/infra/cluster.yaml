@@ -77,7 +77,7 @@ spec: {}
 ---
 # Hosted control plane: k0smotron runs k0s controller pods (apiserver etc.)
 # on mgmt, plus a managed etcd statefulset (kmc-arrakis-etcd, PVC on
-# longhorn). Resources are named kmc-arrakis in this namespace.
+# db-zfs). Resources are named kmc-arrakis in this namespace.
 apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: K0smotronControlPlane
 metadata:
@@ -129,7 +129,7 @@ spec:
     type: etcd
     etcd:
       persistence:
-        storageClass: longhorn   # explicit (also the cluster default)
+        storageClass: db-zfs   # 16k recordsize suits etcd's write pattern
         size: 4Gi
   k0sConfig:
     apiVersion: k0s.k0sproject.io/v1beta1
@@ -145,7 +145,7 @@ spec:
         # NO OIDC on this apiserver — arrakis HOSTS Dex, so it cannot federate
         # its own apiserver auth to it (bootstrap circular + Dex-down locks out
         # the apiserver). cert-auth only. OIDC-to-Dex is for vClusters ONLY
-        # (see 12-vcluster-ai apiServer extraArgs + 11-oidc-rbac, persona=ai).
+        # (see 12-vcluster-* apiServer extraArgs + 11-oidc-rbac, persona=ai).
       network:
         # custom = no bundled CNI (kube-router/calico) — Sveltos delivers
         # Cilium (11-tenant-cilium.yaml, kubeProxyReplacement: false).

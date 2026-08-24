@@ -34,7 +34,7 @@ spec:
                     # (HCO's CNAO also provides mgmt's Multus for the br-multus
                     # NAD — the `multus` profile targets tenants only and never
                     # matches mgmt, so it must NOT be a dependency here)
-    - storage       # longhorn for the k0smotron etcd PVC + KubeVirt CDI
+    - storage       # db-zfs for the k0smotron etcd PVC + KubeVirt CDI
   policyRefs:
     - kind: GitRepository
       name: homelab

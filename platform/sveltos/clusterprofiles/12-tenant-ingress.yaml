@@ -44,8 +44,8 @@ spec:
             name: nginx
             default: true
           # SNI L4 passthrough for Ingresses annotated ssl-passthrough (the
-          # ai vcluster API at k8s-ai.mershab.com rides 443 this way —
-          # multiplexing the one LB instead of burning a tcp: port each).
+          # vcluster APIs at k8s-family/k8s-mershab.mershab.com ride 443 this
+          # way — multiplexing the one LB instead of burning a tcp: port each).
           extraArgs:
             enable-ssl-passthrough: "true"
           service:

@@ -4,16 +4,25 @@
 # then set controlplane.yaml install.image to
 #   factory.talos.dev/metal-installer/<schematic-id>:v1.13.5
 #
-# Extensions (trimmed to Longhorn's needs):
+# Current schematic ID (this file, registered 2026-08-24):
+#   c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea
+#
+# Extensions:
 #   - intel-ucode      — Xeon microcode updates
-#   - iscsi-tools      — REQUIRED by Longhorn (iscsid/iscsiadm for volume attach)
-#   - util-linux-tools — fstrim (Longhorn volume trim) + host debug utils
+#   - util-linux-tools — fstrim + host debug utils
+#   - zfs              — kernel module + pool import for the tank pool (LocalPV-ZFS)
+#
+# ZFS extension version is COUPLED to the Talos release it was built against.
+# Before ANY talosctl upgrade: re-POST this schematic for the target Talos
+# version and verify the zfs extension exists for it — a mismatch leaves the
+# pool unimportable until the image is fixed.
 #
 # vfio-pci is part of the base kernel — no extension needed for GPU passthrough.
-# (Dropped zfs/kata-containers/gvisor/chelsio-drivers/nfsd/nfs-utils — not used.)
+# (Dropped iscsi-tools with Longhorn; kata-containers/gvisor/chelsio-drivers/
+# nfsd/nfs-utils remain unused.)
 customization:
   systemExtensions:
     officialExtensions:
       - siderolabs/intel-ucode
-      - siderolabs/iscsi-tools
       - siderolabs/util-linux-tools
+      - siderolabs/zfs

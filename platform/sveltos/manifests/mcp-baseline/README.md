@@ -1,9 +1,11 @@
-# AI helpers — kagent + KMCP convention (inside the `ai` vCluster)
+# MCP baseline — kagent + KMCP convention (inside each persona vCluster)
 
-Controllers come from `16-ai-helpers.yaml`. Agents and MCP servers are declared
-as CRs INSIDE the `ai` vCluster (group `kagent.dev`). Not delivered by the
-profile (they need a model API key + would race the CRD install) — apply them
-into the vcluster once the controllers are up.
+Controllers come from `16-mcp-baseline.yaml` (persona=ai → every registered
+vcluster). Agents and MCP servers are declared as CRs INSIDE the target
+vcluster (group `kagent.dev`) — e.g. `mershab` for personal MCP servers. Not
+delivered by the profile (they need a model API key + would race the CRD
+install) — apply them into the vcluster (`task vc:kubeconfig VC=<name>`) once
+the controllers are up.
 
 ## MCP server (the main use case — KMCP)
 
@@ -26,8 +28,8 @@ spec:
   stdioTransport: {}
 ```
 
-The reconciled Service is how the MCP server is reached in-cluster. Reach it from
-outside the vcluster over NetBird (a NetworkResource) if you want it on the overlay.
+The reconciled Service is how the MCP server is reached in-cluster (or
+port-forward through the vcluster kubeconfig from a workstation).
 
 ## Agent (kagent) — optional
 
@@ -54,8 +56,8 @@ spec:
 ```
 
 The model API key Secret (`kagent-model-key`) is
-`secrets/infrastructure/kagent/model-api-key.example.yaml` — apply it INSIDE the
-`ai` vcluster (its own kubeconfig), not the tenant.
+`secrets/infrastructure/kagent/model-api-key.example.yaml` — apply it INSIDE
+the target vcluster (its own kubeconfig), not the tenant.
 
 **Uncertainty:** ModelConfig provider sub-field names were inferred — verify
 against the live `modelconfigs.kagent.dev` CRD before applying.

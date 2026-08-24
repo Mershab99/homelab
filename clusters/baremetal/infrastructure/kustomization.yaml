@@ -6,7 +6,7 @@
 #   - Namespaces every subsystem will eventually need
 #
 # Sveltos itself is installed by the platform layer (one layer up).
-# Everything that fans out — cert-manager, external-dns, Longhorn, KubeVirt
+# Everything that fans out — cert-manager, external-dns, LocalPV-ZFS, KubeVirt
 # HCO, CAPI providers, ingress, Dex, observability, tenant + vCluster
 # scaffolding — is a ClusterProfile in platform/sveltos/clusterprofiles/.
 # Secrets are plaintext + applied by hand (see secrets/README.md).
@@ -16,3 +16,4 @@ resources:
   - namespaces.yaml
   - tenant-secrets.yaml   # tenant-secrets ns + Sveltos template ConfigMap (secret propagation source)
   - vcluster-autoregister.yaml   # EventSource/EventTrigger: exported vcluster kubeconfig → SveltosCluster
+  - app-chart-sources.yaml       # Flux GitRepositories for git-hosted charts (mediaserver fork, website)
