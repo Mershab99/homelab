@@ -1,46 +1,50 @@
-# Adding a vCluster (AI/MCP isolation only)
+# Adding a vCluster (one per persona)
 
-**First: do you actually need a vCluster?** The default home for a workload is a
-**flat namespace on arrakis**, not a vCluster. vClusters are reserved for the
-**AI/MCP layer** — throwaway, RBAC-isolated groups of kagent Agents / KMCP MCP
-servers that want a hard blast-radius boundary. The `ai` vCluster is the first
-and (today) only one.
-
-- **Normal app** (public or private) → flat namespace. Add
-  `tenants/arrakis/apps/<app>/` manifests + a tenant-selector ClusterProfile
-  (model on `13-app-web.yaml` for public, `13-app-home-assistant.yaml` for a
-  private LAN app). No vCluster involved.
-- **A new AI/MCP group** that must be isolated from the `ai` vCluster → a new
-  vCluster, per the steps below. (Start by just adding CRs to `ai`; split only
-  when a real trust boundary appears.)
+**Model: one vcluster per persona** — a personal context holding that
+persona's apps AND MCP servers behind one RBAC/API boundary. Today:
+`family` (Home Assistant, mediaserver, PhotoPrism) and `mershab`
+(Vaultwarden, website, MCP servers). Infra/platform services (edge, DNS,
+TLS, storage, Dex, operators) stay on arrakis flat namespaces — a vcluster
+never runs its own cert-manager/ingress/external-dns.
 
 vClusters run on **arrakis** via **Loft vcluster (OSS)** — plain API
 isolation. Both generic CR sync (`sync.toHost.customResources`) and the
 `integrations.*` (certManager etc.) are vCluster PRO — the OSS syncer
-crashloops on them. kagent + kmcp therefore run INSIDE each vcluster
-(`16-ai-helpers`, persona=ai); shared from the host: nodes/CNI/CSI, storage
-classes, the edge.
+crashloops on them. Consequences:
+
+- kmcp (+ kagent-crds) runs INSIDE each vcluster (`16-mcp-baseline`,
+  persona=ai) — a host controller can't see in-vcluster CRs.
+- App exposure uses `sync.toHost.ingresses` (OSS): Ingresses created inside
+  the vcluster materialize in the host ns, where the arrakis edge nginx +
+  cert-manager + external-dns handle class/TLS/DNS.
+- Shared from the host: nodes/CNI/CSI, the `kubevirt` StorageClass, the edge.
 
 ## Steps
 
 1. **Add a vcluster ClusterProfile** — copy
-   `platform/sveltos/clusterprofiles/12-vcluster-ai.yaml` to
+   `platform/sveltos/clusterprofiles/12-vcluster-family.yaml` to
    `12-vcluster-<name>.yaml`: change releaseName/ns to `<name>`/
-   `vcluster-<name>`, the Ingress host, and the export secret name
-   `<name>-export-kubeconfig` (the suffix is the auto-registration
-   convention). Add a host-ns NAD dir if the workloads attach to the LAN
-   (model on `platform/sveltos/manifests/vcluster-ai/`). List the profile in
-   `clusterprofiles/kustomization.yaml`.
+   `vcluster-<name>`, the Ingress host `k8s-<name>.mershab.com`, and the
+   export secret name `<name>-export-kubeconfig` (the suffix is the
+   auto-registration convention). Add a host-ns NAD dir if the workloads
+   attach to the LAN (model on `platform/sveltos/manifests/vcluster-family/`).
+   List the profile in `clusterprofiles/kustomization.yaml`.
 
-2. **Push.** Flux reconciles → Sveltos installs the vcluster chart on arrakis
+2. **Add the persona's apps profile** — `NN-<name>-apps.yaml` with
+   `clusterSelector: matchLabels: {vcluster: <name>}` (the autoregister
+   template stamps that label). Model on `17-family-apps.yaml` /
+   `18-mershab-apps.yaml`. Sensitive helm values go through `valuesFrom` →
+   a mgmt Secret in ns `tenant-secrets` (template under `secrets/apps/`).
+
+3. **Push.** Flux reconciles → Sveltos installs the vcluster chart on arrakis
    → the exported kubeconfig Secret appears → the hub EventTrigger registers
-   `SveltosCluster projectsveltos/<name>` (persona=ai) automatically — see
-   [registering-an-ai-vcluster.md](registering-an-ai-vcluster.md). Then
-   `16-ai-helpers` + `11-oidc-rbac` fan in.
+   `SveltosCluster projectsveltos/<name>` (persona=ai + vcluster=<name>)
+   automatically — see [registering-a-vcluster.md](registering-a-vcluster.md).
+   Then `16-mcp-baseline` + `11-oidc-rbac` + the apps profile fan in.
 
-3. **Helpers fan in automatically:** `16-ai-helpers` (persona=ai) installs
-   kagent + kmcp inside every registered vcluster; author kagent/kmcp CRs
-   there. Only add a per-vcluster profile for extras beyond that.
+4. **MCP servers:** hand-apply MCPServer CRs into the vcluster
+   (`task vc:kubeconfig VC=<name>`) — see
+   `platform/sveltos/manifests/mcp-baseline/README.md`.
 
 ## Verify
 
@@ -49,8 +53,11 @@ classes, the edge.
 kubectl --context admin@arrakis get pods -n vcluster-<name>
 
 # auto-registered with the hub
-kubectl --context admin@contraxia get sveltoscluster -n projectsveltos <name> -o yaml | yq .status
+kubectl --context admin@contraxia get sveltoscluster -n projectsveltos <name> --show-labels
 
 # API through the edge (SNI ssl-passthrough)
 curl -k https://k8s-<name>.mershab.com/version   # 401 = reachable
+
+# app ingresses synced to the host ns (edge serves them)
+kubectl --context admin@arrakis get ingress -n vcluster-<name>
 ```

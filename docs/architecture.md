@@ -71,7 +71,7 @@ cluster IS one persona; a profile targets the persona that owns its bundle.
 |---|---|---|
 | `infra` | contraxia (hub) | hypervisor/provider plane: olm, storage, virt-host, capi, autoscaler, arrakis-API tunnel, tenant-arrakis (CAPI), observability-backend |
 | `platform` | arrakis (AIO estate) | multus, cilium, kubevirt-csi, gpu, tenant-ingress, auth (Dex), db, vcluster, all apps |
-| `ai` | ai vCluster | ai-helpers (kagent/KMCP), oidc-rbac |
+| `ai` | every persona vCluster (family, mershab) | mcp-baseline (kagent-crds/KMCP), oidc-rbac; per-vcluster apps via the extra `vcluster: <name>` label |
 
 Cross-persona bundles use `matchExpressions: {key: persona, operator: In, values: […]}`:
 - `tls-stack`, `dns`, `observability-core` → `In [infra, platform]`.
@@ -119,7 +119,7 @@ Sveltos is for **capability fanout**, not per-instance config.
   (every other `ClusterProfile` CR) onto `mgmt` — Sveltos manages Sveltos from
   there, replacing the old Flux Kustomization tree. Everything else —
   cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex,
-  Longhorn, OLM + KubeVirt HCO, CAPI/Kamaji, OTel, Loki, Grafana — is a
+  LocalPV-ZFS, OLM + KubeVirt HCO, CAPI/Kamaji, OTel, Loki, Grafana — is a
   label-selected `ClusterProfile`. The bare-metal cluster auto-registers as
   `SveltosCluster/mgmt`; the same profiles match tenant + vClusters when they
   come online — no rewrite needed.

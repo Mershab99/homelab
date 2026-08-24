@@ -145,7 +145,7 @@ It kustomize-builds two dirs from the `homelab` GitRepository onto mgmt:
 `platform/sveltos/clusterprofiles/` (every other ClusterProfile CR — Sveltos
 manages Sveltos from here). The cluster then lights up in dependency order:
 cert-manager, external-dns, Traefik, chisel-operator, Multus, Dex,
-Longhorn, OLM + KubeVirt HCO, CAPI + Kamaji, observability.
+LocalPV-ZFS, OLM + KubeVirt HCO, CAPI + Kamaji, observability.
 
 ### 5a. Apply secrets (plaintext, by hand)
 
@@ -172,7 +172,7 @@ kubectl get clusterprofiles                         # root + all others present
 kubectl get clustersummaries -A                     # one per (profile, cluster) — all Provisioned
 kubectl get ciliumloadbalancerippool                # infra dir applied
 kubectl -n cert-manager get clusterissuer letsencrypt-prod
-kubectl -n longhorn-system get pods                 # storage up
+kubectl -n openebs get pods                         # storage up (LocalPV-ZFS)
 kubectl get hyperconverged -n kubevirt-hyperconverged  # Deployed
 kubectl get providers -A                            # core, capk, cabpk, kamaji
 ```
@@ -258,18 +258,19 @@ kubectl --kubeconfig=$TKUBECONFIG run scaletest --image=pause --replicas=20
 kubectl get machinedeployment -A -w     # general replicas climb
 ```
 
-## 10. The `ai` vCluster (auto-registered)
+## 10. The persona vClusters (auto-registered)
 
 ```bash
-# Sveltos installs the vcluster chart on arrakis (12-vcluster-ai); the
-# exported kubeconfig Secret triggers hands-free registration — see
-# docs/runbooks/registering-an-ai-vcluster.md. NO manual step.
-kubectl get sveltoscluster -n projectsveltos ai
+# Sveltos installs the vcluster charts on arrakis (12-vcluster-family,
+# 12-vcluster-mershab); each exported kubeconfig Secret triggers hands-free
+# registration — see docs/runbooks/registering-a-vcluster.md. NO manual step.
+kubectl get sveltoscluster -n projectsveltos family mershab
 ```
 
-Once registered, matching ClusterProfiles fire into the vCluster (Multus NAD,
-OIDC RBAC bindings — the vCluster apiserver federates to Dex using the same
-`kubernetes` OAuth2Client, kagent + kmcp via 16-ai-helpers).
+Once registered, matching ClusterProfiles fire into each vCluster (OIDC RBAC
+bindings — the vCluster apiservers federate to Dex using the same
+`kubernetes` OAuth2Client; kagent-crds + kmcp via 16-mcp-baseline; the
+persona's apps via 17-family-apps / 18-mershab-apps).
 
 **Verify**:
 ```bash

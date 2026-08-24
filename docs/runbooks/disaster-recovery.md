@@ -53,7 +53,7 @@ copies off-box; they are re-applied by hand on restore (see `secrets/README.md`)
 9. **vClusters come back** when Sveltos re-installs each `12-vcluster-*`
    helm release on the tenant. Registration is hands-free: the exported
    kubeconfig Secret re-appears and the hub EventTrigger re-creates the
-   SveltosCluster (`docs/runbooks/registering-an-ai-vcluster.md`); profiles
+   SveltosCluster (`docs/runbooks/registering-a-vcluster.md`); profiles
    re-fire.
 
 ## Dry-run
