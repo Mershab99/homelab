@@ -4,8 +4,16 @@
 # then set controlplane.yaml install.image to
 #   factory.talos.dev/metal-installer/<schematic-id>:v1.13.5
 #
-# Current schematic ID (this file, registered 2026-08-24):
+# Current schematic ID (this file, re-POSTed and re-verified 2026-08-25):
 #   c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea
+#
+# TARGET FOR THIS CYCLE:
+#   factory.talos.dev/metal-installer/c86a996e…2030eea:v1.13.5
+# Staying on v1.13.5 (the running version) is deliberate. v1.13.9 is the latest
+# 1.13 patch and is fully verified below, but this upgrade already swaps the
+# whole storage stack on a single control-plane node with no fallback. Bundling
+# a patch bump adds a variable for no benefit. Bump to v1.13.9 as its own boring
+# upgrade once ZFS is proven.
 #
 # Extensions:
 #   - intel-ucode      — Xeon microcode updates
@@ -16,10 +24,39 @@
 # Before ANY talosctl upgrade: re-POST this schematic for the target Talos
 # version and verify the zfs extension exists for it — a mismatch leaves the
 # pool unimportable until the image is fixed.
+# Verified 2026-08-25: zfs 2.4.3 builds exist for BOTH v1.13.5 (running) and
+# v1.13.9 (latest 1.13 patch); intel-ucode and util-linux-tools exist for both.
+# Same zfs 2.4.3 userland either way, so no on-disk pool-format difference.
 #
-# vfio-pci is part of the base kernel — no extension needed for GPU passthrough.
-# (Dropped iscsi-tools with Longhorn; kata-containers/gvisor/chelsio-drivers/
-# nfsd/nfs-utils remain unused.)
+# ┌─ ORDERING GATE — read before using this schematic ─────────────────────────┐
+# │ This schematic has NO iscsi-tools. As of 2026-08-25 Longhorn is STILL      │
+# │ live on contraxia (default StorageClass, ext-iscsid Running, 3 volumes     │
+# │ attached+healthy: monitoring/minio-data 50Gi,                              │
+# │ tenants/etcd-data-kmc-arrakis-etcd-0 4Gi, tenants/pvc-9cc2fe90… 5.4Gi —    │
+# │ they show up in `get disks` as iscsi VIRTUAL-DISK sdq/sdr/sds).            │
+# │ Longhorn's v1 data engine needs iscsiadm from iscsi-tools. Booting this    │
+# │ image while those volumes exist breaks their attachment.                   │
+# │                                                                            │
+# │ CHOSEN PATH (operator decision 2026-08-25) — runbook order:                │
+# │   Step 1 of docs/runbooks/migrating-longhorn-to-zfs.md tears Longhorn and  │
+# │   its 3 volumes DOWN FIRST, then this image installs straight to           │
+# │   c86a996e…:v1.13.5. One reboot, no transitional image. The repo dropped   │
+# │   Longhorn; the cluster has not — step 1 closes that gap and is a HARD     │
+# │   PREREQUISITE, not a suggestion.                                          │
+# │                                                                            │
+# │ Documented-but-NOT-chosen escape hatch: a transitional schematic carrying  │
+# │ iscsi-tools AND zfs together exists (registered + verified 2026-08-25) at  │
+# │   20115cfe3340492b9e161ae6a6bf7ffaddf79b08b02519e1d155f856362b44ec         │
+# │ It would let Longhorn keep running while the pool is built, at the cost of │
+# │ a second reboot later. It was REJECTED for this cycle. Recorded only so    │
+# │ the option is not re-derived from scratch if a future migration needs both │
+# │ stacks live at once. Do not reach for it here.                             │
+# └────────────────────────────────────────────────────────────────────────────┘
+#
+# vfio-pci is part of the base kernel — no extension needed for GPU passthrough,
+# but note the IOMMU/vfio kernel args are DEFERRED out of this cycle; see the
+# deferred-args comment block in controlplane.yaml (it holds the PCI BDF table).
+# (kata-containers/gvisor/chelsio-drivers/nfsd/nfs-utils remain unused.)
 customization:
   systemExtensions:
     officialExtensions:
