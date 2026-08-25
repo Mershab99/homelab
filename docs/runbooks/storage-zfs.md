@@ -1,8 +1,8 @@
 # Storage: ZFS on Talos, end to end (contraxia / r730)
 
 Operator-facing runbook for the whole storage journey on the bare-metal hub:
-Talos zfs extension → wipe the Longhorn-era disks → create the `tank` pool →
-let Sveltos deliver LocalPV-ZFS → prove it works.
+tear Longhorn down → Talos zfs extension → wipe the Longhorn-era disks →
+create the `tank` pool → let Sveltos deliver LocalPV-ZFS → prove it works.
 
 Companion docs:
 
@@ -15,6 +15,19 @@ Companion docs:
 **Destructive steps are §3 (disk wipe), §4 (pool create) and §8 (teardown).**
 Everything else is read-only or reversible. Each destructive step carries a
 DANGER callout.
+
+### The order, and why it is not negotiable
+
+| # | Step | Owner | Why here |
+| --- | --- | --- | --- |
+| 0 | **Tear Longhorn down** (chart, PVCs, PVs, `longhorn-system`) | `migrating-longhorn-to-zfs.md` §1 | The target schematic **drops `iscsi-tools`**. Longhorn's engine is iSCSI. The moment the node boots the new image, every Longhorn volume is unreachable — so Longhorn has to be gone *before* the upgrade, not cleaned up after it. |
+| 1 | Talos upgrade to the zfs schematic | issue #5 / migration runbook §2 | Ships the zfs kernel module. Nothing downstream works without it (§1.2). |
+| 2 | Wipe `sdb`–`sdp` (§3) | this runbook | Talos only releases the `u-lhNN` user volumes once the new config is applied **and** the node has rebooted — i.e. after step 1. `wipe disk` refuses a disk Talos still holds (§3.1). |
+| 3 | Create `tank` (§4) | this runbook | Needs clean disks and a loaded module. |
+| 4 | GitOps layer (§5) → acceptance (§6) | this runbook | Needs a pool to provision from. |
+
+This is the operator's chosen path (option **(a)**, decided 2026-08-25). See
+§2.1 for the alternative that was considered and rejected.
 
 ---
 
@@ -179,6 +192,40 @@ applying the config.
 > by this runbook. Filling the placeholder is that step's job — §1.3 only
 > tells you how to verify it landed.
 
+#### The GPU args are stripped for this cycle
+
+`controlplane.yaml` today also carries four GPU-passthrough kernel args:
+
+```yaml
+extraKernelArgs:
+    - intel_iommu=on
+    - pcirebind.rebind=0000:06:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
+    - pcirebind.rebind=0000:82:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
+    - pcirebind.rebind=0000:82:00.1_nvidia+vfio-pci   # TODO: real PCI BDF
+    - zfs.zfs_arc_max=TODO_20_PERCENT_OF_RAM_IN_BYTES
+```
+
+**Operator decision (2026-08-25): all four GPU args come out for this
+upgrade.** The only cmdline change in this cycle is the ARC cap. After the
+upgrade `t read /proc/cmdline` must contain `zfs.zfs_arc_max=21474836480` and
+**must not** contain `intel_iommu` or `pcirebind`.
+
+Rationale: those three BDFs are placeholders — the comment above them in
+`controlplane.yaml` says `⚠ Replace the PCI BDFs below with the real
+addresses`. Handing `pcirebind` a wrong BDF on a single-control-plane node
+turns a storage upgrade into a boot problem you can only fix through iDRAC.
+This cycle changes exactly two things: the extension set and the ARC cap.
+GPU passthrough returns as its own upgrade, with `t get pcidevices` output to
+back the BDFs.
+
+Verification after the upgrade:
+
+```bash
+t read /proc/cmdline | tr ' ' '\n' | grep -E 'zfs_arc_max|intel_iommu|pcirebind'
+```
+
+Expected: exactly one line, `zfs.zfs_arc_max=21474836480`.
+
 ### 1.4 Inventory the disks
 
 ```bash
@@ -207,6 +254,51 @@ Expected: `sda` = `WDC WDS500G2B0A` 500 GB (boot), `sdb`–`sdp` = 15 ×
 - [ ] `t get disks` shows 15 × `Samsung SSD 850`
 - [ ] `t get extensions` schematic ID matches `bootstrap/talos/r730-schematic.yaml`
 - [ ] Longhorn data you care about is exported (see the migration runbook)
+- [ ] Longhorn is **torn down** — §1.6
+
+### 1.6 Gate: Longhorn must already be gone
+
+The upgrade in §2 drops the `iscsi-tools` extension. Longhorn's engine and
+replica path is iSCSI (`sdq`/`sdr`/`sds` in §0 are its `VIRTUAL-DISK`
+devices). After the reboot the node cannot attach a Longhorn volume at all —
+so anything still running on `longhorn` loses its disk mid-flight, with no
+clean unmount and no chance to export.
+
+Tear it down first. That procedure is
+[`migrating-longhorn-to-zfs.md`](migrating-longhorn-to-zfs.md) §1 — do not
+duplicate it here. Three volumes were live on 2026-08-25:
+
+```bash
+k get pvc -A | grep -E 'longhorn|STORAGECLASS'
+```
+
+Observed today:
+
+```
+monitoring   minio-data                       Bound   ...   50Gi     longhorn
+tenants      etcd-data-kmc-arrakis-etcd-0     Bound   ...   4Gi      longhorn
+tenants      pvc-9cc2fe90-…                   Bound   ...   5428Mi   longhorn
+```
+
+`tenants/etcd-data-kmc-arrakis-etcd-0` is the **arrakis k0smotron control-plane
+etcd**. Destroying it destroys the arrakis control plane; it re-provisions from
+git afterwards (migration runbook §5). Know that before you start, not during.
+
+Gate before continuing to §2:
+
+```bash
+k get pvc -A -o json | jq -r '
+  [.items[] | select(.spec.storageClassName|test("longhorn"))
+   | "\(.metadata.namespace)/\(.metadata.name)"] as $p
+  | if ($p|length) == 0 then "OK: no longhorn PVCs" else "STOP: \($p)" end'
+k get ns longhorn-system 2>&1 | tail -1   # want: NotFound
+k get sc                                  # want: no longhorn / longhorn-static
+```
+
+Expected: `OK: no longhorn PVCs`, `Error from server (NotFound): namespaces
+"longhorn-system" not found`, and no Longhorn StorageClass. If
+`longhorn-system` hangs in `Terminating`, use the finalizer recipe in the
+`power-cycle-recovery` skill — do not proceed with a half-deleted namespace.
 
 ---
 
@@ -236,6 +328,51 @@ curl -fsSL --data-binary @bootstrap/talos/r730-schematic.yaml \
 # → {"id":"c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea"}
 ```
 
+Read it back the other way if you only have an ID and want to know what is in
+it:
+
+```bash
+curl -fsSL https://factory.talos.dev/schematics/c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea
+```
+
+Verified 2026-08-25 — returns exactly:
+
+```yaml
+customization:
+    systemExtensions:
+        officialExtensions:
+            - siderolabs/intel-ucode
+            - siderolabs/util-linux-tools
+            - siderolabs/zfs
+```
+
+Note what is **not** there: `iscsi-tools`. That is deliberate, and it is the
+whole reason Longhorn has to be gone before this step (§1.6).
+
+#### Not chosen: the transitional schematic
+
+There is a registered schematic that keeps both storage stacks alive at once:
+
+```
+20115cfe3340492b9e161ae6a6bf7ffaddf79b08b02519e1d155f856362b44ec
+  = intel-ucode + iscsi-tools + util-linux-tools + zfs
+```
+
+(verified 2026-08-25 by `GET https://factory.talos.dev/schematics/20115cfe…`).
+
+Booting that image would let Longhorn keep serving its three volumes while the
+pool is built, so data could be copied volume-to-volume instead of exported and
+restored.
+
+> **The operator rejected this path on 2026-08-25. Do not run it.** It buys a
+> live-migration window at the cost of two extra reboots on a
+> single-control-plane node, a machine config that has to be edited three
+> times, and a window where the CSI drivers of both stacks are registered
+> against the same kubelet. It is recorded here only so that finding the ID in
+> the history does not read as a missing step. The path this runbook documents
+> is: tear Longhorn down (§1.6) → upgrade straight to `c86a996e…` → wipe →
+> create the pool.
+
 ### 2.2 What to run
 
 ```bash
@@ -252,12 +389,20 @@ t upgrade --preserve --image \
 > `--preserve` the upgrade wipes `EPHEMERAL` and takes etcd — and therefore
 > every Cluster CR, every Sveltos binding — with it.
 
-> **Do not use `task talos:hub:upgrade` for this.** That task pins
-> `ghcr.io/siderolabs/installer:{{.TALOS_VERSION}}` — the *vanilla* installer
-> with **no extensions**. Running it would silently strip the zfs extension
-> and leave `tank` unimportable. It also references
-> `bootstrap/talos/hub/schematic.yaml`, a path that does not exist in this
-> repo today.
+> **Do not use `task talos:hub:upgrade` for this.** Verified against
+> `.taskfiles/talos.yml` (2026-08-25), that task is wrong here in three ways:
+>
+> - it pins `ghcr.io/siderolabs/installer:{{.TALOS_VERSION}}` — the *vanilla*
+>   installer with **no extensions**, so it silently strips zfs and leaves
+>   `tank` unimportable;
+> - `TALOS_VERSION` defaults to **`v1.9.1`**, so a bare `task talos:hub:upgrade`
+>   against a node running v1.13.5 is a *downgrade*, not an upgrade;
+> - the sibling `talos:hub:schematic` task reads
+>   `bootstrap/talos/hub/schematic.yaml`, a directory that does not exist in
+>   this repo (the R730 schematic lives at
+>   `bootstrap/talos/r730-schematic.yaml`).
+>
+> Run the two `talosctl` commands above by hand.
 
 ### 2.3 Expected downtime
 
@@ -265,10 +410,38 @@ Single control-plane node: **the Kubernetes API and every workload are down for
 the whole reboot.** There is no second node to fail over to. Budget a
 maintenance window; do not schedule this against a live tenant workload.
 
-Wall-clock is roughly image pull + install + reboot + etcd recovery + kubelet
-ready. On this hardware the R730 BIOS/POST alone is a large slice of it.
-*UNVERIFIED: no upgrade has been performed on this node from this branch, so
-no measured duration exists. Expect minutes, not seconds; do not panic-reboot.*
+**Budget 10–15 minutes of full outage**, and do not start worrying before the
+15-minute mark. The breakdown:
+
+| Phase | Rough share |
+| --- | --- |
+| Pull the installer image, write the inactive boot partition | 1–3 min |
+| Shut down, reboot | seconds |
+| **R730 BIOS/POST** — memory training on 96 GB, the megaraid HBA enumerating 16 SATA devices, iDRAC init | **the single largest slice; several minutes on this box** |
+| Talos boot, etcd recovery, kubelet ready, static pods back | 2–4 min |
+| Workloads rescheduled and settled | a few more minutes |
+
+> **A dark console for four minutes is normal on this machine.** It is POST,
+> not a failed upgrade. Power-cycling an R730 mid-`talosctl upgrade` is how you
+> turn a 12-minute maintenance window into a reinstall.
+
+> ### iDRAC is the only recovery path
+>
+> If the node does not come back, `talosctl` cannot help you — the API is on
+> the node that is not booting. Everything from that point is out-of-band:
+> iDRAC virtual console on the R730 (`https://<idrac-ip>`), to read POST codes,
+> see the Talos boot messages, choose the previous (rollback) boot entry from
+> the GRUB menu, or attach virtual media to reinstall.
+>
+> **Confirm you can log into iDRAC *before* you start the upgrade, not after.**
+> An R730 with no iDRAC access and no working boot is a trip to the rack.
+>
+> *UNVERIFIED: the iDRAC address and credentials for this chassis are not
+> recorded in this repo — by design, no secrets here. Have them to hand.*
+
+*UNVERIFIED: no upgrade has been run on this node from this branch, so the
+10–15 minute figure is a budget from this hardware's known POST behaviour, not
+a measured duration. Record the real number the first time you run it.*
 
 ### 2.4 How to watch it return
 
@@ -284,9 +457,10 @@ Then, once the API answers:
 
 ```bash
 t version                       # Server Tag == target version
-t get extensions                # zfs present
+t get extensions                # zfs present, iscsi-tools GONE, schematic c86a996e…
 t read /proc/modules | grep '^zfs '
-t read /proc/cmdline            # zfs.zfs_arc_max present
+t read /proc/cmdline | tr ' ' '\n' | grep -E 'zfs_arc_max|intel_iommu|pcirebind'
+                                # exactly one line: zfs.zfs_arc_max=21474836480
 k get nodes                     # r730 Ready
 k get pods -A | grep -v Running # settles to empty (Completed jobs aside)
 ```
@@ -1541,10 +1715,29 @@ cluster, and by rendering the pinned charts locally:
   `helm show values openebs-zfs/zfs-localpv --version 2.11.0`
 - the `/sbin/zfs` chroot wrapper and the read-only `/host` mount, from the
   rendered `openebs-zfspv-bin` ConfigMap and DaemonSet spec
+- **both schematic IDs, read back from Image Factory** with
+  `GET https://factory.talos.dev/schematics/<id>`:
+  `c86a996e…30eea` = intel-ucode + util-linux-tools + zfs (no `iscsi-tools`);
+  `20115cfe…44ec` = the same plus `iscsi-tools` (§2.1, not chosen)
+- the `.taskfiles/talos.yml` findings in §2.2 — the vanilla
+  `ghcr.io/siderolabs/installer` image, `TALOS_VERSION` defaulting to `v1.9.1`,
+  and `HUB_DIR = bootstrap/talos/hub` not existing
+- the `extraKernelArgs` block quoted in §1.3 — verbatim from
+  `bootstrap/talos/controlplane.yaml`, including the three `TODO: real PCI BDF`
+  placeholders
+- the §1.6 Longhorn gate `jq` command — **run against the live cluster**; it
+  currently prints
+  `STOP: ["monitoring/minio-data","tenants/etcd-data-kmc-arrakis-etcd-0","tenants/pvc-9cc2fe90-5f21-485e-95df-7af5bfcea181"]`
+- the `u-lhNN` partition labels: re-confirmed 2026-08-25 as `u-lh01`…`u-lh15`
+  (`sdb1`=`u-lh05`, `sdn1`=`u-lh01`, `sdo1`=`u-lh02`, `sdp1`=`u-lh03`), and
+  all 15 still `ready` in `t get volumestatus`
 
 **UNVERIFIED** — written from the repo and chart definitions, not executed,
 because doing so would mutate the cluster or the node:
 
+- §2.3 the 10–15 minute downtime budget — an estimate from this hardware's POST
+  behaviour, not a measured run; and the iDRAC address/credentials, which are
+  deliberately not in this repo
 - §2 upgrade duration and return behaviour (no upgrade run from this branch)
 - §3 wipe output (destructive)
 - §4 `create-pool.sh` runtime output, `zpool status`/`list`/`get all` shapes,
