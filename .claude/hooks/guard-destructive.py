@@ -88,8 +88,16 @@ def main() -> int:
 
     normalized = " ".join(command.split())
 
+    # Strip quoted string literals before matching. Commit messages, PR bodies,
+    # and echo/printf text routinely NAME a destructive command in prose
+    # ("defer the talosctl upgrade", "do not wipe disk") without invoking it.
+    # Matching those is a false positive that blocks legitimate documentation
+    # work, so only the executable portion of the line is scanned.
+    scannable = re.sub(r"'[^']*'", " ", normalized)
+    scannable = re.sub(r'"[^"]*"', " ", scannable)
+
     for pattern, reason in COMPILED:
-        if pattern.search(normalized):
+        if pattern.search(scannable):
             sys.stderr.write(
                 f"BLOCKED by .claude/hooks/guard-destructive.py: {reason}.\n"
                 f"Command: {normalized[:300]}\n"
