@@ -139,23 +139,55 @@ machine:
         wipe: true # Wipe the boot disk on this fresh install (data disks untouched).
         # NOTE: grubUseUKICmdline must stay OFF — it's mutually exclusive with
         # extraKernelArgs below (GRUB must build the cmdline on the host to
-        # apply the vfio args).
-        # GPU passthrough — IOMMU on, Talos pcirebind binds specific PCI
-        # slots from nvidia → vfio-pci early so KubeVirt can hand them to
-        # tenant worker VMs. ⚠ Replace the PCI BDFs below with the real
-        # addresses from this R730. Enumerate with:
-        #   talosctl --insecure --nodes 192.168.2.70 get pcidevices
+        # apply them).
+        #
+        # ┌─ GPU passthrough args are DEFERRED — do not re-add in this cycle ──┐
+        # │ This upgrade changes ONLY the extension set (+zfs, -iscsi-tools)   │
+        # │ and the ZFS ARC cap. The IOMMU/vfio args are held back on purpose. │
+        # │                                                                    │
+        # │ Why: extraKernelArgs take effect only at install/upgrade time, and │
+        # │ no install has run since these args were first written here — so   │
+        # │ /proc/cmdline on the live node has NO intel_iommu and NO pcirebind │
+        # │ (confirmed 2026-08-25). Re-adding them means they land for the     │
+        # │ FIRST time on the very reboot that also swaps the storage stack:   │
+        # │ two untested changes, one reboot, one control-plane node, no       │
+        # │ fallback. Land ZFS first. GPU passthrough is its own later upgrade.│
+        # └────────────────────────────────────────────────────────────────────┘
+        #
+        # Research preserved for that later cycle — PCI BDFs enumerated from
+        # THIS R730 on 2026-08-25 via `talosctl get pcidevices`:
+        #
+        #   0000:06:00.0  NVIDIA GK210GL [Tesla K80]      die 0 of the K80 card
+        #   0000:07:00.0  NVIDIA GK210GL [Tesla K80]      die 1 — SAME card
+        #   0000:82:00.0  NVIDIA GP106GL [Quadro P2000]
+        #   0000:82:00.1  GP106 HD Audio                  (P2000 function 1)
+        #   0000:0e:00.0  Matrox G200eR2                  console VGA — NEVER rebind
+        #
+        # The K80 is a dual-GPU board presenting two dies. An earlier draft of
+        # this file listed only 0000:06:00.0; without die 1 the card cannot be
+        # handed to a VM cleanly. That missing die is the load-bearing finding
+        # here — do not restore the list from memory, restore it from this
+        # table. Args to re-add, verbatim, when GPU passthrough is its own PR:
+        #
+        #   - intel_iommu=on
+        #   - pcirebind.rebind=0000:06:00.0_nvidia+vfio-pci
+        #   - pcirebind.rebind=0000:07:00.0_nvidia+vfio-pci
+        #   - pcirebind.rebind=0000:82:00.0_nvidia+vfio-pci
+        #   - pcirebind.rebind=0000:82:00.1_nvidia+vfio-pci
+        #
+        # UNVERIFIED, settle before restoring them: `pcirebind.rebind=…_nvidia
+        # +vfio-pci` names `nvidia` as the source driver to rebind FROM, but no
+        # nvidia kernel-module extension is in r730-schematic.yaml — so no
+        # nvidia driver is loaded. May be a harmless no-op, may error at boot;
+        # the behaviour was never confirmed. (vfio-pci itself is in the base
+        # kernel and needs no extension.)
         extraKernelArgs:
-            - intel_iommu=on
-            - pcirebind.rebind=0000:06:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
-            - pcirebind.rebind=0000:82:00.0_nvidia+vfio-pci   # TODO: real PCI BDF
-            - pcirebind.rebind=0000:82:00.1_nvidia+vfio-pci   # TODO: real PCI BDF
             # ZFS ARC cap — MANDATORY. ARC is not kubelet-visible reclaimable
             # memory; uncapped it OOM-kills pods under page-cache pressure.
-            # Budget 20-25% of RAM. TODO: set real bytes after
-            #   talosctl -n 192.168.2.70 memory
-            # e.g. 256GiB RAM → 64GiB ARC = 68719476736
-            - zfs.zfs_arc_max=TODO_20_PERCENT_OF_RAM_IN_BYTES
+            # Budget 20-25% of RAM. Measured 2026-08-25: 96532 MB total
+            # (~94.3 GiB) → 20 GiB ARC = 21474836480 bytes (~21%).
+            # Re-check with `talosctl -n 192.168.2.70 memory` if DIMMs change.
+            - zfs.zfs_arc_max=21474836480
         
         # # Look up disk using disk attributes like model, size, serial and others.
         # diskSelector:
