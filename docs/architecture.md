@@ -41,7 +41,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | Domain                      | `mershab.com` |
 | Sveltos registration        | CAPI integration (push) for tenant; event-driven auto-registration for vClusters (exportKubeConfig Secret → hub EventTrigger → SveltosCluster) |
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
-| Storage                     | OpenEBS LocalPV-ZFS on bare-metal — zpool `tank`, 7×2 mirrors + 1 warm spare, created once by `bootstrap/zfs/create-pool.sh`. Classes: `fast-zfs` (default, dataset), `fast-block` (zvol+ext4, KubeVirt disks), `db-zfs` (16k recordsize); snapshots via `zfs-snapclass`. Tenants consume it through kubevirt-csi passthrough (`kubevirt` class → hub `fast-block`). |
+| Storage                     | OpenEBS LocalPV-ZFS on bare-metal — zpool `tank`, 7×2 mirrors + 1 warm spare, created once by `bootstrap/zfs/create-pool.sh`. Classes: `fast-zfs` (default, dataset), `fast-block` (zvol+ext4, KubeVirt disks), `db-zfs` (16k recordsize); snapshots via `zfs-snapclass`. Tenants consume it through kubevirt-csi passthrough (`kubevirt` class → hub `fast-block`). Replaces Longhorn — decided and in git, **not yet cut over on the metal** (`docs/next-steps.md` → "Storage refit"). |
 | GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
 | Secrets                     | plaintext manifests, gitignored, applied by hand (`secrets/`); SOPS only for Talos machineconfig |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |

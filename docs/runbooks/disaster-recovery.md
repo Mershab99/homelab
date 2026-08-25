@@ -1,5 +1,11 @@
 # Disaster recovery
 
+> **Assumes the ZFS refit has landed.** As of 2026-08-25 the hub still runs
+> Longhorn (see `docs/next-steps.md` → "Storage refit"). Until the migration
+> runbook is executed, steps 6/8 below do not apply — there is no `tank` pool
+> and the PVCs are Longhorn volumes. Everything else in this runbook (etcd,
+> secrets, root ClusterProfile) is correct either way.
+
 The bare-metal cluster is **not** disposable — losing its etcd loses every
 tenant Cluster CR, every Sveltos profile binding, and every Flux source.
 Cluster secrets are plaintext + gitignored (`*.secret.yaml`) — keep your filled
@@ -26,7 +32,8 @@ copies off-box; they are re-applied by hand on restore (see `secrets/README.md`)
 ## Restore order
 
 1. **Rebuild the bare-metal Talos node from ISO.** Apply the same
-   machineconfig from Git (`bootstrap/talos/r730.yaml`).
+   machineconfig from Git (`bootstrap/talos/controlplane.yaml` — the committed
+   rendered config; there is no `r730.yaml`).
 2. **Recover etcd** from the latest snapshot:
    ```bash
    talosctl --nodes <node-ip> bootstrap --recover-from=<snapshot.db>

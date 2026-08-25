@@ -98,6 +98,10 @@ The pool is below the GitOps line — hand-run once, like the machine config.
 Everything above it (LocalPV-ZFS, the StorageClasses) is git-driven and arrives
 in step 5, so the pool must exist first or the CSI driver has nothing to carve.
 
+> Cold-start only. The **existing** hub is still on Longhorn and reaches this
+> same state via `docs/runbooks/migrating-longhorn-to-zfs.md` — tear Longhorn
+> down, upgrade to the zfs schematic, *then* run the script.
+
 ```bash
 ./bootstrap/zfs/create-pool.sh   # prompts before writing; 7x2 mirrors + 1 warm spare
 ```
