@@ -2,6 +2,34 @@
 
 Deliberate deferrals, roughly ordered. Each item says what unblocks it.
 
+## Storage refit (in flight — Longhorn is still the live layer)
+
+Git already describes ZFS everywhere; **the metal does not yet**. Verified on
+the hub 2026-08-25: `longhorn` is still the default StorageClass,
+`longhorn-system` is Active with 3 bound volumes (`monitoring/minio-data` 50Gi,
+`tenants/etcd-data-kmc-arrakis-etcd-0` 4Gi, one 5428Mi tenant PVC), and the node
+runs schematic `36cd6536…` = intel-ucode 20260512 + **iscsi-tools v0.2.0** +
+util-linux-tools 2.41.4 — **no zfs extension**. Everything in `docs/` other than
+this section describes the post-refit state.
+
+Ordering is fixed — do not reorder, and do not try to run both layers at once:
+
+1. **Tear down Longhorn first**, accepting the loss of those 3 volumes
+   (`docs/runbooks/migrating-longhorn-to-zfs.md` is the only procedure).
+2. **Then** upgrade the node straight to the zfs schematic already pinned in
+   `bootstrap/talos/controlplane.yaml`
+   (`c86a996e871ad7d755f8f99109cbb0fda2b2903ba4c1b76668b257e9a2030eea:v1.13.5`).
+   A transitional iscsi+zfs schematic exists as an escape hatch but was
+   **rejected** — the point of the teardown-first order is to never need it.
+3. **Then** `./bootstrap/zfs/create-pool.sh`, then let Sveltos reconcile
+   `04-storage.yaml`.
+
+`controlplane.yaml` is deliberately *ahead* of the metal here; that drift closes
+at step 2, not before. This cycle also strips the `intel_iommu=on` / pcirebind /
+vfio kernel args so the upgrade changes only the extension set plus the ZFS ARC
+cap (`zfs.zfs_arc_max=21474836480`, 20 GiB) — GPU passthrough comes back as its
+own later upgrade.
+
 ## Topology rebuild (the big one)
 
 Planned shape: a small **OptiPlex management cluster** takes over the hub role

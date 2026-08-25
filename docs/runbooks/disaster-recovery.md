@@ -1,5 +1,11 @@
 # Disaster recovery
 
+> **Assumes the ZFS refit has landed.** As of 2026-08-25 the hub still runs
+> Longhorn (see `docs/next-steps.md` → "Storage refit"). Until the migration
+> runbook is executed, steps 6/8 below do not apply — there is no `tank` pool
+> and the PVCs are Longhorn volumes. Everything else in this runbook (etcd,
+> secrets, root ClusterProfile) is correct either way.
+
 The bare-metal cluster is **not** disposable — losing its etcd loses every
 tenant Cluster CR, every Sveltos profile binding, and every Flux source.
 Cluster secrets are plaintext + gitignored (`*.secret.yaml`) — keep your filled
@@ -8,20 +14,26 @@ copies off-box; they are re-applied by hand on restore (see `secrets/README.md`)
 ## Backups (running)
 
 - **etcd snapshot CronJob** on the bare-metal cluster runs
-  `talosctl etcd snapshot` daily, writes to a `zfs` PVC, then
+  `talosctl etcd snapshot` daily, writes to a `fast-zfs` PVC, then
   `rclone copy` to an off-box destination (configured in
   `clusters/baremetal/infrastructure/etcd-backup/`).
 - **Filled secrets** (`secrets/**/*.secret.yaml`) are gitignored, so they are
   NOT in Git — keep a copy off-box alongside the etcd snapshot. Without them the
   charts that consume cloudflare/dex/oidc/minio Secrets won't come up.
-- **Kamaji tenant etcd snapshots** (each tenant has its own etcd, run by
-  Kamaji as a StatefulSet on `zfs`). Snapshots taken by Kamaji's
-  built-in snapshot job onto a `zfs` PVC, and shipped off-box.
+- **Tenant etcd snapshots** (each tenant has its own etcd, run by the hosted
+  control plane as a StatefulSet on `db-zfs` — 16k recordsize, see
+  `tenants/arrakis/infra/cluster.yaml`). Snapshots land on a `fast-zfs` PVC and
+  are shipped off-box.
+- **PVC data**: Velero → Backblaze B2 with the CSI plugin (ZFS snapshots via
+  `zfs-snapclass`). `platform/sveltos/clusterprofiles/04b-backup.yaml` is still
+  commented out in the clusterprofiles `kustomization.yaml` — until it is
+  enabled, PVC contents have **no off-box copy**.
 
 ## Restore order
 
 1. **Rebuild the bare-metal Talos node from ISO.** Apply the same
-   machineconfig from Git (`bootstrap/talos/r730.yaml`).
+   machineconfig from Git (`bootstrap/talos/controlplane.yaml` — the committed
+   rendered config; there is no `r730.yaml`).
 2. **Recover etcd** from the latest snapshot:
    ```bash
    talosctl --nodes <node-ip> bootstrap --recover-from=<snapshot.db>
@@ -41,15 +53,17 @@ copies off-box; they are re-applied by hand on restore (see `secrets/README.md`)
    Sveltos re-applies every ClusterProfile, every Helm release re-installs,
    every CR re-creates.
 6. **Verify the `tank` ZFS pool imported.** The pool survives the host rebuild
-   because the data disks (sdc–sdq) are untouched — `install.wipe` only clears
-   the boot disk `/dev/sdb`. The zfs extension auto-imports `tank` on boot;
-   `task zfs:status` should show ONLINE. (If it didn't import, re-run the
-   zpool-create Job — it's a no-op import when the pool already exists. Never
-   re-run a bare `zpool create` against populated disks.)
+   because Talos installs to the boot disk selected by MODEL (`WDC*`, the 500GB
+   WD Blue) — never by `/dev/sdX`, which megaraid_sas reshuffles across boots —
+   so the 15 `Samsung SSD 850` pool disks are untouched. The zfs extension
+   auto-imports `tank` on boot; re-run `./bootstrap/zfs/create-pool.sh` to
+   check: it imports and prints `already exists` + `zpool status` when the pool
+   is there, and only prompts to create when it genuinely is not. Never run a
+   bare `zpool create` against populated disks.
 7. **Tenant CP comes back.** Kamaji recreates the StatefulSet from the
    `KamajiControlPlane` CR; etcd PVCs reattach with prior state.
-8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (`zfs` PVCs
-   intact); they boot, `kubeadm join`-ed nodes show up.
+8. **Tenant cluster reconciles.** CAPI sees existing KubeVirt VMs (`fast-block`
+   PVCs — zvol+ext4 — intact); they boot, joined nodes show up.
 9. **vClusters come back** when Sveltos re-installs each `12-vcluster-*`
    helm release on the tenant. Registration is hands-free: the exported
    kubeconfig Secret re-appears and the hub EventTrigger re-creates the

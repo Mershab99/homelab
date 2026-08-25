@@ -1,5 +1,14 @@
 # Migrating Longhorn → ZFS + LocalPV-ZFS (one-time, 2026-08)
 
+> **Status 2026-08-25: NOT YET RUN.** The hub still runs Longhorn (15 SSDs
+> carrying `u-lh01`..`u-lh15` xfs partitions, `driver.longhorn.io` CSI, 3 bound
+> PVs) on a Talos image whose extensions are intel-ucode + iscsi-tools +
+> util-linux-tools — no `zfs`. Everything below is still the plan, not history.
+> Note the delivery seam: the cluster's Flux GitRepository tracks
+> `github.com/mershab99/homelab` `main`, which is still pre-pivot — "push the
+> storage commit" in step 1 means pushing to **that** remote (or re-pointing
+> the GitRepository), not just to the local/Gitea main.
+
 In-place swap on the live single-node hub. **All Longhorn data is destroyed** —
 everything is reproducible from git + `secrets/apply.sh`. Optional first:
 export the vaultwarden vault and photoprism originals (both were `retain: true`).
@@ -94,7 +103,9 @@ Smoke test: one PVC per class + a VolumeSnapshot round-trip.
 2. Replace the B2 bucket/region placeholders in
    `platform/sveltos/clusterprofiles/04b-backup.yaml`, uncomment it in the
    clusterprofiles `kustomization.yaml`, push.
-3. `task backup:now`, then restore into a scratch namespace. An untested
+3. `task backup:trigger SCHEDULE=velero-daily` (the chart's `daily` schedule),
+   then restore into a scratch namespace (`task backup:restore FROM=<backup>`).
+   Confirm the created name with `task backup:list`. An untested
    restore path is a hypothesis.
 
 ## Standing rules after migration
