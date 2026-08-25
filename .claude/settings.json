@@ -1,0 +1,86 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(talosctl upgrade:*)",
+      "Bash(talosctl apply-config:*)",
+      "Bash(talosctl reset:*)",
+      "Bash(talosctl wipe:*)",
+      "Bash(talosctl reboot:*)",
+      "Bash(talosctl shutdown:*)",
+      "Bash(kubectl apply:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(kubectl patch:*)",
+      "Bash(kubectl replace:*)",
+      "Bash(kubectl edit:*)",
+      "Bash(kubectl create:*)",
+      "Bash(kubectl drain:*)",
+      "Bash(helm install:*)",
+      "Bash(helm uninstall:*)",
+      "Bash(helm upgrade:*)",
+      "Bash(git add -A)",
+      "Bash(git add .)",
+      "Bash(git push origin:*)",
+      "Read(secrets/**)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(bootstrap/talos/talosconfig)"
+    ],
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rm:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git push gitea:*)",
+      "Bash(git push -u gitea:*)",
+      "Bash(kubectl get:*)",
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl explain:*)",
+      "Bash(talosctl get:*)",
+      "Bash(talosctl read:*)",
+      "Bash(talosctl list:*)",
+      "Bash(talosctl version:*)",
+      "Bash(talosctl validate:*)",
+      "Bash(helm show:*)",
+      "Bash(helm search:*)",
+      "Bash(helm template:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(echo:*)",
+      "Bash(which:*)",
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(diff:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(jq:*)",
+      "Bash(yq:*)",
+      "Bash(python3:*)",
+      "Bash(curl:*)",
+      "Bash(orca orchestration:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-destructive.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
