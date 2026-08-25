@@ -9,7 +9,10 @@ type, an ARM pool, a high-memory pool).
    `tenants/arrakis/infra/kubevirtmachinetemplates/<pool>.yaml`. Copy the closest
    existing template. Define:
    - vCPU + memory request
-   - root disk size (PVC dataVolume on `zfs`)
+   - disks: root is a `containerDisk` (CAPK's pinned Ubuntu image) plus a
+     `containerstorage` `emptyDisk` mounted at `/var/lib/k0s` — both ephemeral,
+     no PVC. A pool that needs persistent worker state instead wants a
+     DataVolume on the hub's `fast-block` class (zvol+ext4 on `tank`).
    - GPU `hostDevices` entry (must match `permittedHostDevices` on the
      HyperConverged) — if applicable
    - Two interfaces: `pod` (default) + `lan` (NAD `lan-bridge` for LAN attach)

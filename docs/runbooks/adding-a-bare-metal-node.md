@@ -35,9 +35,14 @@ Procedure for adding the R820 (or any future bare-metal node) to the cluster.
 7. **Update KubeVirt**: edit
    `clusters/baremetal/infrastructure/kubevirt-hco/hyperconverged.yaml` to
    include any GPUs new to this host under `permittedHostDevices`.
-8. **Create the node's ZFS pool**: ZFS LocalPV is node-local — each node owns
-   its own pool. Add a `zpool-create` Job (copy
-   `platform/sveltos/manifests/storage/zpool-create-job.yaml`, adjust the disk
-   list/vdev layout) and a matching StorageClass (e.g. `zfs-hdd` for the R820's
-   spinning disks). Don't extend `tank` across nodes. Verify with
-   `task zfs:status`.
+8. **Create the node's ZFS pool**: LocalPV-ZFS is node-local — each node owns
+   its own pool, created below the GitOps line. Copy
+   `bootstrap/zfs/create-pool.sh`, adjust `POOL` / `MODEL_PATTERN` /
+   `DATA_DISKS` / the vdev layout (RAIDZ2 suits the R820's spinning disks), and
+   run it once. Then add a matching StorageClass (e.g. `zfs-hdd`, `poolname:`
+   the new pool) to `platform/sveltos/manifests/storage/storageclasses.yaml`.
+   Don't extend `tank` across nodes. Verify by re-running the script — it must
+   print `already exists` after a reboot.
+
+   The node's Talos image needs the `zfs` system extension, same coupling rule
+   as the R730 (`bootstrap/talos/r730-schematic.yaml`).

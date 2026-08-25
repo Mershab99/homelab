@@ -92,6 +92,25 @@ cilium connectivity test --test no-policies   # subset; full suite optional
 kubectl -n kube-system get pods -l k8s-app=cilium
 ```
 
+## 3a. ZFS pool (`tank`)
+
+The pool is below the GitOps line — hand-run once, like the machine config.
+Everything above it (LocalPV-ZFS, the StorageClasses) is git-driven and arrives
+in step 5, so the pool must exist first or the CSI driver has nothing to carve.
+
+```bash
+./bootstrap/zfs/create-pool.sh   # prompts before writing; 7x2 mirrors + 1 warm spare
+```
+
+Prereqs the script checks for you: the node runs the zfs-extension image
+(`bootstrap/talos/r730-schematic.yaml` → `install.image` in `controlplane.yaml`)
+and the 15 Samsung SSDs are wiped. It runs a privileged pod, so it needs a
+working apiserver + CNI — hence after step 3, not with the Talos install.
+
+**Verify**: reboot the node once and re-run the script. It must print
+`already exists` — that proves the zfs extension auto-imports `tank` on boot.
+Do not let data land on the pool until it does.
+
 ## 4. Flux (source + helm controllers) → installs Sveltos
 
 ```bash
@@ -221,7 +240,7 @@ CAPI's chain:
 - `Cluster home` references a `KamajiControlPlane` (pods on bare-metal) + a
   `KubeVirtCluster` (infrastructure).
 - `KamajiControlPlane` provisions a tenant kube-apiserver (OIDC against Dex —
-  the `kubernetes` OAuth2Client), etcd (StatefulSet on `zfs`), and
+  the `kubernetes` OAuth2Client), etcd (StatefulSet on `db-zfs`), and
   a Cilium LB Service for the API.
 - `MachineDeployment`s (general / gpu-k80 / gpu-p2000) → CAPK creates
   `KubeVirtMachine`s → KubeVirt boots Ubuntu VMs with 2 NICs (pod + lan).

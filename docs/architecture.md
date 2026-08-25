@@ -41,7 +41,7 @@ Bare-metal Talos cluster (R730 → +R820)
 | Domain                      | `mershab.com` |
 | Sveltos registration        | CAPI integration (push) for tenant; event-driven auto-registration for vClusters (exportKubeConfig Secret → hub EventTrigger → SveltosCluster) |
 | Autoscaling                 | cluster-autoscaler (CAPI provider) delivered via Sveltos |
-| Storage                     | ZFS LocalPV (zpool `tank`, 7 mirrors) on bare-metal; kubevirt-csi passthrough in tenant |
+| Storage                     | OpenEBS LocalPV-ZFS on bare-metal — zpool `tank`, 7×2 mirrors + 1 warm spare, created once by `bootstrap/zfs/create-pool.sh`. Classes: `fast-zfs` (default, dataset), `fast-block` (zvol+ext4, KubeVirt disks), `db-zfs` (16k recordsize); snapshots via `zfs-snapclass`. Tenants consume it through kubevirt-csi passthrough (`kubevirt` class → hub `fast-block`). |
 | GitOps                      | Flux **source + helm controllers only** (helm-installed); helm-controller installs Sveltos via one HelmRelease, a root `ClusterProfile` self-manages the rest. **No Flux Operator/Kustomizations, no ArgoCD.** |
 | Secrets                     | plaintext manifests, gitignored, applied by hand (`secrets/`); SOPS only for Talos machineconfig |
 | CNI                         | Cilium primary + Multus for KubeVirt secondary NICs |
@@ -90,6 +90,12 @@ Sveltos is for **capability fanout**, not per-instance config.
   (`*.secret.yaml`), applied by hand (`secrets/`). SOPS (`.sops.yaml`) covers
   only the Talos machineconfig.
 - **Bare-metal cluster is not disposable.** etcd snapshots are non-negotiable.
+- **Storage is ZFS on the host, not a replicated overlay.** The `zfs` system
+  extension is version-COUPLED to the Talos release it was built against: before
+  any `talosctl upgrade`, re-POST `bootstrap/talos/r730-schematic.yaml` for the
+  target version and confirm the extension exists for it. A mismatch leaves
+  `tank` unimportable and every PVC offline. The pool itself is below the GitOps
+  line; only LocalPV-ZFS and the StorageClasses are git-driven.
 - **Dex lives on bare-metal.** It is the auth backbone for every UI (Grafana,
   and any future OIDC app) **and** for every kube-apiserver above the
   bare-metal one (tenant Kamaji + each vCluster). Connector is the built-in
