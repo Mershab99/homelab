@@ -8,6 +8,21 @@
 # WaitForFirstConsumer is moot on one node but stops being moot at two —
 # set now, no migration later. ashift/volblocksize/recordsize are immutable
 # per volume; recreate to change.
+#
+# Parameter names verified against zfs-localpv v2.11.0 (pkg/driver/controller.go
+# reads poolname/fstype/thinprovision/recordsize/volblocksize; keys are matched
+# case-insensitively). Provisioner name verified against the chart's csidriver.
+#
+# fast-zfs is THE cluster default. Longhorn — the previous default — is removed
+# in the same change that lands this (platform/sveltos/clusterprofiles/
+# 04-storage.yaml), so there is exactly one default class on the hub. The only
+# other is-default-class in the repo is tenants/arrakis/addons/kubevirt-csi/
+# storageclass.yaml, which is the `kubevirt` class on the ARRAKIS tenant
+# cluster — a different cluster, not a conflict.
+#
+# The zfs-snapclass VolumeSnapshotClass is NOT here on purpose: it ships inside
+# the piraeus snapshot-controller release so it cannot race its own CRD. See
+# 04-storage.yaml.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -26,6 +41,9 @@ parameters:
 # Block-ish class for KubeVirt disks (kubevirt-csi DataVolumes hot-plug these
 # into tenant VMs). 16k volblocksize suits general-purpose VM disks; a 4k-random
 # workload would want its own class.
+#
+# This is the class the arrakis tenant reaches through: its `kubevirt`
+# StorageClass sets infraStorageClassName: fast-block.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -41,7 +59,8 @@ parameters:
   thinprovision: "yes"
 ---
 # Postgres & friends — 16k recordsize matches DB page sizes; the 128k default
-# is a read-modify-write amplifier under a database.
+# is a read-modify-write amplifier under a database. Also carries the arrakis
+# k0smotron etcd PVC (tenants/arrakis/infra/cluster.yaml).
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -55,14 +74,3 @@ parameters:
   fstype: zfs
   recordsize: "16k"
   thinprovision: "yes"
----
-# CSI snapshots — near-free ZFS snapshots; Velero (EnableCSI) and manual
-# VolumeSnapshots both use this class.
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshotClass
-metadata:
-  name: zfs-snapclass
-  annotations:
-    snapshot.storage.kubernetes.io/is-default-class: "true"
-driver: zfs.csi.openebs.io
-deletionPolicy: Delete

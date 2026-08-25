@@ -1,9 +1,18 @@
 # Single-node MinIO — S3 backend for Loki (replaces Ceph RGW).
 #
 # Runs in the `monitoring` namespace so it shares the `loki-minio` Secret with
-# Loki (delivered by Flux from secrets/infrastructure/minio/). Backed by a
-# LocalPV-ZFS dataset. One replica — durability comes from the tank pool's
-# mirrors, not from MinIO erasure coding.
+# Loki (delivered by Flux from secrets/infrastructure/minio/). One replica —
+# durability comes from the underlying pool's mirrors, not from MinIO erasure
+# coding.
+#
+# ORDERING CONSTRAINT — the PVC below is currently LIVE on the R730 and Bound
+# to `longhorn` (50Gi, since 2026-07). spec.storageClassName is immutable, so
+# applying this file as `fast-zfs` against the existing object is rejected by
+# the API server, and with continueOnError=false that failure takes the whole
+# policyRef down — StorageClasses and the ResourceQuota included. The Longhorn
+# teardown must DELETE monitoring/minio-data before this reconciles; then the
+# PVC is created fresh on fast-zfs. That drops MinIO's contents (Loki chunks —
+# log history, no config), which is accepted as part of the teardown.
 #
 # The `loki-minio` Secret carries AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY;
 # they double as MinIO's root creds and as Loki's S3 creds.
