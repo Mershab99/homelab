@@ -1,0 +1,152 @@
+# forge-runner — Gitea Actions runner (act_runner) on contraxia. The "k8s based
+# runner" half of the local image supply chain: `git push gitea` → Actions →
+# this runner → `docker buildx --push` → the Gitea OCI registry at
+# 192.168.2.244:3000 → Sveltos/kubelet pulls it back.
+#
+# 21-forge already set `actions.ENABLED: true` and left the runners for later.
+# This is later. Everything else in the chain (the writable registry) is Gitea's
+# own `/v2/` endpoint, which is ALREADY LIVE — no chart, no profile, nothing to
+# install:
+#   $ curl -i http://192.168.2.244:3000/v2/
+#   HTTP/1.1 401 Unauthorized
+#   Docker-Distribution-Api-Version: registry/2.0
+# That is why there is no "33-registry" for the writable side; 33 is Spegel, the
+# read-side mirror, and it is parked. See docs/reports/2026-08-25-local-image-pipeline.md.
+#
+# ── PINS, all verified 2026-08-26 against dl.gitea.com/charts ──
+#   `helm search repo gitea-charts/actions -l` → 0.1.2 is the newest, appVersion
+#   0.261.3. `helm template` of 0.1.2 renders:
+#     runner  docker.gitea.com/runner:2.0.1
+#     dind    docker.io/docker:29.5.2-dind
+#     init    busybox:1.38.0
+#   chartVersion is EXACT — Sveltos v1.12 rejects `.x` wildcards.
+#   ⚠️ `enabled: false` is the chart's default and gates the whole StatefulSet.
+#   Rendering without it produces an empty manifest and a silently-green profile.
+#
+# ── WHY THIS NAMESPACE IS PSA privileged ──
+#   The rendered dind sidecar is hardcoded `securityContext.privileged: true`.
+#   Setting `statefulset.dind.rootless: true` does NOT drop it — verified by
+#   rendering both ways in chart 0.1.2; the flag only moves the socket path and
+#   uid. Talos enforces PodSecurity `baseline` by default on every namespace
+#   except kube-system (bootstrap/talos/_patches/03-apiserver-hardening.yaml),
+#   and baseline forbids privileged containers, so the pod would be rejected
+#   outright. `forge-runner` is therefore pre-created with
+#   `pod-security.kubernetes.io/enforce: privileged` in
+#   clusters/baremetal/infrastructure/namespaces.yaml — a separate namespace
+#   from `gitea` precisely so the forge and its Postgres keep the stricter
+#   default.
+#   ponytail: a rootless buildkitd Deployment + a host-mode runner would avoid
+#   DinD, but rootless buildkit needs `seccompProfile: Unconfined`, which is
+#   ALSO a baseline violation — same namespace label, three more moving parts.
+#   Not worth it.
+#
+# ── PREREQUISITES, hand-run by the operator, NOT in git ──
+#   1. A Gitea admin exists. The chart in 21-forge deliberately creates none and
+#      `gitea admin user list` on the live pod returns zero rows.
+#   2. Secret `gitea-runner-token` (key `token`) in ns `forge-runner`, holding a
+#      runner REGISTRATION token from
+#      http://192.168.2.244:3000/-/admin/actions/runners (Create new Runner).
+#      Exact commands: docs/runbooks/local-image-build.md §3.
+#   Until (2) exists the pod stays in CreateContainerConfigError. That is the
+#   same "waits for a hand-applied Secret" shape 19-orca-cell already uses; it is
+#   expected, not a fault.
+#
+# ── THE RUNNER CACHE PROBLEM (devex decision #8 left this open) ──
+#   act_runner has no S3 cache driver. Three caches, three answers:
+#   a) actions/cache (the built-in cache server) → `cache.enabled: true` +
+#      `cache.dir: /data/actcache`, which lands on the RWO PVC below, so it
+#      survives pod restarts. Upstream warns that a dockerised runner's
+#      auto-detected `cache.host` can be unreachable from job containers when
+#      each job gets its own docker network; `container.network: bridge` is
+#      upstream's own fix ("put the job containers on a shared Docker network").
+#      UNVERIFIED end-to-end — no runner has ever run here.
+#   b) Docker layer cache (/var/lib/docker in the dind sidecar) → NOT persisted.
+#      Every pod restart is a cold build. Accepted for v1: the orca image is one
+#      `apt-get` layer set and a .deb. The upgrade is a PVC on the dind
+#      container's /var/lib/docker via `statefulset.extraVolumes` +
+#      `statefulset.dind.extraVolumeMounts` — and it MUST use `fast-block`
+#      (a zvol formatted ext4), not `fast-zfs` (a ZFS dataset): dockerd's
+#      overlay2 driver does not work on top of ZFS.
+#   c) Scaling past one runner would break (a) — one RWO PVC, one cache dir. The
+#      answer then is act_runner's `cache.external_server` (a shared
+#      `gitea-runner cache-server`), not RWX. Out of scope at replicas: 1.
+#
+# Selector: persona=infra (contraxia only). dependsOn forge — registration needs
+# a reachable Gitea, and the chart's init container blocks on it forever.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: forge-runner
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - forge
+  helmCharts:
+    - repositoryURL: https://dl.gitea.com/charts/
+      repositoryName: gitea
+      chartName: gitea/actions
+      chartVersion: 0.1.2           # appVersion 0.261.3; pin EXACT
+      releaseName: forge-runner
+      releaseNamespace: forge-runner
+      helmChartAction: Install
+      values: |
+        # The chart is inert without this.
+        enabled: true
+
+        # In-cluster Service, not the VIP: this is runner→Gitea RPC, which never
+        # leaves the cluster. The image REFERENCES still use the VIP (see below)
+        # because kubelet resolves neither `.svc` names nor cluster DNS.
+        giteaRootURL: "http://gitea-http.gitea.svc:3000"
+
+        # Hand-applied; see PREREQUISITES above.
+        existingSecret: gitea-runner-token
+        existingSecretKey: token
+
+        global:
+          # The chart's volumeClaimTemplate has no storageClass field of its own;
+          # this is the only lever. Verified: renders `storageClassName: "fast-zfs"`.
+          storageClass: fast-zfs
+
+        statefulset:
+          # NEVER more than one. See cache note (c) in the header.
+          replicas: 1
+          timezone: America/Toronto
+          persistence:
+            # .runner registration state + /data/actcache + bind workdirs.
+            size: 20Gi
+          runner:
+            resources:
+              requests: {cpu: 200m, memory: 512Mi}
+              limits: {memory: 2Gi}
+            config: |
+              log:
+                level: info
+              runner:
+                capacity: 1
+                # Explicit so registration never falls back to prompting. This is
+                # upstream's own default label set.
+                labels:
+                  - "ubuntu-latest:docker://docker.gitea.com/runner-images:ubuntu-latest"
+                  - "ubuntu-24.04:docker://docker.gitea.com/runner-images:ubuntu-24.04"
+              cache:
+                enabled: true
+                dir: /data/actcache
+              container:
+                # A shared bridge instead of a per-job network, so the built-in
+                # cache server on the pod IP is reachable from job containers.
+                network: bridge
+                require_docker: true
+                docker_timeout: 600s
+          dind:
+            # No CPU limit on purpose: a build burst should eat the R730's idle
+            # cores rather than get CFS-throttled. Memory is the guard rail.
+            resources:
+              requests: {cpu: "2", memory: 4Gi}
+              limits: {memory: 16Gi}
+            extraArgs:
+              # Without this `docker push 192.168.2.244:3000/...` fails on TLS —
+              # Gitea's registry is plain HTTP on the LAN. Same reason the node
+              # needs bootstrap/talos/_patches/07-registries.yaml.
+              - --insecure-registry=192.168.2.244:3000

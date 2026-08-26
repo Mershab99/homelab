@@ -94,3 +94,16 @@ resources:
   # into a one-line merge conflict instead of two files with the same prefix.
   # Numbers are an ordering HINT for humans; Sveltos orders on `dependsOn` and
   # identifies profiles by `metadata.name`. Never renumber a live profile.
+  #
+  # ── local image supply chain (2026-08-26) — the estate stops depending on
+  # ghcr for its own images. The writable registry is Gitea's built-in `/v2/`
+  # endpoint (already live from 21-forge; no chart, no profile). Runbook:
+  # docs/runbooks/local-image-build.md. Report:
+  # docs/reports/2026-08-25-local-image-pipeline.md.
+  #
+  # 33-registry.yaml (Spegel) is PARKED — a P2P mirror needs peers and
+  # contraxia is one node. Its header has the un-park checklist; it also needs
+  # bootstrap/talos/_patches/08-spegel-containerd.yaml and a privileged `spegel`
+  # namespace first.
+  # - 33-registry.yaml
+  - 34-forge-runner.yaml        # Gitea Actions runner (act_runner + DinD), ns forge-runner

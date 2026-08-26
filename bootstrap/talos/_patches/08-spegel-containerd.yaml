@@ -1,0 +1,45 @@
+# containerd tuning required by Spegel — PARKED, do not apply yet.
+#
+# Ship it with 33-registry.yaml (also parked). Applying this WITHOUT Spegel
+# running is harmless but pointless; applying Spegel without this gives a mirror
+# that silently serves incomplete images.
+#
+# WHAT AND WHY
+#   Talos sets `discard_unpacked_layers = true` by default: once containerd has
+#   unpacked an image into a snapshot it throws the compressed layer blobs away.
+#   Spegel serves images out of the local content store, so a node with the
+#   image running but no blobs has nothing to hand its peers. Upstream's Talos
+#   page (https://spegel.dev/docs/getting-started/, "Talos" — status 🟡,
+#   "requires additional configuration") gives exactly this `machine.files`
+#   stanza, verbatim.
+#
+#   The second half of the upstream Talos guidance is a chart value, not a
+#   machineconfig field: Talos's CRI registry config_path is /etc/cri/conf.d/hosts
+#   (not the /etc/containerd/certs.d the chart defaults to), so 33-registry.yaml
+#   sets `spegel.containerdRegistryConfigPath: /etc/cri/conf.d/hosts`.
+#
+# ⚠️ COLLIDES WITH 07-registries.yaml
+#   /etc/cri/conf.d/hosts is ALSO where Talos writes the hosts.toml generated
+#   from `machine.registries.mirrors`. Spegel's default is to own that directory
+#   outright. Whenever both are live, 33-registry.yaml MUST keep
+#   `spegel.prependExisting: true` or Spegel will delete the Gitea plain-HTTP
+#   mirror entry and every `192.168.2.244:3000/...` pull starts failing on TLS.
+#
+# ⚠️ COST
+#   Keeping unpacked layers roughly doubles the node's image-store footprint.
+#   `tank` is 7×2 mirrored SSDs, so this is affordable — but it is not free and
+#   it buys nothing at all on a one-node cluster.
+#
+# APPLY (operator, only when 33-registry.yaml is un-parked):
+#   talosctl --talosconfig bootstrap/talos/talosconfig \
+#     -e 192.168.2.70 -n 192.168.2.70 \
+#     patch mc --mode=auto --patch @bootstrap/talos/_patches/08-spegel-containerd.yaml
+#   This one restarts containerd. On a single-node control plane that is a real
+#   blip; drain first if anything on the node is doing work that matters.
+machine:
+  files:
+    - path: /etc/cri/conf.d/20-customization.part
+      op: create
+      content: |
+        [plugins."io.containerd.cri.v1.images"]
+          discard_unpacked_layers = false

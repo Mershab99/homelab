@@ -37,10 +37,28 @@ metadata:
   name: tenants
 ---
 # The Orca cell (19-orca-cell). Pre-created here, not in the ClusterProfile's
-# payload, so the hand-applied `ghcr-pull` imagePullSecret has somewhere to land
+# payload, so the hand-applied `gitea-pull` imagePullSecret has somewhere to land
 # before the StatefulSet first schedules — same reasoning as `velero` above.
 # No PSA label: the pod is uid 1000, no caps, no hostPath.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: cell
+---
+# Gitea Actions runner (34-forge-runner). Two reasons this is pre-created rather
+# than left to the Helm release:
+#   1. The chart's dind sidecar renders `privileged: true` unconditionally
+#      (`statefulset.dind.rootless: true` does NOT change it — verified by
+#      rendering chart 0.1.2 both ways), and Talos enforces PodSecurity
+#      `baseline` on every namespace but kube-system, which forbids exactly
+#      that. Without the label below the runner pod is rejected at admission.
+#   2. The hand-applied `gitea-runner-token` Secret needs somewhere to land
+#      before the profile reconciles.
+# It is NOT the `gitea` namespace on purpose: relaxing PSA for the runner should
+# not relax it for the forge and its Postgres.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: forge-runner
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
