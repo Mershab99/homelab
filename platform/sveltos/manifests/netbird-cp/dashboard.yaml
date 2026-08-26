@@ -1,0 +1,61 @@
+# NetBird dashboard — pinned v2.91.1.
+#
+# Version note: netbirdio/dashboard's GitHub releases top out at v2.91.0, but
+# the Docker tag v2.91.1 exists AND is what `:latest` resolves to (both are
+# sha256:186bc6cd126c9e456156927e15752505f161f546014f3baeb28439ecfeb52961,
+# verified with `docker manifest inspect`). Upstream's compose ships `:latest`;
+# we pin the digest-equivalent tag instead.
+#
+# Env is a 1:1 translation of getting-started.sh `render_dashboard_env` in
+# embedded-IdP mode. AUTH_CLIENT_SECRET is empty on purpose (public PKCE client)
+# and LETSENCRYPT_DOMAIN=none disables the image's built-in certbot — TLS
+# terminates on the edge, not here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+  labels: {app: netbird-dashboard}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: netbird-dashboard}
+  template:
+    metadata:
+      labels: {app: netbird-dashboard}
+    spec:
+      containers:
+        - name: dashboard
+          image: netbirdio/dashboard:v2.91.1
+          env:
+            - {name: NETBIRD_MGMT_API_ENDPOINT, value: "https://netbird.mershab.com"}
+            - {name: NETBIRD_MGMT_GRPC_API_ENDPOINT, value: "https://netbird.mershab.com"}
+            # OIDC — the management server's embedded IdP, served at /oauth2 by
+            # the SAME host. No external IdP, no Dex staticClient on arrakis.
+            - {name: AUTH_AUDIENCE, value: "netbird-dashboard"}
+            - {name: AUTH_CLIENT_ID, value: "netbird-dashboard"}
+            - {name: AUTH_CLIENT_SECRET, value: ""}
+            - {name: AUTH_AUTHORITY, value: "https://netbird.mershab.com/oauth2"}
+            - {name: USE_AUTH0, value: "false"}
+            - {name: AUTH_SUPPORTED_SCOPES, value: "openid profile email groups"}
+            - {name: AUTH_REDIRECT_URI, value: "/nb-auth"}
+            - {name: AUTH_SILENT_REDIRECT_URI, value: "/nb-silent-auth"}
+            - {name: NGINX_SSL_PORT, value: "443"}
+            - {name: LETSENCRYPT_DOMAIN, value: "none"}
+          ports:
+            - {containerPort: 80, name: http}
+          readinessProbe:
+            httpGet: {path: /, port: 80}
+            initialDelaySeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+spec:
+  selector: {app: netbird-dashboard}
+  ports:
+    - {name: http, port: 80, targetPort: 80}
