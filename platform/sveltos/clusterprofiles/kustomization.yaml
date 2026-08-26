@@ -48,4 +48,8 @@ resources:
   - 18-mershab-apps.yaml        # vaultwarden + website (vcluster=mershab)
   # Developer-experience workload on the hub itself (persona=infra), not a
   # tenant app — it is the thing that consumes the R730's idle 28 cores.
+  # VIP assignments are tracked in docs/vip-allocation.md.
   - 19-orca-cell.yaml           # remote Orca server ("the cell"), VIP 192.168.2.241
+  # Human-facing compute on the R730. Blocked on the ZFS storage classes —
+  # dependsOn: storage.
+  - 20-cpu-workspace.yaml       # `devbox` KubeVirt VM + SSH at 192.168.2.243
