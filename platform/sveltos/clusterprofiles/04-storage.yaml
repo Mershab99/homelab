@@ -35,12 +35,14 @@
 # Chart order matters: piraeus is listed FIRST so the CRDs exist before
 # zfs-localpv (which no longer carries them) is installed.
 #
-# The `zfs-snapclass` VolumeSnapshotClass rides the piraeus chart's own
-# `volumeSnapshotClasses` values list rather than the policyRef manifest below.
-# Sveltos deploys the Helm feature and the Resources feature independently —
-# a VolumeSnapshotClass in the policyRef would race its own CRD on a first
-# reconcile, and with continueOnError=false that failure takes the
-# StorageClasses down with it. In-chart, Helm orders CRD before CR.
+# SNAPSHOT CLASS PLACEMENT — corrected 2026-08-25 after a live failure.
+# The `zfs-snapclass` VolumeSnapshotClass lives in the policyRef manifest
+# (manifests/storage/volumesnapshotclass.yaml), NOT in the piraeus chart's
+# `volumeSnapshotClasses` values list. The earlier reasoning here ("In-chart,
+# Helm orders CRD before CR") is FALSE for this chart: its CRDs render from
+# templates/crds.yaml, not the Helm-native crds/ dir, so the class is validated
+# in the same pass as its own CRD and the first install fails atomically —
+# permanently, since the CRDs then never land. Full evidence in that file.
 #
 # persona=infra — storage runs on the bare-metal cluster; tenants consume it via
 # kubevirt-csi (tenant-baseline bundle → hub class fast-block).
@@ -75,20 +77,9 @@ spec:
         # args.leaderElection=true, webhook.enabled=false (we have no legacy
         # v1beta1/v1beta2 VolumeGroupSnapshot objects to convert).
         #
-        # CSI snapshots of ZFS datasets/zvols — near-free. Declared here, not in
-        # the policyRef, so it lands in the same Helm release as its CRD.
-        volumeSnapshotClasses:
-          - name: zfs-snapclass
-            driver: zfs.csi.openebs.io
-            deletionPolicy: Delete
-            annotations:
-              # Only snapshot class on the hub; `longhorn` is gone, so there is
-              # no wrong-driver class for a classless VolumeSnapshot to hit.
-              snapshot.storage.kubernetes.io/is-default-class: "true"
-            labels:
-              # Velero (EnableCSI, 04b-backup) picks the class for a driver by
-              # this label first, falling back to the default annotation.
-              velero.io/csi-volumesnapshot-class: "true"
+        # ⚠️ `volumeSnapshotClasses` is deliberately NOT set here. See
+        # "SNAPSHOT CLASS PLACEMENT" in the header comment — setting it
+        # deadlocks the very first install of this chart, permanently.
     # ── LocalPV-ZFS — the CSI driver for the tank pool ──
     - repositoryURL: https://openebs.github.io/zfs-localpv
       repositoryName: zfs-localpv
