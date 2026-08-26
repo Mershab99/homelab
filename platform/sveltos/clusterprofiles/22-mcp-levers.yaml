@@ -1,0 +1,119 @@
+# mcp-levers — the two agent-facing MCP servers on contraxia. Port of devex
+# `apps/shamu/mcp` (decision #13), HelmRelease → Sveltos helmCharts.
+#
+#   flux-operator-mcp    http://flux-operator-mcp.mcp.svc:9090/mcp    (WRITE lever)
+#   kubernetes-mcp-server http://kubernetes-mcp-server.mcp.svc:8080/mcp (READ-ONLY eyes)
+#
+# Both speak native Streamable HTTP. The kmcp stdio adapter is deliberately NOT
+# used for these two: its per-session process spawn costs 2-8s and trips client
+# timeouts, and kmcp's own guidance is transportType http when the server speaks
+# it. (16-mcp-baseline still runs kmcp INSIDE the persona vclusters — different
+# job, different clusters; this profile does not touch it.)
+#
+# ── THE WRITE-PATH LAW, restated for contraxia ──
+# On this cluster the applier is SVELTOS, not Flux Kustomizations (`kubectl get
+# kustomization -A` → none, verified 2026-08-25). Flux is only source-controller
+# + helm-controller feeding GitRepository/homelab. So an agent's loop is:
+#   commit to the homelab repo  →  reconcile_flux_source on GitRepository/homelab
+#   →  Sveltos sees the new artifact and applies.
+# flux-operator-mcp's write tools exist to collapse that poll interval, NOT to
+# mutate cluster state directly. Decision #13's correction is why: Flux prune is
+# INVENTORY-based, not directory-scan-based, so an imperatively-applied object is
+# never pruned — it persists as unmanaged drift (fluxcd/flux2#2901). That is the
+# reason the generic k8s server below is pinned read-only rather than trusting
+# prune as a safety net.
+#
+# NOTE — degraded tools, accepted: `get_flux_instance` reads FluxInstance/
+# FluxReport CRDs that only flux-operator ships, and contraxia runs plain Flux.
+# That one reporting tool degrades; everything else works against plain Flux CRs.
+# Installing flux-operator for it was rejected in decision #13 and is rejected
+# again here (this repo's delivery contract is Sveltos, per feedback: Flux
+# source+helm controllers ONLY).
+#
+# ⚠️ RISK, stated plainly. flux-operator-mcp's chart binds its ServiceAccount to
+# cluster-admin (`rbac.create` — upstream design; it must reconcile/suspend
+# arbitrary Flux CRs). On a laptop that was cheap. contraxia is the real
+# management cluster: it holds the arrakis kubeconfig Secrets, the Sveltos
+# management token, and the `tenant-secrets` namespace.
+#
+# The guard rail is the NetworkPolicy below. Its ACTUAL rendered shape at chart
+# 0.58.1 — checked, not assumed — is ingress on TCP/9090 from TWO namespace
+# selectors: `cell` (what we asked for) AND `mcp` (the release namespace, which
+# the chart adds unconditionally). So it is NOT "deny all" even before the cell
+# exists: any pod in `mcp` can reach it. Today that is only
+# kubernetes-mcp-server, which does not call it. There is still no agent path
+# in, and no LAN path at all — the Service is ClusterIP. Operator access is
+# `kubectl port-forward`, which bypasses NetworkPolicy by design and already
+# requires cluster credentials.
+#   → WHEN THE ORCA CELL LANDS and creates namespace `cell`, this stops being
+#     theoretical: any agent in that namespace gets cluster-admin over the hub.
+#     Re-evaluate narrowing `rbac.create: false` + a hand-written ClusterRole
+#     scoped to source.toolkit.fluxcd.io / helm.toolkit.fluxcd.io at that point.
+#     Tracked in docs/reports/2026-08-25-shamu-platform-port.md.
+#
+# No VIP is claimed here. Both Services stay ClusterIP: their consumers are
+# in-cluster agents, and an unauthenticated MCP endpoint on a LAN address is
+# exactly the mistake this profile is trying not to repeat.
+#
+# Selector: persona=infra.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: mcp-levers
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    # ── the write lever ──
+    # OCI: sveltos appends chartName to repositoryURL — base URL only here.
+    - repositoryURL: oci://ghcr.io/controlplaneio-fluxcd/charts
+      repositoryName: controlplane-oci
+      chartName: flux-operator-mcp
+      chartVersion: 0.58.1          # versioned with the flux-operator release train; pin EXACT
+      releaseName: flux-operator-mcp
+      releaseNamespace: mcp
+      helmChartAction: Install
+      values: |
+        # Chart default is `sse`; the clients we care about speak Streamable HTTP.
+        transport: http
+        # Deliberate: the write tools ARE the lever (see header). The guard rail
+        # is the NetworkPolicy, not readonly.
+        readonly: false
+        networkPolicy:
+          create: true
+          ingress:
+            # Only the Orca cell's agents may call the write-capable server.
+            # This namespace does not exist yet — until it does, the policy
+            # denies everything, which is the correct default.
+            namespaces: [cell]
+    # ── the read-only eyes ──
+    - repositoryURL: oci://ghcr.io/containers/charts
+      repositoryName: containers-oci
+      chartName: kubernetes-mcp-server
+      chartVersion: 0.1.0           # chart 0.1.0 / app 0.0.66; pin EXACT
+      releaseName: kubernetes-mcp-server
+      releaseNamespace: mcp
+      helmChartAction: Install
+      values: |
+        image:
+          # Chart defaults to `latest` — pin the appVersion explicitly.
+          version: "0.0.66"
+        extraArgs:
+          - --read-only
+        ingress:
+          # Chart default is TRUE. contraxia has no ingress controller at all
+          # (no GatewayClass; ingress-nginx and traefik namespaces are empty),
+          # so this would render a dead object. In-cluster consumers only.
+          enabled: false
+        rbac:
+          create: true
+          extraClusterRoleBindings:
+            # Stock `view` role: cluster-wide read on core + most CRD objects,
+            # and NO Secrets — `view` excludes them by design, which is exactly
+            # right for an agent-facing read surface on the cluster that holds
+            # the arrakis kubeconfig and tenant-secrets.
+            - name: use-view-role
+              roleRef:
+                name: view
+                external: true

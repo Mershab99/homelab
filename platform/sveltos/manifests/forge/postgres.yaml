@@ -1,0 +1,38 @@
+# The forge's Postgres — a CloudNativePG Cluster (operator from 20-infra-db),
+# replacing the gitea chart's bundled `bitnamilegacy/postgresql` subchart.
+#
+# CNPG auto-generates the Secret `gitea-pg-app` (keys username/password/uri/
+# host/dbname/...). 21-forge feeds its `password` key to Gitea as the env
+# override GITEA__database__PASSWD; the rest of the connection is plain config.
+# No credential is written to git — that is the whole point of the swap.
+#
+# instances: 2 — one primary + one hot standby, both on the single r730 node.
+# That buys automated failover on a POD failure (the common case: OOM, evicted,
+# image pull), not on a NODE failure; contraxia is single-node, so node loss
+# takes the forge down regardless and the answer there is the volume snapshot,
+# not the replica. Drop to 1 if the ~256Mi + 10Gi of the standby is missed.
+#
+# storageClass db-zfs — the ZFS dataset class tuned for databases (recordsize),
+# from platform/sveltos/manifests/storage/storageclasses.yaml. Not fast-zfs.
+# ⚠️ DEPENDENCY: db-zfs does not exist until the Longhorn→ZFS migration lands
+# (docs/runbooks/migrating-longhorn-to-zfs.md). Until then this Cluster stays
+# Pending on an unbound PVC, and Gitea stays down behind it. Expected.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitea
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: gitea-pg
+  namespace: gitea
+spec:
+  instances: 2
+  storage:
+    size: 10Gi
+    storageClass: db-zfs
+  bootstrap:
+    initdb:
+      database: gitea
+      owner: gitea

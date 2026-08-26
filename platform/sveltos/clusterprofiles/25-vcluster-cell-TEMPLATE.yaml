@@ -1,0 +1,84 @@
+# ⚠️ TEMPLATE — NOT RENDERED. Deliberately absent from kustomization.yaml, the
+# same convention devex uses for `apps/shamu/vclusters/_template.yaml` and this
+# repo uses for parked profiles. `kustomize build` stays green because kustomize
+# never reads it. To spawn a cell:
+#   cp 25-vcluster-cell-TEMPLATE.yaml 25-vcluster-<name>.yaml
+#   sed -i '' 's/CHANGEME/<name>/g' 25-vcluster-<name>.yaml
+#   add it to kustomization.yaml, commit. Delete both to destroy the cell.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# WHY THIS IS A HELM CHART AND NOT CAPVC — the reconciliation, in full
+# ══════════════════════════════════════════════════════════════════════════════
+# devex decision #12 designs the vCluster factory on Cluster API: a CAPI
+# `Cluster` + a CAPVC `VCluster` CR, with the load-bearing pin
+# "CoreProvider v1.10.10, NOT latest, because CAPVC v0.2.2 declares the CAPI
+# v1beta1 contract and core v1.11+ goes v1beta2-primary."
+#
+# THAT DESIGN CANNOT BE PORTED TO CONTRAXIA. Verified 2026-08-25:
+#
+#   $ kubectl --context=admin@contraxia get coreprovider -A
+#   NAMESPACE     NAME          INSTALLEDVERSION   READY
+#   capi-system   cluster-api   v1.13.3            True
+#
+# contraxia runs core **v1.13.3** — three minor versions past CAPVC's v1.10.x
+# ceiling. Meeting decision #12's pin would mean DOWNGRADING the core provider
+# on the live management cluster, and the rest of that cluster's provider set
+# is a coherent v1beta2-contract group that a downgrade would break:
+#   kubevirt (CAPK)            v0.11.2
+#   k0smotron bootstrap        v2.0.3
+#   k0smotron control-plane    v2.0.3
+# Those three run the arrakis tenant's control plane. 05-capi-stack's header
+# already says it: "Don't bump one without checking the others' contract —
+# mixing v1beta1/v1beta2 contract providers is what previously held tenant k8s
+# back." Downgrading core to satisfy CAPVC would take arrakis down. Not done,
+# not recommended, and the CAPVC path should be considered dead here until
+# CAPVC ships a stable v0.3.x on the v1beta2 contract.
+#
+# The replacement was already in this repo before the shamu port arrived:
+# 12-vcluster-family.yaml and 12-vcluster-mershab.yaml deploy Loft vcluster OSS
+# as a plain Helm chart, no CAPI involved. That path has no core-provider
+# coupling at all, and it is proven live. This template is those two profiles
+# re-pointed at persona=infra, minus the arrakis-specific ingress plumbing.
+#
+# ── contraxia divergences from 12-vcluster-{family,mershab} ──
+#   * Selector persona=infra, not persona=platform (this deploys ONTO contraxia).
+#   * NO `controlPlane.ingress` and NO Dex OIDC extraArgs. contraxia has no
+#     ingress controller (no GatewayClass; ingress-nginx and traefik namespaces
+#     are empty — verified) and Dex lives on arrakis. API access is either
+#     in-cluster DNS or `kubectl port-forward`; add a LoadBalancer + a lan-pool
+#     VIP only if a cell genuinely needs LAN reachability, and budget the IP.
+#   * NO `exportKubeConfig.additionalSecrets` auto-registration: the hub
+#     EventTrigger (clusters/baremetal/infrastructure/vcluster-autoregister.yaml)
+#     is written for the arrakis-hosted vclusters. Registering contraxia-hosted
+#     cells with Sveltos is a follow-up, not part of this template.
+#   * storageClass fast-zfs (contraxia's LocalPV-ZFS default), not openebs-zfs.
+#
+# Idle footprint per cell, from decision #12: ~300Mi RAM / ~0.1 CPU / 5Gi PVC.
+# Kubeconfig lands in Secret `vc-CHANGEME` in ns `vcluster-CHANGEME`.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: vcluster-CHANGEME
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    - repositoryURL: https://charts.loft.sh
+      repositoryName: loft
+      chartName: loft/vcluster
+      chartVersion: 0.36.1          # same pin as 12-vcluster-*; PIN EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: CHANGEME
+      releaseNamespace: vcluster-CHANGEME
+      helmChartAction: Install
+      values: |
+        # NOTE: sync.toHost.customResources AND integrations.* are vCluster PRO
+        # (verified live: the OSS syncer crashloops on either). Do not add them.
+        controlPlane:
+          distro:
+            k8s:
+              enabled: true
+          statefulSet:
+            persistence:
+              volumeClaim:
+                storageClass: fast-zfs

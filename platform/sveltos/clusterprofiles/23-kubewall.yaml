@@ -1,0 +1,107 @@
+# kubewall — the human's multi-cluster viewer on contraxia. Port of devex
+# `apps/shamu/kubewall` (decisions #10/#12), HelmRelease → Sveltos helmCharts.
+#
+# It lives at the hub level on purpose: contraxia is where every other cluster's
+# kubeconfig ends up (arrakis via CAPI, the persona vclusters via
+# exportKubeConfig), so the observer belongs next to the machinery it observes.
+#
+# Deliberately NOT `dependsOn` anything: the observer must stay up when the
+# observed breaks. That is the entire reason to run it.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# THE RISK RE-EVALUATION THE BRIEF ASKED FOR — and why this profile diverges
+# ══════════════════════════════════════════════════════════════════════════════
+# The shamu design (decision #12) accepted, twice and in writing, that:
+#   (a) KubeWall's ServiceAccount is bound to cluster-admin by the chart, and
+#   (b) its REST API and UI have NO AUTHENTICATION AT ALL —
+#       `POST /api/v1/app/config/kubeconfigs` hot-loads a kubeconfig, no restart,
+#       no credential,
+# and then put it on a LAN VIP. The stated justification was "the LAN is the
+# perimeter; same trust boundary as Gitea".
+#
+# THAT DOES NOT PASS HERE, and the difference is not a matter of taste. On the
+# Optiplex, cluster-admin meant admin over a devbox. On contraxia it means:
+# the CAPI/k0smotron control plane of the arrakis tenant, the Sveltos management
+# plane that drives EVERY cluster in this homelab, the `tenant-secrets`
+# namespace, and the arrakis kubeconfig Secret. An unauthenticated endpoint on
+# a routable LAN address, backed by cluster-admin, means anyone who can reach
+# 192.168.2.0/24 owns the entire fleet — with no credential and no audit trail.
+#
+# Two changes, both free, both verified against chart 0.0.22:
+#
+#   1. NO LoadBalancer, NO VIP. `service.type: ClusterIP` (the chart default;
+#      the shamu values overrode it). Reach it with:
+#        kubectl --context=admin@contraxia -n kubewall port-forward svc/kubewall 8443:8443
+#      then https://localhost:8443 (self-signed). port-forward already requires
+#      cluster credentials, which restores the authentication the app lacks.
+#      Side effect: this track claims ONE fewer address from lan-pool, and the
+#      chart's missing Service-annotation support (decision #12 needed a Flux
+#      postRenderer to pin the VIP — Sveltos has no postRenderer equivalent)
+#      stops being a problem at all.
+#
+#   2. NO cluster-admin. `serviceAccount.create: false` + a hand-made SA bound
+#      to the stock `view` ClusterRole, in the policyRef below. Verified that
+#      chart 0.0.22 gates its whole ClusterRoleBinding template on
+#      `serviceAccount.create`, so this removes the cluster-admin grant outright
+#      rather than shadowing it. See manifests/kubewall/rbac.yaml.
+#
+# Residual risk after both: the API is still unauthenticated, so anything that
+# can reach the pod's ClusterIP inside the cluster can drive it — but it can now
+# only read, and only what `view` allows. That is a proportionate posture for a
+# dashboard. Revisit if it is ever exposed beyond port-forward.
+#
+# ⚠️ ORDERING: the Deployment (Helm feature) and the ServiceAccount (Resources
+# feature) are applied independently by Sveltos, so on a first reconcile the pod
+# may briefly fail with "error looking up service account kubewall/kubewall".
+# It self-heals as soon as the policyRef applies. Do not "fix" it by turning
+# serviceAccount.create back on.
+#
+# Selector: persona=infra.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: kubewall
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    # OCI registry, not an index.yaml repo.
+    - repositoryURL: oci://ghcr.io/kubewall/charts
+      repositoryName: kubewall-oci
+      chartName: kubewall
+      chartVersion: 0.0.22          # pin EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: kubewall
+      releaseNamespace: kubewall
+      helmChartAction: Install
+      values: |
+        replicaCount: 1
+        # BYO ServiceAccount — this is what drops the chart's cluster-admin
+        # ClusterRoleBinding. The SA itself is in the policyRef below.
+        serviceAccount:
+          create: false
+          name: kubewall
+        service:
+          # ClusterIP, NOT LoadBalancer — see the risk block in the header.
+          type: ClusterIP
+          listen: ":8443"
+        pvc:
+          name: kubewall-data
+          # Chart default is 20Mi; the shamu values raised it to 1Gi for the
+          # accumulated kubeconfig/settings store. Kept.
+          storage: 1Gi
+          accessModes: ReadWriteOnce
+          storageClass: fast-zfs
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+  policyRefs:
+    # kubewall namespace + the BYO ServiceAccount bound to `view`.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/kubewall
