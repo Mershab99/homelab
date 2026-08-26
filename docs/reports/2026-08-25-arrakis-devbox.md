@@ -30,7 +30,8 @@ heavy Orca workspaces should go. The heavy box is contraxia's
 | `docs/runbooks/gitea-token-rollover.md` | the forge-cutover runbook (§8) |
 
 Validation actually run — the guard denies `kubectl apply`, including
-`--dry-run`, so this is static plus one container smoke test:
+`--dry-run`, so this is static analysis plus four real container runs (§3,
+which caught two shipping bugs):
 
 ```
 $ kustomize build platform/sveltos/clusterprofiles       # OK
