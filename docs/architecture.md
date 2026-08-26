@@ -88,7 +88,9 @@ Sveltos is for **capability fanout**, not per-instance config.
 
 - **No secrets in Git.** Cluster secrets are plaintext + gitignored
   (`*.secret.yaml`), applied by hand (`secrets/`). SOPS (`.sops.yaml`) covers
-  only the Talos machineconfig.
+  only the Talos machineconfig. One documented exception: `bootstrap/talos/*`
+  holds un-rotated lab PKI in the clear as an **accepted risk** in a public
+  repo — read [`security-posture.md`](security-posture.md) before "fixing" it.
 - **Bare-metal cluster is not disposable.** etcd snapshots are non-negotiable.
 - **Storage is ZFS on the host, not a replicated overlay.** The `zfs` system
   extension is version-COUPLED to the Talos release it was built against: before
