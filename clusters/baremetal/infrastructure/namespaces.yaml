@@ -35,3 +35,12 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: tenants
+---
+# The Orca cell (19-orca-cell). Pre-created here, not in the ClusterProfile's
+# payload, so the hand-applied `ghcr-pull` imagePullSecret has somewhere to land
+# before the StatefulSet first schedules — same reasoning as `velero` above.
+# No PSA label: the pod is uid 1000, no caps, no hostPath.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cell

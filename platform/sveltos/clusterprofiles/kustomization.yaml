@@ -46,3 +46,6 @@ resources:
   - 16-mcp-baseline.yaml        # kagent-crds + kmcp inside every vcluster (persona=ai)
   - 17-family-apps.yaml         # home-assistant (multus lan + velvet) + mediaserver + photoprism (vcluster=family)
   - 18-mershab-apps.yaml        # vaultwarden + website (vcluster=mershab)
+  # Developer-experience workload on the hub itself (persona=infra), not a
+  # tenant app — it is the thing that consumes the R730's idle 28 cores.
+  - 19-orca-cell.yaml           # remote Orca server ("the cell"), VIP 192.168.2.241
