@@ -1,4 +1,18 @@
-# tenant-ingress — the ONE arrakis edge (nginx + chisel→DO). Replaces Traefik.
+# tenant-ingress — the ARRAKIS edge (nginx + chisel→DO). Replaces Traefik.
+#
+# ── ⚠️ NO LONGER THE *ONLY* EDGE IN THE ESTATE (changed 2026-08-25) ──
+# This header used to call itself "the ONE ... edge" and asserted "'Expose
+# arrakis via arrakis, save the contraxia edge'". The user reversed that: the
+# hub now runs its own edge too, 27-ingress-hub.yaml, because the round-1 devex
+# tier (Gitea, the Orca cell, the devbox) lives on contraxia and was stuck on
+# bare LAN VIPs from a pool that overlaps the router's DHCP scope. Rationale:
+# docs/reports/2026-08-25-contraxia-edge.md.
+#
+# Nothing about THIS profile changed — it is still the only edge for arrakis,
+# still one LB → one droplet, and the two clusters' edges are independent
+# (separate droplets, separate ExitNodeProvisioners, separate external-dns
+# txtOwnerIds). Do not "consolidate" them: chisel-operator binds ONE Service per
+# ExitNode and neither cluster can route the other's in-cluster Services.
 #
 # ONE ingress-nginx whose LoadBalancer Service is chisel-classed + DO-provisioned,
 # so chisel-operator (02-ingress-external, on arrakis) spins up ONE DO droplet
@@ -9,9 +23,10 @@
 #                   preserved. external-dns publishes k8s-home.mershab.com -> the DO IP
 #                   off the controller Service annotation. Cert SAN already covers it.
 #
-# "Expose arrakis via arrakis, save the contraxia edge": the CP stays hosted on
-# contraxia (kmc-arrakis-lb 192.168.2.240, Cilium LAN, konnectivity + internal
-# API) — this edge just tunnels the EXTERNAL kubectl + HTTP in through arrakis.
+# The arrakis CP stays hosted on contraxia (kmc-arrakis-lb 192.168.2.240, Cilium
+# LAN, konnectivity + internal API) — this edge just tunnels the EXTERNAL
+# kubectl + HTTP in through arrakis. That part is unchanged; only the "and
+# therefore contraxia needs no edge" corollary was dropped (see the top).
 #
 # The DO ExitNodeProvisioner + digitalocean-auth secret live in THIS Service's ns
 # (ingress-nginx) — chisel v0.7.1 resolves the provisioner in the Service's ns.

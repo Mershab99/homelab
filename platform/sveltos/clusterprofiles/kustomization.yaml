@@ -7,7 +7,7 @@ kind: Kustomization
 resources:
   - 01-tls-stack.yaml           # cert-manager + ClusterIssuers
   - 01-dns.yaml                 # external-dns
-  - 02-ingress-external.yaml    # chisel-operator + DigitalOcean ExitNodeProvisioner (ARRAKIS edge)
+  - 02-ingress-external.yaml    # chisel-operator on BOTH clusters (each edge ships its own ExitNodeProvisioner)
   - 03-multus.yaml              # secondary CNI (tenant-only; HCO gives mgmt Multus)
   - 03b-olm.yaml                # Operator Lifecycle Manager (for HCO + any future OLM operators)
   - 04-storage.yaml             # LocalPV-ZFS (tank pool) + MinIO (Loki S3)
@@ -63,6 +63,12 @@ resources:
   - 21-forge.yaml               # Gitea 12.7.0 @ LB VIP 192.168.2.244 — the forge of record
   - 22-mcp-levers.yaml          # flux-operator-mcp (write) + kubernetes-mcp-server (read-only)
   - 23-kubewall.yaml            # cluster viewer — BYO SA bound to `view`, ClusterIP only
+  # contraxia's OWN public edge (2026-08-25). Reverses the old "one edge, on
+  # arrakis" rule now that the devex tier above lives on the hub — see the file
+  # header and docs/reports/2026-08-25-contraxia-edge.md. ONE chisel-classed
+  # nginx LB → ONE DO droplet; the complete public surface is
+  # manifests/hub-edge/ingresses.yaml. KubeWall stays off it on purpose.
+  - 27-ingress-hub.yaml         # ingress-nginx on contraxia + chisel→DO (git./orca.mershab.com)
   # 24-kagent-router.yaml PARKED — Track D may own the kagent chart; enabling
   # both would have two ClusterProfiles fighting over one Helm release. Pick one
   # owner first. See the file header.

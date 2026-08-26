@@ -1,0 +1,144 @@
+# ingress-hub — contraxia's OWN public edge (nginx + chisel→DO). 2026-08-25.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# THIS REVERSES A COMMITTED RULE. Read this before "fixing" it.
+# ══════════════════════════════════════════════════════════════════════════════
+# 02-ingress-external.yaml and 12-tenant-ingress.yaml both stated, on 2026-08-05,
+# "the hub keeps NO public edge — one edge, on arrakis". The user overrode that
+# on 2026-08-25: the round-1 developer-experience tier (Gitea, the Orca cell,
+# KubeWall, the devbox) all landed on contraxia as bare LAN VIPs on a pool that
+# overlaps the router's DHCP scope (docs/vip-allocation.md — `.242` and `.245`
+# are already burned by squatters). Real `*.mershab.com` names served from
+# contraxia itself is the replacement. Both of those headers have been amended
+# in the same commit; they now point here.
+#
+# The hub's SveltosCluster already carried `needs.ingress-external=true`, so the
+# intent predates this profile.
+#
+# ── Shape: exactly the arrakis pattern (12-tenant-ingress), one cluster over ──
+#
+# ONE ingress-nginx whose LoadBalancer Service is chisel-classed and
+# DO-provisioned, so chisel-operator spins up ONE droplet and binds it 1:1.
+# chisel-operator binds ONE Service per ExitNode, so everything public on the hub
+# rides this one LB. There is no second public LB on contraxia and there must
+# not be one.
+#
+# ⚠️ THE loadBalancerClass SPLIT IS LOAD-BEARING — it is the only thing keeping
+# the LAN VIPs alive. chart 0.7.1's values.yaml says of `loadBalancerClass`:
+# "When empty, all LoadBalancer services are reconciled, matching the default
+# behavior." Setting it to chisel.mershab.com/external (02-ingress-external)
+# makes the operator claim ONLY classed Services. Every LAN VIP Service —
+# cell/orca `.241`, workspaces devbox `.243`, gitea/gitea-http `.244` — is
+# deliberately CLASSLESS so Cilium LB-IPAM keeps them and chisel never touches
+# their status.loadBalancer.ingress. Do not add the class to any of them, and do
+# not clear it here.
+#
+# ── Gateway API was considered and rejected ──
+# contraxia has no GatewayClass and no Gateway API CRDs; Cilium's Gateway
+# support is off. Turning it on is a values change to the live CNI of a
+# single-node cluster with no second node to fail over to. ingress-nginx is
+# already proven in this repo on arrakis (tenant-ingress-capi-arrakis →
+# helmReleaseSummaries[ingress-nginx] status Managing, feature Helm Provisioned).
+#
+# ── No `tcp:` block, unlike arrakis ──
+# arrakis tunnels its k8s API through this same LB on 6443. contraxia's API is
+# already reachable at cricket.geekgalaxy.com:6443 and is NOT re-exposed here.
+#
+# ── No LAN pool address is consumed ──
+# The controller Service is chisel-classed, so Cilium LB-IPAM skips it entirely.
+# This track claims ZERO addresses from lan-pool. See docs/vip-allocation.md.
+#
+# ── PREREQUISITE, hand-applied, NOT in git ──
+#   Secret `digitalocean-auth` (key DIGITALOCEAN_TOKEN) in ns `ingress-nginx`.
+#   VERIFIED ALREADY PRESENT on contraxia 2026-08-25 (20d old, left over from the
+#   2026-08-05 edge). Re-create with:
+#     kubectl --context admin@contraxia -n ingress-nginx create secret generic \
+#       digitalocean-auth --from-literal=DIGITALOCEAN_TOKEN='<DO_PAT>'
+#
+# ── ⚠️ THERE IS AN ORPHANED DROPLET AND IT IS STILL BILLING ──
+#   ExitNode `ingress-nginx/service-ingress-nginx-controller` survives from the
+#   2026-08-05 contraxia edge: droplet id 590102937, IP 165.227.32.29, chisel
+#   answering on :9090 (verified 2026-08-25). Its finalizer never ran because the
+#   operator was uninstalled out from under it. Once this profile brings the
+#   operator back, that CR reconciles again — the naming matches exactly
+#   (`service-<service-name>`) and its auth Secret
+#   `service-ingress-nginx-controller-auth` is still in the namespace, so the
+#   likely outcome is ADOPTION of the existing droplet at no new cost.
+#   Decide deliberately; both paths are in
+#   docs/reports/2026-08-25-contraxia-edge.md §Orphaned droplet.
+#
+# Selector: persona=infra (contraxia only).
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: ingress-hub
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - tls-stack         # cert-manager + letsencrypt-prod, for the Ingress TLS blocks
+    - ingress-external  # chisel-operator must exist to claim this LB
+  helmCharts:
+    - repositoryURL: https://kubernetes.github.io/ingress-nginx
+      repositoryName: ingress-nginx
+      chartName: ingress-nginx/ingress-nginx
+      chartVersion: 4.15.1          # controller 1.15.1; PIN EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: ingress-nginx
+      releaseNamespace: ingress-nginx
+      helmChartAction: Install
+      values: |
+        controller:
+          ingressClassResource:
+            name: nginx
+            # Safe here: `kubectl get ingressclass` on contraxia returns nothing,
+            # so there is no second default to collide with. Every Ingress this
+            # repo ships still names the class explicitly.
+            default: true
+          service:
+            type: LoadBalancer
+            loadBalancerClass: chisel.mershab.com/external   # chisel claims it, NOT Cilium
+            annotations:
+              chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
+          # Writes the LB's external IP into every Ingress .status, which is what
+          # external-dns reads to publish the A records. Without this the records
+          # would point at the node IP (192.168.2.70) — a private address in a
+          # public zone.
+          publishService:
+            enabled: true
+          # chart 4.15.1 defaults `controller.metrics.enabled` to FALSE, i.e. the
+          # edge would ship with no metrics endpoint at all. Turned on here plus
+          # the ServiceMonitor, because 07-observability-core's collector sets
+          # targetAllocator.prometheusCR.enabled with `serviceMonitorSelector: {}`
+          # — an EMPTY selector, so it discovers this ServiceMonitor with no
+          # scrape config to write. Costs one ClusterIP Service on :10254.
+          # Safe to enable: `servicemonitors.monitoring.coreos.com` is already
+          # installed on contraxia (verified 2026-08-25), so this does not ship a
+          # resource of an unknown kind and deadlock its own release.
+          # ⚠️ It is wired, not useful yet — see the report §Observability: no
+          # collector is running and the metrics pipeline exports to [debug].
+          metrics:
+            enabled: true
+            serviceMonitor:
+              enabled: true
+              namespaceSelector:
+                any: true
+        # NOT set, deliberately: `use-forwarded-headers`. chisel tunnels raw TCP
+        # and adds no X-Forwarded-For, so every request already arrives from the
+        # droplet's tunnel endpoint. Trusting a client-supplied XFF here would
+        # only make source IPs spoofable. Access logs will show one source IP.
+  policyRefs:
+    # The DigitalOcean ExitNodeProvisioner (chisel v0.7.1 resolves the
+    # exit-node-provisioner annotation ONLY in the Service's namespace, so it
+    # must be in `ingress-nginx`) + the public Ingresses.
+    #
+    # ⚠️ ORDERING: Helm and Resources are independent Sveltos features applied in
+    # parallel, so on a first reconcile the ExitNodeProvisioner can fail with
+    # `no matches for kind "ExitNodeProvisioner"` until the chisel-operator chart
+    # (02-ingress-external) has created its CRDs. It self-heals on the next pass.
+    # Same class of race as 23-kubewall's SA. Do not "fix" it by inlining the CR
+    # into a helmCharts values block.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/hub-edge

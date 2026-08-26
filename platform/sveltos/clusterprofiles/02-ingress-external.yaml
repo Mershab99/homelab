@@ -1,30 +1,54 @@
-# ingress-external — chisel-operator on ARRAKIS (the ONLY edge; 2026-08-05).
+# ingress-external — chisel-operator on BOTH clusters (arrakis + contraxia).
 #
 # chisel-operator auto-provisions a DO droplet exit node for any LoadBalancer
 # Service annotated
 #   chisel-operator.io/exit-node-provisioner: digitalocean-provisioner
 # DO passes inbound 443/6443; RackNerd VPS-01 did NOT (only 22+9090 — verified
-# 2026-08-05). The arrakis nginx edge (12-tenant-ingress) is the one LB it serves:
-# HTTP for Dex/apps + TCP 6443 for the arrakis k8s API (k8s-home.mershab.com).
-# The ExitNodeProvisioner + digitalocean-auth secret live in that Service's ns
-# (chisel v0.7.1 resolves the provisioner in the Service's ns).
+# 2026-08-05). Two LBs, one per cluster, one droplet each:
+#   arrakis   — 12-tenant-ingress: HTTP for Dex/apps + TCP 6443 for the arrakis
+#               k8s API (k8s-home.mershab.com).
+#   contraxia — 27-ingress-hub:    HTTP for the hub devex tier (git.mershab.com,
+#               orca.mershab.com). No API passthrough; contraxia's API is
+#               already at cricket.geekgalaxy.com:6443.
+# The ExitNodeProvisioner + digitalocean-auth secret live in each Service's OWN
+# ns (chisel v0.7.1 resolves the provisioner in the Service's ns) — see
+# manifests/arrakis-edge/ and manifests/hub-edge/.
 #
-# Moved off contraxia (was persona=infra): the hub keeps NO public edge — only the
-# hosted CP + kmc-arrakis-lb (Cilium LAN L2 192.168.2.240, konnectivity + internal
-# API endpoint). "Expose arrakis via arrakis" — one edge, on arrakis.
+# ── ⚠️ THE "ONE EDGE, ON ARRAKIS" RULE WAS REVERSED ON 2026-08-25 ──
+# This file used to say: "Moved off contraxia (was persona=infra): the hub keeps
+# NO public edge ... 'Expose arrakis via arrakis' — one edge, on arrakis."
+# That held while contraxia hosted nothing but the arrakis control plane. It
+# stopped holding when the round-1 developer-experience tier (Gitea, the Orca
+# cell, KubeWall, the devbox) landed ON the hub, exposed as bare LAN VIPs on a
+# pool that overlaps the router's DHCP scope (docs/vip-allocation.md: `.242` and
+# `.245` are burned by squatters). The user's call: contraxia gets its own edge
+# and real *.mershab.com names. Rationale in
+# docs/reports/2026-08-25-contraxia-edge.md. Do not re-narrow this selector.
+#
+# Retargeting this profile (rather than adding a hub-only twin) is deliberate:
+# it is the same chart at the same version with identical values, and two
+# profiles installing one Helm release name would drift apart or, worse, fight.
+# 01-dns.yaml already uses this exact `persona In [infra, platform]` shape.
+#
+# ⚠️ `loadBalancerClass` is the whole safety mechanism. chart 0.7.1 values.yaml:
+# "When empty, all LoadBalancer services are reconciled." Non-empty ⇒ the
+# operator claims ONLY Services carrying that class, so the classless LAN VIP
+# Services on contraxia (`.241`/`.243`/`.244`) keep their Cilium LB-IPAM
+# addresses instead of having status.loadBalancer.ingress overwritten. Never
+# blank this value.
 #
 # chisel-operator binds ONE Service per ExitNode (1:1); consolidate behind the one
-# nginx LB → one droplet.
+# nginx LB per cluster → one droplet per cluster.
 #
-# Selector: persona=platform (arrakis).
+# Selector: persona In [infra, platform] (contraxia + arrakis).
 apiVersion: config.projectsveltos.io/v1beta1
 kind: ClusterProfile
 metadata:
   name: ingress-external
 spec:
   clusterSelector:
-    matchLabels:
-      persona: platform
+    matchExpressions:
+      - {key: persona, operator: In, values: [infra, platform]}
   dependsOn:
     - tls-stack
   helmCharts:
@@ -37,7 +61,18 @@ spec:
       helmChartAction: Install
       values: |
         loadBalancerClass: chisel.mershab.com/external
-  # No policyRefs — chisel-operator (chart only) watches LB Services cluster-wide
-  # and creates ExitNodes on demand. The DigitalOcean ExitNodeProvisioner lives
-  # beside the arrakis nginx edge Service (ingress-nginx ns, delivered by
-  # 12-tenant-ingress) — chisel v0.7.1 resolves the provisioner in the Service's ns.
+  # No policyRefs — chisel-operator (chart only) watches classed LB Services
+  # cluster-wide and creates ExitNodes on demand. Each cluster's DigitalOcean
+  # ExitNodeProvisioner ships beside its own edge Service (both in an
+  # `ingress-nginx` ns): arrakis via 12-tenant-ingress → manifests/arrakis-edge,
+  # contraxia via 27-ingress-hub → manifests/hub-edge. chisel v0.7.1 resolves the
+  # provisioner in the Service's ns, so it cannot be centralised.
+  #
+  # ⚠️ On contraxia the CRD `exitnodes.chisel-operator.io` ALREADY EXISTS,
+  # orphaned from the 2026-08-05 install (verified 2026-08-25). Its Helm
+  # ownership annotations are release-name `chisel-operator` / release-namespace
+  # `chisel-operator-system` — identical to this profile's — so Helm adopts it
+  # instead of failing with "invalid ownership metadata". Its sibling
+  # `exitnodeprovisioners` CRD is gone and gets recreated.
+  # There is ALSO a live orphaned ExitNode (and a still-billing droplet) in that
+  # cluster; see 27-ingress-hub's header before reconciling this.
