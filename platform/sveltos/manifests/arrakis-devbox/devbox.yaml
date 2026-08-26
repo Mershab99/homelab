@@ -1,0 +1,186 @@
+# devbox — SSH box + Orca server on the ARRAKIS tenant cluster.
+#
+# ── WHY A CONTAINER AND NOT A VM ──
+# 20-cpu-workspace.yaml makes the contraxia devbox a KubeVirt VirtualMachine.
+# That option does not exist here: arrakis has no hypervisor of its own — its
+# workers ARE KubeVirt VMs running on contraxia (KubevirtMachineTemplate
+# `arrakis-general`, tenants/arrakis/infra/machinetemplate-general.yaml), so a
+# VM on arrakis is a VM inside a VM. Nested virt is off the table. StatefulSet.
+#
+# StatefulSet and not Deployment for the same reason as 19-orca-cell: `orca
+# serve` is a single-host mode, the PVC holds every agent's OAuth state, and
+# this is a pet. replicas: 1, forever. Never scale it.
+#
+# ── SIZING — THIS BOX IS SMALL, AND THAT IS THE WORKER VM'S FAULT ──
+# Measured 2026-08-26 on the live worker:
+#   kubectl … get node arrakis-general-57f89-jqnzr -o jsonpath='{.status.allocatable}'
+#   -> {"cpu":"4","memory":"8029516Ki","ephemeral-storage":"47269409509","pods":"110"}
+# 4 cores / ~7.66 GiB is the WHOLE NODE, k0s system pods included. The MacBook's
+# OrbStack VM this is supposed to relieve has 12 GiB. So: real CPU offload,
+# NEGATIVE memory offload. Requests are sized to leave the node schedulable
+# (coredns + metrics-server are still Pending on it), the memory limit to leave
+# ~2 GiB of headroom so a runaway build evicts this pod and not kube-proxy.
+#
+# The fix is one field, and it is NOT in this file:
+# `machinetemplate-general.yaml` -> `domain.memory.guest` / `domain.cpu.cores`.
+# Bumping it re-rolls every arrakis worker and eats hub RAM that
+# 20-cpu-workspace's 32 GiB VM has already claimed, so it is the coordinator's
+# call, not this track's. Until then the contraxia devbox (12 vCPU / 32 GiB) is
+# the heavy box and this one is the small, always-on tenant-side box.
+#
+# ── EXPOSURE — ClusterIP, reached by `kubectl port-forward` ──
+# Everything else was checked and rejected against the live cluster:
+#   LoadBalancer  — arrakis Cilium (11-tenant-cilium.yaml) sets only
+#                   `ipam.mode: kubernetes`; no CiliumLoadBalancerIPPool and no
+#                   L2 announcement policy exist on the tenant. A classless LB
+#                   Service would sit <pending> forever.
+#   chisel LB     — publishes on a public DigitalOcean droplet. Putting sshd
+#                   and an unauthenticated-until-paired Orca port on the public
+#                   internet is not a trade this box is worth.
+#   NodePort      — the worker VM's node IP is 10.0.2.2 (KubeVirt masquerade
+#                   private side). Its LAN-bridged second NIC `br-multus`
+#                   reports linkState up but NO address
+#                   (`kubectl get vmi … -o jsonpath='{.status.interfaces}'`),
+#                   so there is no LAN socket to hit. NodePort would only be
+#                   reachable from contraxia's pod network, not from the Mac.
+#   NetBird mesh  — the correct endgame (Track G). Not today.
+# port-forward needs nothing new, is private by construction, and already works
+# over the path the Mac uses for kubectl. See the runbook in
+# docs/reports/2026-08-25-arrakis-devbox.md.
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: devbox
+  namespace: workspaces
+spec:
+  serviceName: devbox
+  replicas: 1
+  selector:
+    matchLabels: {app: devbox}
+  template:
+    metadata:
+      labels: {app: devbox}
+    spec:
+      # No Service here is named `orca`, but keeping links off removes the whole
+      # class of "a Service name became an env var that shadowed a knob" bugs
+      # that cost 19-orca-cell a debugging session (ORCA_PORT=tcp://…).
+      enableServiceLinks: false
+      # No imagePullSecrets and no private registry — see bootstrap.yaml's
+      # header for why this is a stock ubuntu image plus a script.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: devbox
+          image: ubuntu:24.04
+          imagePullPolicy: IfNotPresent
+          # Runs as uid 0: the bootstrap apt-installs packages and sshd binds
+          # :22. Both need root INSIDE this container's user namespace only —
+          # no hostPath, no hostNetwork, no added capabilities, no privileged.
+          # Orca itself drops to uid 1000 via setpriv before exec (bootstrap.sh).
+          command: ["/usr/bin/env", "bash", "/bootstrap/bootstrap.sh"]
+          env:
+            # Client-advertised address only; the bind is always 0.0.0.0:6768.
+            # 127.0.0.1 is literally correct for the Mac reaching this through
+            # `kubectl port-forward`, which is the only path that works today
+            # (see the EXPOSURE note above). When Track G's mesh lands, change
+            # this to the NetBird name and restart the pod — nothing else moves.
+            - {name: PAIRING_ADDRESS, value: "127.0.0.1"}
+            # Defaults to "1" — the OPPOSITE of 19-orca-cell, and on evidence,
+            # not caution. Run end to end against ubuntu:24.04, Orca's Chromium
+            # zygote died before ever binding a port:
+            #   Failed to move to new namespace: PID namespaces supported,
+            #   Network namespace supported, but failed: errno = Operation not
+            #   permitted
+            #   [FATAL:zygote_host_impl_linux.cc:207] Check failed
+            #   Orca serve exited via SIGTRAP.
+            # With the knob on, `Orca server ready / Bound endpoint:
+            # ws://0.0.0.0:6768`. The arrakis worker is Ubuntu 24.04, which
+            # ships kernel.apparmor_restrict_unprivileged_userns=1 — the same
+            # class of restriction — so defaulting off would ship a CrashLoop.
+            # The pod boundary is already the isolation boundary here.
+            # Set "0" to re-enable Chromium's own sandbox and find out.
+            - {name: ORCA_NO_SANDBOX, value: "1"}
+            - {name: ORCA_VERSION, value: "1.4.188"}
+            - {name: CLAUDE_CODE_VERSION, value: "2.1.235"}
+            - {name: CODEX_VERSION, value: "0.148.0"}
+            - {name: NODE_MAJOR, value: "22"}
+          envFrom:
+            # Same optional-Secret pattern as 19-orca-cell: repo .mcp.json files
+            # interpolate ${GITHUB_PERSONAL_ACCESS_TOKEN}. optional, because the
+            # box must come up before that Secret has ever been created.
+            - secretRef: {name: github-mcp-token, optional: true}
+          ports:
+            - {containerPort: 22, name: ssh}
+            - {containerPort: 6768, name: orca}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: bootstrap, mountPath: /bootstrap, readOnly: true}
+            # Hand-applied Secret, never in git — public keys are not secret but
+            # they are per-human, and baking one into a manifest makes rotation
+            # a commit. Missing Secret = SSH refuses logins, Orca still serves.
+            - {name: ssh-key, mountPath: /etc/devbox-ssh, readOnly: true}
+          resources:
+            # No CPU limit: a compile burst should eat the node's idle cores
+            # rather than get CFS-throttled. The memory limit is the guard rail.
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {memory: 5Gi}
+          # Cold start is an apt+npm install over the tenant's vxlan overlay,
+          # measured in minutes. A startupProbe is the right shape for that:
+          # 60 x 10s = 10 minutes of grace, and only after it passes does the
+          # readinessProbe's tighter budget apply.
+          startupProbe:
+            tcpSocket: {port: 6768}
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: {port: 6768}
+            periodSeconds: 10
+      volumes:
+        - name: bootstrap
+          configMap:
+            name: devbox-bootstrap
+            defaultMode: 0555
+        - name: ssh-key
+          secret:
+            secretName: devbox-ssh-key
+            optional: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        # `kubevirt` is the arrakis default and the only StorageClass on the
+        # tenant (verified: `kubectl … get sc` -> one row). Named explicitly so
+        # the claim can never silently follow a future default change.
+        # It is a passthrough: csi.kubevirt.io -> hub class `fast-block`
+        # (zfs-localpv, zvol+ext4, thin, volblocksize 16k) hot-plugged into the
+        # worker VM over a SCSI bus. Thin means 100Gi reserves nothing on
+        # `tank` (13.7 TiB free as of 2026-08-26) and costs what is written.
+        #
+        # SURVIVAL: this PVC outlives pod restarts AND worker-VM rebuilds — the
+        # zvol lives on contraxia, and kubevirt-csi re-attaches it to whichever
+        # worker the pod lands on. What does NOT survive is the container root
+        # filesystem, which is why bootstrap.sh reinstalls everything each start
+        # and why $HOME and the sshd host key are both under /data.
+        # reclaimPolicy on `fast-block` is Delete, so deleting this PVC DOES
+        # reap the data. It is the one destructive command in this design.
+        storageClassName: kubevirt
+        resources:
+          requests:
+            storage: 100Gi
+---
+# ClusterIP. Not LoadBalancer (arrakis has no LB-IPAM pool), not NodePort (the
+# worker has no LAN address), not chisel-classed (that is the public droplet).
+# The headless-vs-clusterip choice does not matter for one replica; ClusterIP so
+# `kubectl port-forward svc/devbox` works as well as `sts/devbox`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: devbox
+  namespace: workspaces
+spec:
+  type: ClusterIP
+  selector: {app: devbox}
+  ports:
+    - {name: ssh, port: 22, targetPort: 22, protocol: TCP}
+    - {name: orca, port: 6768, targetPort: 6768, protocol: TCP}

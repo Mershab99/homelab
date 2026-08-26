@@ -79,6 +79,10 @@ resources:
   # operator on both clusters. See docs/reports/2026-08-25-netbird-mesh.md.
   - 29-netbird-cp.yaml          # combined server 0.77.1 + dashboard @ netbird.mershab.com (persona=infra)
   - 30-netbird-operator.yaml    # netbird-operator 0.8.0 on contraxia AND arrakis
+  # Tenant-side twin of 20-cpu-workspace: same job (SSH + Orca), on ARRAKIS, as
+  # a StatefulSet rather than a VM (arrakis workers are already VMs — no nested
+  # virt). ClusterIP only, reached by port-forward until the mesh lands.
+  - 32-arrakis-devbox.yaml      # `devbox` StatefulSet + Orca server on arrakis
   # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
   # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
   # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.

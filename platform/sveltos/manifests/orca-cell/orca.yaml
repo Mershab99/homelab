@@ -72,8 +72,15 @@ spec:
             - {name: PAIRING_ADDRESS, value: "192.168.2.241"}
             # If the pod dies with a Chromium sandbox error, set this to "1" and
             # record it in the report. Talos blocks nothing relevant by default,
-            # so it starts off. (images/orca/entrypoint.sh honours it.)
-            - {name: ORCA_NO_SANDBOX, value: "0"}
+            # so it starts off.
+            # ⚠️ CORRECTED 2026-08-26 (Track J, tested in a real amd64
+            # container): the previous knob ORCA_NO_SANDBOX made
+            # images/orca/entrypoint.sh pass --no-sandbox on Orca's argv, which
+            # Orca's CLI REJECTS — the pod would CrashLoop either way. The knob
+            # Electron itself honours is ELECTRON_DISABLE_SANDBOX. Orca's
+            # Chromium zygote also needs unprivileged userns; if the kernel
+            # denies that, "1" here is the working fallback.
+            - {name: ELECTRON_DISABLE_SANDBOX, value: "0"}
           envFrom:
             # github-mcp-server in http mode wants its own Authorization header
             # per request, so repo .mcp.json files interpolate

@@ -1,0 +1,14 @@
+# Human-facing compute on the ARRAKIS tenant cluster. Same name as the
+# contraxia namespace (`workspaces`, 20-cpu-workspace) on purpose: same job,
+# different cluster, so `-n workspaces` means the same thing wherever you point
+# `--context`.
+#
+# No pod-security label. k0s applies no restricted PSA default and the pod here
+# wants uid 0 in its own namespace (it apt-installs sshd at start, see
+# bootstrap.yaml) — an `enforce: restricted` label would reject it. If a cluster
+# default ever appears, add `pod-security.kubernetes.io/enforce: baseline` here
+# rather than weakening it estate-wide.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workspaces
