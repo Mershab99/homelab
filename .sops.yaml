@@ -2,16 +2,63 @@
 #
 # Every file matching `path_regex` is encrypted by sops using the listed age
 # recipients. The age public keys live here; the matching private keys are
-# stored on each operator's workstation (export SOPS_AGE_KEY_FILE) and inside
-# the cluster (in the `sops-age` Secret consumed by Flux's kustomize-controller).
+# stored on each operator's workstation (export SOPS_AGE_KEY_FILE).
 #
-# Sensitive Kubernetes manifests are encrypted at the `data` / `stringData`
-# field level so kubectl/kustomize see structured YAML; non-K8s files are
-# encrypted whole.
-# NOTE: cluster secrets under secrets/ are NOT SOPS-encrypted — they're
-# plaintext + gitignored (*.secret.yaml), applied by hand (see secrets/README.md).
-# SOPS is kept only for the Talos machineconfig secrets below.
+# ---------------------------------------------------------------------------
+# WHAT SOPS DOES AND DOES NOT PROTECT IN THIS REPO — read docs/security-posture.md
+# ---------------------------------------------------------------------------
+# SOPS covers ONLY the Talos machineconfig material under bootstrap/talos/.
+# Cluster secrets under secrets/ are plaintext + gitignored (`*.secret.yaml`)
+# and applied by hand via ./secrets/apply.sh — see secrets/README.md. There is
+# NO Flux kustomize-controller doing SOPS decryption in-cluster (see
+# bootstrap/flux/README.md), so no `sops-age` Secret is required today.
+#
+# `creation_rules` are consulted ONLY when sops is invoked explicitly
+# (`sops -e`, `sops <file>`, `task sops:encrypt`). They do NOT retroactively
+# encrypt anything and they are NOT a commit-time guard. The commit-time guard
+# is .claude/hooks/guard-destructive.py.
+#
+# ---------------------------------------------------------------------------
+# 2026-08-25 — why these rules are deliberately BROAD
+# ---------------------------------------------------------------------------
+# The previous rule was `path_regex: bootstrap/talos/.*secrets.*`. No file in
+# this repo has ever been named `*secrets*` under bootstrap/talos/, so the rule
+# matched NOTHING and sops silently never encrypted the machineconfigs. The
+# result: bootstrap/talos/{controlplane.yaml,worker.yaml,talosconfig} are
+# tracked in a PUBLIC repo as plaintext. That exposure is a decided, accepted
+# risk (docs/security-posture.md) — but the class of bug must not recur.
+#
+# Over-matching is harmless here (sops only acts when invoked). Under-matching
+# is how the leak happened. So these rules match whole directories, not
+# filename guesses.
+#
+# ---------------------------------------------------------------------------
+# ⚠️ The age recipient below is still a PLACEHOLDER — sops WILL fail with
+# "no valid age recipients" until it is replaced. Generate and paste:
+#   age-keygen -o ~/.config/sops/age/keys.txt
+#   export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
+#   grep '^# public key:' ~/.config/sops/age/keys.txt   # paste the age1... value
+# ---------------------------------------------------------------------------
 creation_rules:
-  - path_regex: bootstrap/talos/.*secrets.*
-    age: >-
+  # Talos machineconfigs, the PKI bundle, talosconfig, and the generated
+  # secrets bundle (`secrets.yaml.sops`, see .taskfiles/bootstrap.yml).
+  # Matches EVERY path under bootstrap/talos/ on purpose — a new node's
+  # machineconfig must never fall outside the rule because of its filename.
+  - path_regex: ^bootstrap/talos/
+    age: &age_recipients >-
       age1placeholderreplaceaftergeneratingthisrepoageabsentdonotcommit
+
+  # Anything under secrets/. The settled posture is that filled cluster secrets
+  # are plaintext + gitignored (`*.secret.yaml`) rather than SOPS-encrypted, so
+  # in practice this rule is a SAFETY NET: if anyone ever runs `sops -e` on a
+  # file here, it gets wrapped instead of erroring out with "no matching
+  # creation rules" and tempting them to commit it in the clear.
+  #
+  # The committed `*.example.yaml` templates and READMEs also match this rule.
+  # Do NOT encrypt them — they hold REPLACE_WITH_ placeholders only and
+  # ./secrets/apply.sh + secrets/init.sh expect them readable. Convention and
+  # the CI check in .github/workflows/validate.yaml keep them plaintext, not
+  # this regex (Go RE2 has no negative lookahead, so it cannot express
+  # "everything under secrets/ except *.example.yaml").
+  - path_regex: ^secrets/
+    age: *age_recipients

@@ -28,9 +28,22 @@ clusters/baremetal/  GitOps tree for the bare-metal cluster
 tenants/home/        CAPI cluster + Sveltos profiles + vClusters
 platform/sveltos/    selector-driven multi-cluster ClusterProfiles
 docs/                architecture + bootstrap runbook + per-task runbooks
-secrets/             SOPS-encrypted secrets (see .sops.yaml)
+secrets/             *.example.yaml templates only — filled secrets are
+                     gitignored and applied by hand (docs/security-posture.md)
 .taskfiles/          Taskfile.dev tasks for local automation
 ```
+
+## Security posture — read before reporting a leak
+
+**This repo is PUBLIC on purpose, and `bootstrap/talos/*` contains deliberately
+un-rotated, accepted-risk lab credentials.** Do not rewrite history, flip
+visibility, rotate the Talos PKI, or open an issue about it.
+
+Everything else is different: **a real credential never lands here in
+plaintext.** `.claude/hooks/guard-destructive.py` blocks commits that try.
+
+Full detail, including what is protected and how:
+[`docs/security-posture.md`](docs/security-posture.md).
 
 ## Domain + identity
 

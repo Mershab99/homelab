@@ -12,6 +12,9 @@ gen/talos-hub-machineconfig.yaml.bak
 age.key
 *.age.key
 
+# `python3 .claude/hooks/guard-destructive.py --self-test` byproduct.
+__pycache__/
+
 # Filled cluster secrets — plaintext, applied by hand via ./secrets/apply.sh.
 # Only *.example.yaml templates are committed.
 *.secret.yaml
