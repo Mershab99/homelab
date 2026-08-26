@@ -32,19 +32,37 @@ spec:
       # exit with "Invalid --port value". entrypoint.sh already sanitises it;
       # switching the links off removes the whole class of collision instead.
       enableServiceLinks: false
-      # ghcr.io/mershab99/orca is a PRIVATE package. Applied by hand into ns
-      # `cell` (docs/reports/2026-08-25-orca-cell-contraxia.md §runbook step 2);
-      # never in git — decision #2's plaintext posture does not extend to a
-      # registry credential that also grants package:write.
+      # CHANGED 2026-08-26 (Track K, feat/local-image-pipeline): was `ghcr-pull`
+      # for ghcr.io/mershab99/orca. That package is private under an account
+      # whose credentials this estate does not hold, so the pull failed closed:
+      #   Failed to pull image "ghcr.io/mershab99/orca:v1.4.188": failed to
+      #   authorize: ... 403 Forbidden
+      # and the Secret was never created either (FailedToRetrieveImagePullSecret
+      # ×119). Now a Gitea PAT for the in-cluster registry. Applied by hand into
+      # ns `cell`: docs/runbooks/local-image-build.md §2.4. Never in git — the
+      # plaintext-secrets posture does not extend to a token that also grants
+      # write access to the forge.
       imagePullSecrets:
-        - name: ghcr-pull
+        - name: gitea-pull
       containers:
         - name: orca
           # PIN MUST TRACK THE MAC. The client refuses to pair across an app
           # version gap; the Mac was 1.4.188 on 2026-08-25 (`orca status --json`
           # → result.runtime.appVersion). Bump this and the Mac together, never
-          # one alone. Built by devex `make shamu-image` (linux/amd64).
-          image: ghcr.io/mershab99/orca:v1.4.188
+          # one alone.
+          #
+          # The registry is Gitea's own OCI endpoint (live: `curl -i
+          # http://192.168.2.244:3000/v2/` → 401 + Docker-Distribution-Api-Version).
+          # The host is the LAN VIP and not `gitea-http.gitea.svc` because
+          # KUBELET does the pull, in the node's network namespace, where cluster
+          # DNS does not resolve. Built either by the Mac (images/orca +
+          # docs/runbooks/local-image-build.md §2) or by the in-cluster runner
+          # (.gitea/workflows/orca-image.yaml).
+          #
+          # ⚠️ Plain HTTP: the node needs bootstrap/talos/_patches/07-registries.yaml
+          # applied first or containerd fails the TLS handshake before it ever
+          # reaches the pull secret.
+          image: 192.168.2.244:3000/mershab/orca:v1.4.188
           imagePullPolicy: IfNotPresent
           env:
             # Client-advertised address only — bind is always 0.0.0.0:6768.

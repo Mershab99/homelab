@@ -19,11 +19,22 @@
 # GatewayClass. The Service is a plain type: LoadBalancer on the Cilium lan-pool.
 #
 # ── PREREQUISITE, hand-applied, NOT in git ──
-#   Secret `ghcr-pull` (kubernetes.io/dockerconfigjson) in ns `cell` — the image
-#   is a private ghcr package. Exact command:
-#   docs/reports/2026-08-25-orca-cell-contraxia.md, runbook step 2.
+#   Secret `gitea-pull` (kubernetes.io/dockerconfigjson) in ns `cell` — a Gitea
+#   PAT for the in-cluster OCI registry at 192.168.2.244:3000.
+#   Exact command: docs/runbooks/local-image-build.md §2.4.
 #   Optional: Secret `github-mcp-token` (key GITHUB_PERSONAL_ACCESS_TOKEN) in the
 #   same namespace; the pod starts without it.
+#
+# ── IMAGE SOURCE CHANGED 2026-08-26 (Track K) ──
+#   Was `ghcr.io/mershab99/orca:v1.4.188` + Secret `ghcr-pull`. That package is
+#   private under an account this estate has no credentials for; the live pod sat
+#   in ImagePullBackOff with a 403 and the pull Secret was never created. It is
+#   now built locally and served from the forge's own registry —
+#   `192.168.2.244:3000/mershab/orca:v1.4.188`. Build context is in-repo at
+#   images/orca/; the two paths to produce the tag (Mac buildx today, Gitea
+#   Actions runner via 34-forge-runner) are in
+#   docs/runbooks/local-image-build.md. Prerequisite on the node:
+#   bootstrap/talos/_patches/07-registries.yaml (plain-HTTP registry mirror).
 #
 # ── VERSION SKEW IS THE #1 PAIRING FAILURE ──
 #   The image tag pins Orca 1.4.188 to match the Mac client. Bumping one side

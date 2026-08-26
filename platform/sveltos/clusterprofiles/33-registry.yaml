@@ -1,0 +1,93 @@
+# registry — Spegel, the cluster-local OCI *mirror*.
+#
+# ⚠️ PARKED. Deliberately NOT listed in kustomization.yaml. Read this before
+# un-parking; the file is here because the design is decided, not because it
+# should run today.
+#
+# ── WHAT SPEGEL IS, AND WHAT IT IS NOT ──
+#   Spegel is a stateless P2P mirror of images ALREADY in each node's containerd
+#   content store. Nodes advertise what they hold and serve each other. It is
+#   not a registry you can push to — `docker push` at Spegel is meaningless.
+#   The writable half of this estate's supply chain is Gitea's own OCI registry
+#   (`http://192.168.2.244:3000/v2/`, live since 21-forge), which needs no chart
+#   and no profile.
+#
+# ── WHY IT IS PARKED ──
+#   contraxia is ONE node (`kubectl get nodes` → r730, only). A P2P mirror with
+#   one peer has nobody to fetch from: any image Spegel could serve is, by
+#   definition, already unpacked in the local store, so containerd was never
+#   going to pull it anyway. Benefit today: zero. Cost today, all real:
+#     · hostPath onto /run/containerd/containerd.sock — root-equivalent on the
+#       node — plus the content store and /etc/cri/conf.d/hosts.
+#     · a PSA `privileged` namespace (hostPath + hostPort 30020 are both
+#       baseline violations; Talos enforces baseline everywhere but kube-system).
+#     · a containerd machineconfig change that doubles image-store footprint
+#       (bootstrap/talos/_patches/08-spegel-containerd.yaml).
+#     · a new hard dependency in the image-pull path, on a single-node cluster
+#       where an image-pull outage is a cluster outage.
+#   UN-PARK WHEN: node #2 (the R820, per bootstrap/talos/README.md) joins, or
+#   when arrakis workers multiply. Then the P2P story is real.
+#
+# ── HOW TO UN-PARK (all three, in this order) ──
+#   1. Operator applies bootstrap/talos/_patches/08-spegel-containerd.yaml
+#      (Talos discards unpacked layers by default, which leaves Spegel with
+#      nothing to serve).
+#   2. Add `spegel` to clusters/baremetal/infrastructure/namespaces.yaml with
+#      `pod-security.kubernetes.io/enforce: privileged`. Upstream says this in
+#      as many words: "The default Talos security profile is too restrictive to
+#      allow Spegel to operate."
+#   3. Add `- 33-registry.yaml` to the clusterprofiles kustomization.
+#
+# ── PINS, verified 2026-08-26 ──
+#   `helm show chart oci://ghcr.io/spegel-org/helm-charts/spegel` → version
+#   0.7.4, appVersion v0.7.4. Chart pins its own image by digest
+#   (sha256:26c60b05…), so no tag drift. chartVersion EXACT: Sveltos v1.12
+#   rejects `.x` wildcards.
+#   Values keys below all exist in 0.7.4's values.yaml (`helm show values`):
+#   spegel.containerdRegistryConfigPath, spegel.prependExisting,
+#   spegel.mirroredRegistries.
+#
+# ── THE ONE THING THAT WILL BREAK IF YOU SKIP IT ──
+#   Talos's CRI registry config path is /etc/cri/conf.d/hosts, not the chart's
+#   default /etc/containerd/certs.d (upstream's Talos page states this). That is
+#   the SAME directory Talos generates hosts.toml into from
+#   `machine.registries.mirrors` — i.e. where 07-registries.yaml puts the Gitea
+#   plain-HTTP mirror entry. Spegel's default behaviour is to own that directory
+#   outright. `prependExisting: true` is therefore load-bearing: without it
+#   Spegel deletes the Gitea mirror config and every 192.168.2.244:3000/... pull
+#   starts failing on a TLS handshake.
+#
+# Selector: persona=infra (contraxia only). arrakis is persona=platform and its
+# workers are KubeVirt VMs — a separate decision, not this profile's business.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: registry-mirror
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    - repositoryURL: oci://ghcr.io/spegel-org/helm-charts
+      repositoryName: spegel
+      chartName: spegel
+      chartVersion: 0.7.4           # appVersion v0.7.4; pin EXACT
+      releaseName: spegel
+      releaseNamespace: spegel
+      helmChartAction: Install
+      values: |
+        spegel:
+          # Talos, not the chart default /etc/containerd/certs.d.
+          containerdRegistryConfigPath: /etc/cri/conf.d/hosts
+          # LOAD-BEARING — see header. Keeps Talos's own generated mirror
+          # entries (the Gitea plain-HTTP registry) instead of clobbering them.
+          prependExisting: true
+          # Only mirror the public registries this estate actually pulls from.
+          # Empty (the default) means "mirror everything", which would put
+          # Spegel in front of the Gitea registry too — pointless (the registry
+          # is one L2 hop away) and a second way to break local pulls.
+          mirroredRegistries:
+            - https://docker.io
+            - https://ghcr.io
+            - https://registry.k8s.io
+            - https://quay.io

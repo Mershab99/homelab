@@ -70,3 +70,15 @@ resources:
   # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
   # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
   # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.
+  # ── local image supply chain (2026-08-26) — the estate stops depending on
+  # ghcr for its own images. The writable registry is Gitea's built-in `/v2/`
+  # endpoint (already live from 21-forge; no chart, no profile). Runbook:
+  # docs/runbooks/local-image-build.md. Report:
+  # docs/reports/2026-08-25-local-image-pipeline.md.
+  #
+  # 33-registry.yaml (Spegel) is PARKED — a P2P mirror needs peers and
+  # contraxia is one node. Its header has the un-park checklist; it also needs
+  # bootstrap/talos/_patches/08-spegel-containerd.yaml and a privileged `spegel`
+  # namespace first.
+  # - 33-registry.yaml
+  - 34-forge-runner.yaml        # Gitea Actions runner (act_runner + DinD), ns forge-runner

@@ -1,0 +1,85 @@
+# Build the Orca cell image on the cluster and push it to the forge's own OCI
+# registry. The CI half of docs/runbooks/local-image-build.md; the Mac half of
+# that runbook produces the identical tag and is what unblocks orca-0 today.
+#
+# Requires 34-forge-runner to be Running and registered. Nothing here works
+# until the operator has created the `gitea-runner-token` Secret.
+#
+# ── VERIFIED 2026-08-26 ──
+#   `docker run --rm --platform linux/amd64 docker.gitea.com/runner-images:ubuntu-latest`
+#   ships docker CLI (/usr/bin/docker), git, bash and node 24.18.0 — so
+#   actions/checkout (a JS action) runs and `docker` reaches the DinD sidecar
+#   through the socket act_runner mounts into the job container.
+#
+# ── WHY plain `docker build`, not buildx ──
+#   The runner is native linux/amd64, so there is nothing to cross-build, and
+#   the default docker driver cannot export a build cache anyway. The DinD
+#   sidecar's /var/lib/docker is ephemeral, so every run is a cold build (~10
+#   min: two apt-get sets plus a .deb). The upgrade, when that annoys someone:
+#     docker buildx create --driver docker-container --use
+#     docker buildx build --push \
+#       --cache-from type=registry,ref=$REGISTRY/$IMAGE:buildcache \
+#       --cache-to   type=registry,ref=$REGISTRY/$IMAGE:buildcache,mode=max ...
+#   which parks the layer cache in the Gitea registry itself, so it survives the
+#   sidecar. Not done in v1 — it is a second moving part for a build that runs
+#   about once per Orca release.
+name: orca-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'images/orca/**'
+      - '.gitea/workflows/orca-image.yaml'
+  workflow_dispatch:
+    inputs:
+      orca_version:
+        description: 'Orca release to build (no leading v)'
+        required: false
+        default: '1.4.188'
+
+env:
+  # The LAN VIP, not gitea-http.gitea.svc — this same tag has to be pullable by
+  # KUBELET, which runs in the node's network namespace and cannot resolve
+  # cluster DNS. Plain HTTP; the dind sidecar carries --insecure-registry for it
+  # (34-forge-runner) and the node carries the matching Talos registry mirror
+  # (bootstrap/talos/_patches/07-registries.yaml).
+  REGISTRY: 192.168.2.244:3000
+  IMAGE: mershab/orca
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        # Falls back to the tag pinned in the StatefulSet so a `paths:` push and
+        # a manual dispatch cannot drift apart.
+        run: |
+          V="${{ inputs.orca_version }}"
+          [ -n "$V" ] || V=1.4.188
+          echo "ORCA_VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Log in to the forge registry
+        # Repo-level Actions secrets (Settings → Actions → Secrets). REGISTRY_TOKEN
+        # is a Gitea PAT with `write:package`. The auto-injected GITEA_TOKEN is
+        # NOT used: it is scoped to the API, not the package registry.
+        run: |
+          echo "${{ secrets.REGISTRY_TOKEN }}" \
+            | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+
+      - name: Build and push
+        run: |
+          set -eu
+          TAG="$REGISTRY/$IMAGE:v$ORCA_VERSION"
+          docker build --build-arg "ORCA_VERSION=$ORCA_VERSION" -t "$TAG" images/orca
+          docker push "$TAG"
+          echo "pushed $TAG"
+
+      # No rollout step on purpose. The cell pins an exact tag in
+      # platform/sveltos/manifests/orca-cell/orca.yaml with
+      # imagePullPolicy: IfNotPresent, so a deploy is a git commit that changes
+      # the tag — Flux → Sveltos does the rest. Re-pushing the SAME tag will not
+      # redeploy anything; delete the pod and it still won't, because the old
+      # layers are already on the node. Bump the version.

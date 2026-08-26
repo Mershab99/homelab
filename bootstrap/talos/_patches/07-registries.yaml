@@ -1,0 +1,61 @@
+# containerd registry mirrors — teach the node to pull from the in-cluster
+# Gitea OCI registry over PLAIN HTTP.
+#
+# WHY THIS EXISTS
+#   Gitea 1.27 serves an OCI registry on its own web port (`/v2/`), and 21-forge
+#   exposes it as a bare LoadBalancer VIP on the LAN with no TLS:
+#     $ curl -i http://192.168.2.244:3000/v2/
+#     HTTP/1.1 401 Unauthorized
+#     Docker-Distribution-Api-Version: registry/2.0
+#     Www-Authenticate: Bearer realm="http://192.168.2.244:3000/v2/token",...
+#   containerd defaults to HTTPS for every reference host, so without this patch
+#   `image: 192.168.2.244:3000/mershab/orca:v1.4.188` dies in a TLS handshake.
+#   Declaring the host as its own mirror with an explicit `http://` endpoint is
+#   Talos's supported way to say "this registry is plaintext".
+#
+#   skipFallback: true — the only fallback would be https://192.168.2.244:3000,
+#   which cannot work. Without it every pull burns a TLS timeout first.
+#
+# NO CREDENTIALS HERE, DELIBERATELY
+#   Gitea runs with REQUIRE_SIGNIN_VIEW=true, so the registry needs auth. That
+#   comes from a per-namespace `kubernetes.io/dockerconfigjson` imagePullSecret
+#   (`gitea-pull`), the same shape the cell already used for ghcr — see
+#   docs/runbooks/local-image-build.md. Keeping the credential out of the
+#   machineconfig is why this file can live in git verbatim.
+#   Alternative, if per-namespace pull secrets ever become the annoying part:
+#   add `machine.registries.config."192.168.2.244:3000".auth.{username,password}`
+#   here instead and drop every imagePullSecret. That makes the node itself
+#   authenticated for the whole registry and couples credential rotation to a
+#   machineconfig apply. Not chosen.
+#
+# DOMAIN MIGRATION
+#   When the forge gets a real name + cert (`git.mershab.com`, Track F), this
+#   whole patch becomes unnecessary: a publicly-trusted cert needs no mirror
+#   entry. Delete the file, regenerate, and re-tag the images. Until then the IP
+#   is the reference host because it must resolve from BOTH the node's netns
+#   (kubelet pull) and the pod netns (runner push) — a cluster Service DNS name
+#   only resolves in the second.
+#
+# VERIFIED 2026-08-26: `talosctl machineconfig patch` + `talosctl validate
+# --mode metal` against a throwaway v1.13 controlplane config → "is valid for
+# metal mode".
+#
+# APPLY (operator — the agent guard denies talosctl config writes):
+#   talosctl --talosconfig bootstrap/talos/talosconfig \
+#     -e 192.168.2.70 -n 192.168.2.70 \
+#     patch mc --mode=auto --patch @bootstrap/talos/_patches/07-registries.yaml
+#   Verify:
+#   talosctl ... get rc -o yaml          # RegistryConfigs spec is {} today
+#   talosctl ... read /etc/cri/conf.d/hosts/192.168.2.244:3000/hosts.toml
+#   `--mode=auto` lets Talos pick no-reboot if the field allows it. r730 is a
+#   single control-plane node: if it DOES schedule a reboot the API server goes
+#   away for ~1 minute. UNVERIFIED which mode it picks.
+machine:
+  registries:
+    mirrors:
+      # Quoted: the key contains a colon, and bare `host:port` in YAML is a
+      # flow-mapping trap.
+      "192.168.2.244:3000":
+        endpoints:
+          - "http://192.168.2.244:3000"
+        skipFallback: true

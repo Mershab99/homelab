@@ -13,7 +13,9 @@ bootstrap/talos/
 │   ├── 03-apiserver-hardening.yaml   # PodSecurity admission + audit policy
 │   ├── 04-extra-manifests.yaml       # kubelet-serving-cert-approver + metrics-server
 │   ├── 05-discovery.yaml             # discovery explicitly OFF (no phone-home)
-│   └── 06-vfio.yaml                  # IOMMU + Talos pcirebind for GPU passthrough
+│   ├── 06-vfio.yaml                  # IOMMU + Talos pcirebind for GPU passthrough
+│   ├── 07-registries.yaml            # plain-HTTP mirror for the in-cluster Gitea OCI registry
+│   └── 08-spegel-containerd.yaml     # PARKED with 33-registry.yaml — keep unpacked layers
 ├── r730.yaml                         # host-specific patch (hostname, NIC, br0, install disk, IP)
 ├── r730-schematic.yaml               # Image Factory schematic
 └── r820.yaml                         # added when R820 lands
@@ -39,9 +41,25 @@ talosctl gen config homelab https://192.168.2.70:6443 \
   --config-patch @bootstrap/talos/_patches/04-extra-manifests.yaml \
   --config-patch @bootstrap/talos/_patches/05-discovery.yaml \
   --config-patch @bootstrap/talos/_patches/06-vfio.yaml \
+  --config-patch @bootstrap/talos/_patches/07-registries.yaml \
   --config-patch @bootstrap/talos/r730.yaml \
   --output gen/talos-r730-machineconfig.yaml
 ```
+
+`08-spegel-containerd.yaml` is intentionally absent from that list — it is
+parked alongside `platform/sveltos/clusterprofiles/33-registry.yaml`. Add it in
+the same change that un-parks Spegel.
+
+Both 07 and 08 can also be applied to a running node without regenerating:
+
+```bash
+talosctl --talosconfig bootstrap/talos/talosconfig -e 192.168.2.70 -n 192.168.2.70 \
+  patch mc --mode=auto --patch @bootstrap/talos/_patches/07-registries.yaml
+```
+
+They are in `_patches/` as well so a future regeneration does not silently drop
+them. Verified 2026-08-26: both merge into a v1.13 controlplane config and
+`talosctl validate --mode metal` passes.
 
 ## Hardware-specific TODOs before first boot
 
