@@ -1,0 +1,78 @@
+# netbird-cp — the self-hosted NetBird control plane, on contraxia.
+#
+# This revives what `08-netbird.yaml` was before it was ripped on 2026-08-05,
+# with three differences the user asked for on 2026-08-25:
+#   1. it runs on the HUB (persona=infra), not on the arrakis VPS;
+#   2. it is the v0.77.x COMBINED server, not the retired 4-container layout;
+#   3. it authenticates against its OWN embedded IdP, not Dex.
+#
+# ── WHY NOT DEX (auth.mershab.com) ──
+# The brief asked for an explicit recommendation. Local users, and it is not
+# close. Dex runs on arrakis (06-auth-stack, persona=platform). arrakis's
+# control plane is HOSTED ON CONTRAXIA and arrakis is down right now. Federating
+# the mesh to Dex would mean: to log into the tool you use to reach the estate,
+# the estate has to already be up — and specifically the tenant whose control
+# plane lives on the box you are trying to reach. That is a circular dependency
+# that only bites on the day it matters. NetBird >=0.62 embeds a full Dex
+# in-process (management/server/idp/embedded.go), so "local users" here is still
+# real OIDC with real MFA, just with no cross-cluster edge. Revisit only if the
+# estate ever gains a second, independently-hosted IdP.
+#
+# ── HOSTNAME ──
+# netbird.mershab.com. Verified UNCLAIMED on 2026-08-25:
+#   dig +short netbird.mershab.com @1.1.1.1  → empty
+# (auth. and k8s-home. both answer 134.122.41.68; git./mesh. are also empty.)
+# Track F owns the edge and must NOT also claim this name. external-dns
+# publishes it automatically off the Ingress once the edge LB has an address.
+#
+# ⚠️ Side effect: the management server sets its magic-DNS domain to the
+# exposedAddress host (combined/cmd/config.go applyManagementDefaults), so peers
+# resolve as <peer>.netbird.mershab.com inside the mesh. That is upstream's own
+# behaviour. Do not let external-dns publish anything under that subdomain.
+#
+# ── EXPOSURE / UDP ──
+# Everything public rides Track F's ONE edge LB over TCP 443. NO lan-pool VIP is
+# claimed by this track; docs/vip-allocation.md is unchanged. The built-in STUN
+# server is deliberately DISABLED and peers are pointed at public STUN instead —
+# the full argument is in the manifests' header and in the report's §UDP.
+#
+# ── MANUAL STEP (once, before the pod can start) ──
+# Secret `netbird-server-secrets` in ns `netbird`. Follows the repo's model:
+# plaintext, hand-applied, gitignored (secrets/README.md). NEVER commit it.
+# Five keys, PLACEHOLDERS ONLY here — the real command is in the report:
+#   NETBIRD_RELAY_AUTH_SECRET             reuse tenant-secrets/netbird-management-secrets, or openssl rand -base64 32
+#   NETBIRD_DATASTORE_ENC_KEY             same Secret, same key name, or openssl rand -base64 32
+#   NB_IDP_SESSION_COOKIE_ENCRYPTION_KEY  openssl rand -base64 32
+#   NETBIRD_OWNER_EMAIL                   <ADMIN_EMAIL>
+#   NETBIRD_OWNER_PASSWORD_HASH           htpasswd -bnBC 10 "" '<ADMIN_PASSWORD>' | tr -d ':\n'
+# The last two are the first admin (decision #2: never in git). There is no
+# other way in — the embedded IdP has no self-signup and the server's `admin`
+# CLI has change-password but no user-create.
+# The old Secret's third key NETBIRD_TURN_PASSWORD is now obsolete: no coturn.
+# ⚠️ NETBIRD_DATASTORE_ENC_KEY is not recoverable: change it and every stored
+# credential in the datastore becomes unreadable.
+#
+# ⚠️ The `tank` zpool does not exist yet, so the PVC and therefore the pod stay
+# Pending. That is the outstanding manual PHASE 3, not a fault in this profile.
+#
+# Selector: persona=infra (contraxia only). ONE control plane, ever.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: netbird-cp
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - tls-stack     # cert-manager must exist before the Certificate CR applies
+    - storage       # fast-zfs StorageClass for the datastore PVC
+  policyRefs:
+    # ns + config template + Deployment/PVC/Service + dashboard + Ingresses.
+    # Deliberately NOT dependsOn the hub edge profile: Ingress objects apply
+    # fine with no controller, and a dependsOn on a profile name Track F has not
+    # merged yet would deadlock this one.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/netbird-cp

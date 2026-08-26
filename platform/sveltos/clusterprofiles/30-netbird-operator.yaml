@@ -1,0 +1,124 @@
+# netbird-operator — the "full k8s integration" half of the mesh, on BOTH clusters.
+#
+# The operator extends the API with netbird.io/v1alpha1 SetupKey, Group,
+# NetworkRouter, NetworkResource, NetworkEgress, SidecarProfile and ClusterProxy,
+# so in-cluster Services become mesh resources declaratively instead of by
+# clicking around the dashboard. Pairs with 29-netbird-cp.
+#
+# ── CHART PROVENANCE (the gh-pages repo is a decoy) ──
+# https://netbirdio.github.io/kubernetes-operator/index.yaml is STALE: its
+# newest entry is chart 0.2.2 / appVersion 0.2.2 from 2026-02-26, while the
+# operator itself is at v0.8.0 (2026-07-17). The live chart moved to OCI and is
+# only referenced from the repo README:
+#   helm show chart oci://ghcr.io/netbirdio/helm-charts/netbird-operator
+#     → version 0.8.0, appVersion v0.8.0, digest sha256:d836ce83f06e...
+#   ghcr tags list → [0.4.0 0.4.1 0.5.0 0.6.0 0.7.0 0.8.0]
+# Pin 0.8.0 EXACTLY — sveltos v1.12 rejects `.x` wildcards anyway.
+# CRDs render from crds/ (13 files), NOT templates/, so there is no
+# CRD-races-its-own-CRs deadlock like the round-1 defect.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# THE TWO THINGS THAT WILL BITE — read before changing values
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# 1. ⚠️ THE CHART SHIPS A CLUSTER-WIDE MutatingWebhookConfiguration ON *EVERY*
+#    POD CREATE WITH `failurePolicy: Fail` AND, BY DEFAULT, NO namespaceSelector.
+#    On a single-node cluster that is a foot-gun with a loaded chamber: if the
+#    operator pod is unschedulable — node drained, image pull broken, PVCs
+#    Pending because the zpool is missing — the apiserver rejects EVERY pod
+#    creation cluster-wide and the cluster cannot heal itself. The chart's
+#    objectSelector only exempts the operator's own pods, which is not enough.
+#    FIX, applied below: `webhook.namespaceSelectors` scopes the webhook to
+#    namespaces that OPT IN with `netbird.io/sidecar-injection: enabled`.
+#    Verified in the rendered output: the webhook gains a matching
+#    `namespaceSelector.matchExpressions`. Nothing carries that label today, so
+#    the blast radius starts at zero. Keep failurePolicy Fail — once a namespace
+#    opts in, silent non-injection is worse than a loud rejection.
+#
+# 2. ⚠️ THE OPERATOR HOLDS A CLUSTER-WIDE SECRETS get/list/watch/patch/update.
+#    templates/rbac.yaml:181 gates that rule on
+#    `or .Values.netbirdAPI.keyFromSecret .Values.clusterSecretsPermissions.allowAllSecrets`
+#    — and keyFromSecret is mandatory, so the rule is ALWAYS granted and
+#    `clusterSecretsPermissions.allowAllSecrets: false` is a no-op in 0.8.0
+#    (proved by diffing the render with the flag both ways: zero difference).
+#    That is not narrowable from values. On contraxia it means read access to
+#    `tenant-secrets`, the CAPI-generated arrakis kubeconfig and Sveltos' own
+#    secrets. Accepted here because the user asked for the operator explicitly;
+#    the mitigation is to keep the PAT below scoped to a NetBird *service user*,
+#    not a human owner account. Flagged in the report's security section.
+#
+# ── THE CREDENTIAL (devex decision #14's tradeoff, taken with eyes open) ──
+# devex chose a plain routing-peer Deployment over this operator precisely
+# because the operator's Service-per-DNS-zone model wants a management-API PAT
+# in-cluster where a scoped setup key would do. The user has now asked for the
+# operator on both clusters, so the PAT is the price. Create it by hand AFTER
+# the first admin login, once per cluster:
+#   Dashboard → Team → Service Users → create → generate access token
+#   kubectl --context <ctx> -n netbird create secret generic netbird-mgmt-api-key \
+#     --from-literal=NB_API_KEY='<NETBIRD_SERVICE_USER_PAT>'
+# NEVER in git. The operator Deployment stays in CreateContainerConfigError until
+# it exists — a contained, obvious failure. Propagating it from mgmt through
+# 10-tenant-secrets was rejected on purpose: templateResourceRefs are
+# all-or-nothing, so adding a ref for a Secret that cannot exist until a human
+# logs into a dashboard would FailNonRetriable that whole profile and take
+# cloudflare/dex/coder/digitalocean propagation down with it.
+#
+# ── SETUP KEYS ──
+# Not shipped as CRs. An `NBSetupKey` cannot reconcile before the PAT exists, and
+# a CR that permanently fails is worse than a documented command. Create them
+# reusable + ephemeral (peers self-purge ~10min after going offline) once the CP
+# is up; the report has the shape.
+#
+# Selector: persona In [infra, platform] — contraxia AND arrakis, as asked.
+# ⚠️ UNVERIFIED on arrakis: arrakis is DOWN at authoring time (its k0smotron CP
+# is hosted on contraxia and its storage was destroyed in the ZFS migration), and
+# it does not currently appear in `kubectl get sveltosclusters -A`. Nothing on
+# the platform side of this profile has been observed reconciling.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: netbird-operator
+spec:
+  clusterSelector:
+    matchExpressions:
+      - {key: persona, operator: In, values: [infra, platform]}
+  dependsOn:
+    - tls-stack   # the chart's webhook Certificate + self-signed Issuer are cert-manager CRs
+  helmCharts:
+    - repositoryURL: oci://ghcr.io/netbirdio/helm-charts/netbird-operator
+      repositoryName: netbird
+      chartName: netbird/netbird-operator
+      chartVersion: 0.8.0            # appVersion v0.8.0; pin EXACT
+      releaseName: netbird-operator
+      releaseNamespace: netbird
+      helmChartAction: Install
+      values: |
+        # Undocumented in values.yaml but real: templates/deployment.yaml:50
+        # renders it as --netbird-management-url. Same host the CP publishes.
+        managementURL: https://netbird.mershab.com
+        cluster:
+          # Names the NetBird network + resources this cluster creates, so the
+          # two clusters must not collide. The hub's SveltosCluster is literally
+          # named `mgmt`, which is meaningless inside NetBird — map it back.
+          name: {{ if eq .Cluster.metadata.name "mgmt" }}contraxia{{ else }}{{ .Cluster.metadata.name }}{{ end }}
+          dns: svc.cluster.local
+        netbirdAPI:
+          keyFromSecret:
+            name: netbird-mgmt-api-key
+            key: NB_API_KEY
+        # See hazard 1 in the header. Opt-in namespaces only.
+        webhook:
+          enableCertManager: true
+          namespaceSelectors:
+            - key: netbird.io/sidecar-injection
+              operator: In
+              values: ["enabled"]
+        # DEPRECATED upstream in favour of NetworkRouter/NetworkResource, and it
+        # would create a privileged router Deployment we have not asked for.
+        ingress:
+          enabled: false
+        # No GatewayClass and no Gateway API CRDs on contraxia
+        # (`kubectl get gatewayclass` → none). Enabling this would render
+        # watches for types that do not exist.
+        gatewayAPI:
+          enabled: false

@@ -1,0 +1,201 @@
+# NetBird control plane — ONE combined server, pinned 0.77.1.
+#
+# ── Why this is NOT the 4-Deployment layout devex decision #1 describes ──
+# devex pinned 0.77.0 and translated the OLD upstream compose: separate
+# `netbirdio/{management,signal,relay}` containers + a coturn, wired together by
+# a hand-written `management.json`. Upstream retired that shape. v0.77.x ships
+# `netbirdio/netbird-server`, a SINGLE binary that runs management + signal +
+# relay + STUN, configured by one small YAML
+# (netbird/infrastructure_files/getting-started.sh, `render_combined_yaml`, and
+# netbird/combined/cmd/config.go `CombinedConfig`). The decision's PACKAGING
+# rule still holds — hand-rolled manifests, pinned exactly, no upstream chart —
+# only the component count changed. One Deployment, one PVC, one Service.
+#
+# ── Why an initContainer renders the config ──
+# The combined server reads plain YAML: `yaml.Unmarshal` on the raw file, no env
+# expansion, no `*File` indirection for secrets, and no NB_* override for
+# authSecret / store.encryptionKey / auth.owner (verified: the only NB_* vars in
+# combined/ + management/server/store/ are the DSN/sqlite-file ones and
+# NB_PPROF_ADDR). The OLD management.json path did support substitution
+# (util.ReadJsonWithEnvSub) — the new YAML path does not. So the four secret
+# values have to be IN the file. Putting the whole file in a hand-applied Secret
+# would take the reviewable part of the design out of git; instead the shape
+# lives here as a template with @MARKERS@ and a 6-line busybox initContainer
+# seds the secrets in from `netbird-server-secrets`. Nothing secret in git.
+#
+# ⚠️ `store.encryptionKey` is NOT auto-persisted. combined/cmd/config.go
+# EnsureEncryptionKey generates one when empty and only *logs* a warning — it
+# does not write it back (unlike the old management path, which rewrote
+# management.json). An empty key therefore means a NEW key every restart and an
+# unreadable datastore. It must be supplied.
+#
+# ⚠️ `auth.owner.password` is a BCRYPT HASH despite the field name
+# (combined/cmd/config.go:636 maps it to idp.OwnerConfig.Hash, which Dex takes
+# as a StaticPassword hash). It is the ONLY way to create the first admin: the
+# embedded IdP has no signup flow and the `admin` CLI tree only exposes
+# change-password / reset-mfa / mfa — there is no `user create`. Dex
+# StaticPasswords are re-applied every start, so this is idempotent.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netbird-server-config
+  namespace: netbird
+data:
+  config.yaml: |
+    server:
+      # 8080, not 80: no NET_BIND_SERVICE needed. The port is parsed out of
+      # listenAddress and reused as the embedded IdP's localhost JWT-validation
+      # address (combined/cmd/root.go:277), so it must be a real port.
+      listenAddress: ":8080"
+      # What peers are told to dial. Terminates on Track F's edge (nginx:443).
+      exposedAddress: "https://netbird.mershab.com:443"
+      metricsPort: 9090
+      healthcheckAddress: ":9000"
+      logLevel: "info"
+      logFile: "console"
+
+      dataDir: "/var/lib/netbird"
+      authSecret: "@RELAY_AUTH_SECRET@"
+
+      # ⚠️ THE UDP DECISION — see docs/reports/2026-08-25-netbird-mesh.md §UDP.
+      # Setting `stuns` disables the built-in STUN listener entirely
+      # (config.go applyRelayDefaults: local STUN only starts when stuns is
+      # empty). That is deliberate: STUN must observe the client's REAL source
+      # address, chisel tunnels TCP only, and contraxia is behind home NAT — a
+      # self-hosted STUN here would be unreachable, exactly the failure devex
+      # decision #4 already booked. Public STUN costs nothing and works.
+      # Hole punching is peer-to-peer and never traverses contraxia.
+      # UPGRADE PATH: forward UDP 3478 to contraxia, delete this `stuns` block,
+      # add `stunPorts: [3478]` and a UDP Service. Nothing else changes.
+      stunPorts: []
+      stuns:
+        - uri: "stun:stun.cloudflare.com:3478"
+        - uri: "stun:stun.l.google.com:19302"
+
+      auth:
+        # Embedded IdP (Dex, in-process, since v0.62). NOT the estate Dex at
+        # auth.mershab.com — that one runs on arrakis, and the mesh is the thing
+        # you use to reach the estate when the estate is broken. See the report.
+        issuer: "https://netbird.mershab.com/oauth2"
+        signKeyRefreshEnabled: true
+        sessionCookieEncryptionKey: "@IDP_COOKIE_KEY@"
+        dashboardRedirectURIs:
+          - "https://netbird.mershab.com/nb-auth"
+          - "https://netbird.mershab.com/nb-silent-auth"
+        # Dex matches these EXACTLY, no wildcards.
+        dashboardPostLogoutRedirectURIs:
+          - "https://netbird.mershab.com/"
+        cliRedirectURIs:
+          - "http://localhost:53000/"
+        owner:
+          email: "@OWNER_EMAIL@"
+          password: "@OWNER_BCRYPT@"
+
+      store:
+        engine: "sqlite"
+        encryptionKey: "@DATASTORE_ENC_KEY@"
+
+      # reverseProxy deliberately omitted. trustedHTTPProxiesCount>0 would make
+      # NetBird believe a client-supplied X-Forwarded-For hop — and the real
+      # client IP is already lost at the chisel L4 tunnel, so there is nothing
+      # to recover and a spoofable field to trust. Peer IPs will read as the
+      # tunnel endpoint; that only affects audit/geo display.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: netbird-data
+  namespace: netbird
+spec:
+  accessModes: [ReadWriteOnce]
+  # ⚠️ fast-zfs exists but the `tank` zpool does not yet (bootstrap/zfs/create-pool.sh).
+  # This PVC stays Pending and the pod stays Pending until the pool lands. Expected.
+  storageClassName: fast-zfs
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-server
+  namespace: netbird
+  labels: {app: netbird-server}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}   # sqlite on an RWO volume: never two pods at once
+  selector:
+    matchLabels: {app: netbird-server}
+  template:
+    metadata:
+      labels: {app: netbird-server}
+    spec:
+      initContainers:
+        # ponytail: sed, not envsubst — busybox has no envsubst and this is five
+        # substitutions. Ceiling: a secret value containing & \ or | would break
+        # the replacement. base64 (A-Za-z0-9+/=), bcrypt ($./A-Za-z0-9) and an
+        # email contain none of those. If that ever stops being true, switch to
+        # an image with envsubst (gettext).
+        - name: render-config
+          image: busybox:1.37.0
+          command: [sh, -c]
+          args:
+            - |
+              set -eu
+              sed -e "s|@RELAY_AUTH_SECRET@|$NETBIRD_RELAY_AUTH_SECRET|" \
+                  -e "s|@DATASTORE_ENC_KEY@|$NETBIRD_DATASTORE_ENC_KEY|" \
+                  -e "s|@IDP_COOKIE_KEY@|$NB_IDP_SESSION_COOKIE_ENCRYPTION_KEY|" \
+                  -e "s|@OWNER_EMAIL@|$NETBIRD_OWNER_EMAIL|" \
+                  -e "s|@OWNER_BCRYPT@|$NETBIRD_OWNER_PASSWORD_HASH|" \
+                  /template/config.yaml > /config/config.yaml
+              # Fail loudly on a missing Secret key rather than booting with a
+              # literal "@OWNER_BCRYPT@" as the admin hash. Matches the marker
+              # shape, not a bare "@" — the substituted email contains one.
+              grep -q '@[A-Z_]\{3,\}@' /config/config.yaml && { echo "unsubstituted marker left in config"; exit 1; } || true
+          envFrom:
+            - secretRef: {name: netbird-server-secrets}
+          volumeMounts:
+            - {name: config-template, mountPath: /template, readOnly: true}
+            - {name: config, mountPath: /config}
+      containers:
+        - name: server
+          image: netbirdio/netbird-server:0.77.1
+          args: ["--config", "/etc/netbird/config.yaml"]
+          ports:
+            - {containerPort: 8080, name: http}
+            - {containerPort: 9000, name: health}
+            - {containerPort: 9090, name: metrics}
+          volumeMounts:
+            - {name: config, mountPath: /etc/netbird, readOnly: true}
+            - {name: data, mountPath: /var/lib/netbird}
+          readinessProbe:
+            # tcpSocket, not httpGet: healthcheckAddress's path is not part of
+            # the documented surface and a wrong path is a silent CrashLoop.
+            tcpSocket: {port: 9000}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: 9000}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+      volumes:
+        - name: config-template
+          configMap: {name: netbird-server-config}
+        - name: config
+          emptyDir: {}
+        - name: data
+          persistentVolumeClaim: {claimName: netbird-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-server
+  namespace: netbird
+spec:
+  # ClusterIP on purpose: this claims NO address from lan-pool. Everything
+  # public rides Track F's single edge LB (docs/vip-allocation.md untouched).
+  selector: {app: netbird-server}
+  ports:
+    - {name: http, port: 80, targetPort: 8080}

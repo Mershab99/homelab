@@ -1,0 +1,123 @@
+# One host, one cert, THREE Ingresses.
+#
+# Three objects because `backend-protocol` is a per-Ingress annotation in
+# ingress-nginx: the gRPC paths need an h2c backend, the relay/API paths need
+# HTTP/1.1 with WebSocket upgrade, and neither setting can be scoped to a single
+# path within one Ingress.
+#
+# The path split is a direct translation of upstream's own nginx template
+# (netbird v0.77.1 infrastructure_files/getting-started.sh, render_nginx_conf /
+# render_npm_advanced_config). Do not invent paths here:
+#   /signalexchange.SignalExchange/, /management.ManagementService/,
+#   /management.ProxyService/            → gRPC (h2c)
+#   /relay, /ws-proxy/                   → WebSocket
+#   /api, /oauth2                        → plain HTTP
+#   everything else                      → dashboard
+# ingress-nginx orders `location` blocks by descending path length within a
+# host, so the dashboard's `/` catch-all loses to every specific prefix above
+# regardless of which Ingress object declares it.
+#
+# ⚠️ DEPENDS ON TRACK F. IngressClass `nginx` does not exist on contraxia yet —
+# `kubectl get ingressclass` returned "No resources found" at authoring time.
+# These Ingresses apply cleanly and sit inert until the hub edge
+# (27-ingress-hub) lands. Nothing here claims a lan-pool VIP or a
+# loadBalancerClass; the mesh rides Track F's single consolidated edge LB.
+#
+# TLS: an explicit Certificate, NOT `cert-manager.io/cluster-issuer` annotations
+# on each Ingress. Three annotated Ingresses sharing one secretName would race
+# three Certificates for the same name and burn Let's Encrypt's 5-duplicate-
+# certs/week limit. letsencrypt-prod is Cloudflare DNS-01 (verified Ready on
+# contraxia), so this issues BEFORE the edge is reachable from the internet.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: netbird-tls
+  namespace: netbird
+spec:
+  secretName: netbird-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames: ["netbird.mershab.com"]
+---
+# gRPC: management + signal + proxy services. h2c backend.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: netbird-grpc
+  namespace: netbird
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    # Peer sync is a long-lived server stream; the nginx default 60s read
+    # timeout would tear every peer's connection down once a minute.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["netbird.mershab.com"]
+      secretName: netbird-tls
+  rules:
+    - host: netbird.mershab.com
+      http:
+        paths:
+          - path: /signalexchange.SignalExchange
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+          - path: /management.ManagementService
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+          - path: /management.ProxyService
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+---
+# WebSocket (relay, ws-proxy) + HTTP (management REST API, embedded-IdP OAuth2).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: netbird-backend
+  namespace: netbird
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "86400"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "86400"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["netbird.mershab.com"]
+      secretName: netbird-tls
+  rules:
+    - host: netbird.mershab.com
+      http:
+        paths:
+          - path: /relay
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+          - path: /ws-proxy
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+          - path: /api
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+          # /oauth2 is the embedded IdP. Losing this route = nobody can log in.
+          - path: /oauth2
+            pathType: Prefix
+            backend: {service: {name: netbird-server, port: {number: 80}}}
+---
+# Everything else → the dashboard SPA.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["netbird.mershab.com"]
+      secretName: netbird-tls
+  rules:
+    - host: netbird.mershab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: netbird-dashboard, port: {number: 80}}}

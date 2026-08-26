@@ -73,6 +73,12 @@ resources:
   # both would have two ClusterProfiles fighting over one Helm release. Pick one
   # owner first. See the file header.
   # - 24-kagent-router.yaml
+  # ── mesh (2026-08-25) — the durable answer to "how do I reach my stuff".
+  # Supersedes the 2026-08-05 rip noted above: NetBird is back, but as a
+  # self-hosted control plane on the HUB (not the arrakis VPS) plus the k8s
+  # operator on both clusters. See docs/reports/2026-08-25-netbird-mesh.md.
+  - 29-netbird-cp.yaml          # combined server 0.77.1 + dashboard @ netbird.mershab.com (persona=infra)
+  - 30-netbird-operator.yaml    # netbird-operator 0.8.0 on contraxia AND arrakis
   # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
   # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
   # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.
