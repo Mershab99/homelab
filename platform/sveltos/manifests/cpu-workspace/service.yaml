@@ -1,0 +1,37 @@
+# SSH into devbox at a fixed LAN address: ssh ubuntu@192.168.2.241
+#
+# .241 CLAIMED from lan-pool (192.168.2.240–.250, CiliumLoadBalancerIPPool
+# `lan-pool`, no serviceSelector so any Service may draw). .240 is
+# tenants/kmc-arrakis-lb. The Orca cell and the forge tracks draw from the same
+# ten addresses — .242 up.
+#
+# Reachability is Cilium L2: CiliumL2AnnouncementPolicy `lan-l2` has
+# loadBalancerIPs:true and no selector, so it ARPs for every LB IP on the node
+# already — nothing extra to add for .241.
+#
+# No loadBalancerClass. The chisel-operator edge claims services by an explicit
+# class; classless means Cilium LB-IPAM, which is how .240 got its address.
+#
+# The selector is the label KubeVirt puts on the virt-launcher pod itself
+# (verified on the live arrakis VMI), so the endpoint follows the VM across
+# restarts without anything having to relabel it. masquerade binding forwards
+# podIP:22 into the guest.
+apiVersion: v1
+kind: Service
+metadata:
+  name: devbox-ssh
+  namespace: workspaces
+  annotations:
+    lbipam.cilium.io/ips: "192.168.2.241"
+spec:
+  type: LoadBalancer
+  # externalTrafficPolicy left at Cluster: one node, so Local buys no extra hop
+  # saving, and it would not preserve the client IP anyway — masquerade binding
+  # SNATs to the VM's internal gateway before sshd ever sees the packet.
+  selector:
+    vm.kubevirt.io/name: devbox
+  ports:
+    - name: ssh
+      port: 22
+      targetPort: 22
+      protocol: TCP

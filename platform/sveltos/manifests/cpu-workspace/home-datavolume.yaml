@@ -1,0 +1,39 @@
+# /home for `devbox`, deliberately NOT a dataVolumeTemplate on the VM.
+#
+# A dataVolumeTemplate is garbage-collected with its VirtualMachine. This one is
+# a standalone DataVolume so `kubectl delete vm devbox` — or a Sveltos prune of
+# virtualmachine.yaml — leaves the user's work alone. Rebuild the root disk from
+# a newer cloud image whenever; /home rides through.
+#
+# fast-zfs is fstype=zfs → Filesystem volumeMode → CDI lays a sparse disk.img on
+# a real ZFS dataset (compression + `zfs snapshot` + the class's Retain reclaim
+# policy). fast-block/zvol would be marginally faster and materially less safe.
+#
+# accessModes + volumeMode are SPELLED OUT on purpose. CDI infers them from a
+# StorageProfile, and the only StorageProfile this repo ships is for fast-block
+# (clusters/baremetal/addons/kubevirt-hco/storageprofile.yaml). zfs.csi.openebs.io
+# is not one of CDI's known provisioners, so the auto-generated fast-zfs profile
+# comes up with empty claimPropertySets and the DataVolume wedges on
+# "no accessMode specified". Explicit values short-circuit the lookup.
+#
+# The bind.immediate annotation is the other half: fast-zfs is
+# WaitForFirstConsumer, and a blank-source DV under WFFC sits in
+# PendingPopulation until something schedules against it. Single node — there is
+# no topology to wait for.
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: devbox-home
+  namespace: workspaces
+  annotations:
+    cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+spec:
+  source:
+    blank: {}
+  storage:
+    storageClassName: fast-zfs
+    accessModes: ["ReadWriteOnce"]
+    volumeMode: Filesystem
+    resources:
+      requests:
+        storage: 250Gi

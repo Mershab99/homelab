@@ -1,0 +1,175 @@
+# devbox — the CPU workspace. A real Ubuntu 24.04 VM on the R730, reachable
+# over SSH at 192.168.2.241 (service.yaml).
+#
+# Why a KubeVirt VM and not a pod with sshd: this box has to feel like a
+# machine — its own kernel, systemd, Docker without host-privileged escapes, and
+# a reboot that does not mean "the workload moved". contraxia already runs
+# KubeVirt v1.8.4 + CDI (both HCO-managed, Deployed) and has a VM up in
+# `tenants`, so this is the proven path here, not the ambitious one.
+#
+# ── SIZING ──
+# Node r730: 31950m CPU / 98223064Ki allocatable; ~3.1 cores + ~14Gi in use at
+# design time. Guest sees 12 vCPU / 32Gi — strictly better than the MacBook's
+# 12Gi OrbStack cap, which is the whole point of the exercise. The CPU *request*
+# is 6, a deliberate 2:1 overcommit: a dev box is idle between builds and there
+# is no reason to fence off 12 cores for it. Memory is NOT overcommitted —
+# `domain.memory.guest` makes KubeVirt request guest+overhead — so this pins
+# ~33Gi hard, leaving ~48Gi for the Orca cell and the vcluster factory.
+#
+# ── DISKS ──
+#   rootdisk  fast-block, 64Gi, dataVolumeTemplate → dies with the VM. Disposable
+#             by design: bump the image URL, delete the VM, get a fresh OS.
+#   homedisk  fast-zfs, 250Gi, standalone DataVolume → survives. See
+#             home-datavolume.yaml.
+# accessModes/volumeMode are explicit on the root template for the same reason
+# they are on the home DV — do not depend on a StorageProfile lookup.
+#
+# ── SSH KEYS ──
+# accessCredentials, not a key baked into userData. The Secret is created by
+# hand and is NOT in git:
+#
+#   kubectl -n workspaces create secret generic devbox-ssh-key \
+#     --from-file=mershab.pub=$HOME/.ssh/id_ed25519.pub
+#
+# Create it BEFORE this profile reconciles: virt-launcher mounts the Secret, so
+# a missing one leaves the pod Pending on a volume mount, not booting keyless.
+# noCloud propagation merges the keys into the cloud-init userdata below at
+# first boot, which lands them on the image's default user (`ubuntu`). Rotating
+# the Secret therefore needs a VM restart — the qemuGuestAgent propagation
+# method rotates live, but then a stalled agent means no keys at all, and
+# "cannot log in" is a worse failure than "restart to rotate".
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: devbox
+  namespace: workspaces
+  labels:
+    app.kubernetes.io/name: devbox
+spec:
+  runStrategy: Always
+  dataVolumeTemplates:
+    - metadata:
+        name: devbox-root
+        annotations:
+          cdi.kubevirt.io/storage.bind.immediate.requested: "true"
+      spec:
+        source:
+          http:
+            # Ubuntu's 24.04 pointer — tracks the current point release. Pin to
+            # a dated path under .../releases/24.04/release-YYYYMMDD/ to freeze.
+            url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
+        storage:
+          storageClassName: fast-block
+          accessModes: ["ReadWriteOnce"]
+          volumeMode: Block
+          resources:
+            requests:
+              storage: 64Gi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: devbox
+        # kubevirt.io/domain is what the VMI/virt-launcher inherits; the Service
+        # selects on vm.kubevirt.io/name, which KubeVirt sets itself.
+        kubevirt.io/domain: devbox
+    spec:
+      terminationGracePeriodSeconds: 180
+      accessCredentials:
+        - sshPublicKey:
+            source:
+              secret:
+                secretName: devbox-ssh-key
+            propagationMethod:
+              noCloud: {}
+      domain:
+        cpu:
+          sockets: 1
+          cores: 12
+          threads: 1
+        memory:
+          guest: 32Gi
+        resources:
+          requests:
+            cpu: "6"        # 2:1 overcommit vs the 12 guest cores — see SIZING
+        devices:
+          rng: {}           # host entropy; without it first-boot ssh-keygen crawls
+          disks:
+            - name: rootdisk
+              bootOrder: 1
+              disk:
+                bus: virtio
+            - name: homedisk
+              serial: HOME  # → /dev/disk/by-id/virtio-HOME, stable across enumeration
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              model: virtio
+              masquerade: {}
+      networks:
+        # Pod network + masquerade. No Multus/br0 here on purpose: the LAN
+        # address comes from Cilium LB-IPAM (service.yaml), which is a fixed IP
+        # by declaration. A bridge NAD onto br0 would hand the VM a Bell Hub
+        # DHCP lease instead — an address that can move, on a DHCP scope nobody
+        # has written down. Switch to the `br-multus` NAD pattern
+        # (tenants/arrakis/infra/nad-br-multus.yaml) if this box ever needs to
+        # be an L2 peer (mDNS, DHCP server, PXE).
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: devbox-root
+        - name: homedisk
+          dataVolume:
+            name: devbox-home
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            # Kept inline in git, not in the Secret: everything here is public
+            # config, and a secretRef would replace this whole document rather
+            # than merge with it. Only the SSH keys come from the Secret, via
+            # accessCredentials above.
+            userData: |
+              #cloud-config
+              hostname: devbox
+              prefer_fqdn_over_hostname: false
+              package_update: true
+              packages:
+                - qemu-guest-agent
+                - git
+                - curl
+                - jq
+                - unzip
+                - tmux
+                - zsh
+                - build-essential
+                - python3-pip
+                - python3-venv
+                - ripgrep
+                - fd-find
+                - docker.io
+                - docker-compose-v2
+              # cc_disk_setup runs before cc_users_groups and cc_mounts in
+              # Ubuntu's cloud.cfg, so /home is mounted before cloud-init
+              # creates /home/ubuntu on it. overwrite:false makes every boot
+              # after the first a no-op instead of a wipe.
+              fs_setup:
+                - label: home
+                  filesystem: ext4
+                  device: /dev/disk/by-id/virtio-HOME
+                  partition: none
+                  overwrite: false
+              mounts:
+                # nofail: a detached home disk must not wedge the boot at the
+                # emergency shell, where there is no console to rescue it from.
+                - ["LABEL=home", "/home", "ext4", "defaults,noatime,nofail", "0", "2"]
+              ssh_pwauth: false
+              disable_root: true
+              runcmd:
+                - [systemctl, enable, --now, qemu-guest-agent]
+                - [systemctl, enable, --now, docker]
+                - [usermod, -aG, docker, ubuntu]
+              final_message: "devbox up after $UPTIME seconds"

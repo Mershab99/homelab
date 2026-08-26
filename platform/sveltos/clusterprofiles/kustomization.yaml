@@ -46,3 +46,6 @@ resources:
   - 16-mcp-baseline.yaml        # kagent-crds + kmcp inside every vcluster (persona=ai)
   - 17-family-apps.yaml         # home-assistant (multus lan + velvet) + mediaserver + photoprism (vcluster=family)
   - 18-mershab-apps.yaml        # vaultwarden + website (vcluster=mershab)
+  # Human-facing compute on the R730. Blocked on the ZFS storage classes —
+  # dependsOn: storage.
+  - 20-cpu-workspace.yaml       # `devbox` KubeVirt VM + SSH at 192.168.2.241

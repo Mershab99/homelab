@@ -1,0 +1,45 @@
+# cpu-workspace — `devbox`, a persistent Ubuntu 24.04 VM on the R730 that the
+# user SSHes into. The point: 32 cores / 94 GiB of idle bare metal instead of a
+# thermally-bound MacBook with a 12 GiB OrbStack cap.
+#
+# Ships namespace + a standalone /home DataVolume + the VirtualMachine + a
+# LoadBalancer Service pinned to 192.168.2.241. Everything is a plain manifest —
+# no chart exists for "one pet VM", and one would be a worse way to say it.
+#
+# persona=infra: contraxia is the SveltosCluster `mgmt/mgmt` (persona=infra),
+# and the VM has to run where KubeVirt and the tank pool are. Not `platform` —
+# arrakis is a k0smotron tenant with no hypervisor of its own.
+#
+# dependsOn:
+#   storage    — fast-zfs + fast-block must exist, and at the time this was
+#                written they did not: the node still had `longhorn (default)`
+#                and no zfs Talos extension. This profile is INERT until the
+#                Longhorn→ZFS migration lands. That is the correct ordering,
+#                not a bug — do not "fix" it by pointing the disks at longhorn.
+#   virt-host  — KubeVirt + CDI, via HCO/OLM.
+#
+# ── BEFORE FIRST RECONCILE ── create the SSH key Secret, or virt-launcher hangs
+# Pending on the missing volume:
+#
+#   kubectl -n workspaces create secret generic devbox-ssh-key \
+#     --from-file=mershab.pub=$HOME/.ssh/id_ed25519.pub
+#
+# (`workspaces` is created by this profile, so run it after the first reconcile
+# lands the namespace, or `kubectl create ns workspaces` first — the Secret is
+# hand-applied precisely because keys do not belong in git.)
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: cpu-workspace
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - storage
+    - virt-host
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/cpu-workspace

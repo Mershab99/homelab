@@ -1,0 +1,11 @@
+# Home of the human-facing CPU workspaces on contraxia. One VM today
+# (`devbox`); a second is a copy of virtualmachine.yaml + service.yaml with a
+# new name and the next lan-pool IP.
+#
+# No pod-security label: `tenants` carries none and runs virt-launcher fine, so
+# this cluster has no restricted PSA default to opt out of. Add
+# pod-security.kubernetes.io/enforce: privileged here if that ever changes.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workspaces
