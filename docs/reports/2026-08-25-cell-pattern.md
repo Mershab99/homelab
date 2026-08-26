@@ -1,7 +1,10 @@
 # TRACK H — the reproducible cell pattern, and a refinement pass over 19–26
 
 **Date:** 2026-08-26 (dispatched under the 2026-08-25 brief set)
-**Branch:** `refactor/cell-pattern`
+**Branch:** published to `gitea` as **`refactor/cell-pattern`**. The Orca worktree
+created the local branch as `cell-pattern`, so it was pushed with
+`git push gitea cell-pattern:refactor/cell-pattern` — the remote name matches the
+brief. `origin` is untouched (denied by design; the coordinator pushes).
 **Cluster under audit:** contraxia — single Talos control-plane node `r730`,
 `192.168.2.70`, k8s v1.36.2
 **Profile owned:** 31 (`31-cell-TEMPLATE.yaml`)
