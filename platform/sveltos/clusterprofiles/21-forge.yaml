@@ -75,6 +75,11 @@ spec:
       persona: infra
   dependsOn:
     - infra-db      # CNPG operator must exist before the gitea-pg Cluster CR applies
+    - storage       # gitea-shared-storage wants fast-zfs; gitea-pg wants db-zfs.
+                    # Added 2026-08-26: this was missing, so on a cold bootstrap the
+                    # chart's PVC could be created before 04-storage had reconciled.
+                    # `dependsOn` gates FIRST DEPLOYMENT only — it does not tear the
+                    # forge down if storage later degrades.
   helmCharts:
     - repositoryURL: https://dl.gitea.com/charts/
       repositoryName: gitea
@@ -87,6 +92,18 @@ spec:
         replicaCount: 1
         strategy:
           type: Recreate
+        # The chart default is `resources: {}` → BestEffort QoS → the FIRST pod
+        # the kubelet evicts under node pressure. This is the forge of record on
+        # a single-node cluster: an evicted pod has nowhere to reschedule.
+        # Sized off the live pod: `kubectl top pod -n gitea` 2026-08-26 → 1m CPU /
+        # 86Mi idle. The memory limit is the guard rail; no CPU limit, so a
+        # `git gc` or a large clone can use the box's idle cores.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            memory: 2Gi
         ingress:
           enabled: false             # no ingress controller on contraxia — see header
         service:

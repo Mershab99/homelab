@@ -1,0 +1,34 @@
+# Closes the last hole in 23-kubewall's risk analysis.
+#
+# That analysis dropped the LAN VIP and dropped cluster-admin, then accepted a
+# residual: "the API is still unauthenticated, so anything that can reach the
+# pod's ClusterIP inside the cluster can drive it — but it can now only read."
+# On this cluster that residual is a privilege-escalation gadget: a compromised
+# pod in ANY namespace normally has only its own ServiceAccount, but one HTTP
+# call to kubewall.kubewall.svc:8443 gives it cluster-wide `view` with no
+# credential and no audit trail — including a `POST /api/v1/app/config/
+# kubeconfigs` that hot-loads an attacker-supplied kubeconfig, no restart.
+#
+# Default-deny ingress removes the in-cluster path entirely. The intended access
+# path is unaffected:
+#
+#   kubectl --context=admin@contraxia -n kubewall port-forward svc/kubewall 8443:8443
+#
+# port-forward enters from the host network namespace, not the pod network, so
+# NetworkPolicy does not apply to it. VERIFIED on this cluster 2026-08-26 against
+# flux-operator-mcp, whose chart NetworkPolicy admits only namespaces `mcp` and
+# `cell`: a port-forward from the Mac returned HTTP 200 on an MCP `initialize`.
+# And port-forward already requires cluster credentials — which is the
+# authentication this app does not have.
+#
+# No egress rule: kubewall must reach the API server to do its job, and Cilium
+# leaves egress unrestricted while `policyTypes` names only Ingress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubewall-default-deny-ingress
+  namespace: kubewall
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

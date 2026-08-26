@@ -29,6 +29,16 @@ metadata:
   namespace: gitea
 spec:
   instances: 2
+  # Without this every instance is BestEffort — the first thing evicted under
+  # node pressure, on a single node with nowhere to reschedule. `kubectl top pod
+  # -n gitea` 2026-08-26: gitea-pg-1 10m/73Mi, gitea-pg-2 6m/60Mi. Requests sit
+  # above that; the limit is the guard rail against a runaway query.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
   storage:
     size: 10Gi
     storageClass: db-zfs

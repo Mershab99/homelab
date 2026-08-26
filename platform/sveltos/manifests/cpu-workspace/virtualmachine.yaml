@@ -17,12 +17,45 @@
 # ~33Gi hard, leaving ~48Gi for the Orca cell and the vcluster factory.
 #
 # ── DISKS ──
-#   rootdisk  fast-block, 64Gi, dataVolumeTemplate → dies with the VM. Disposable
+#   rootdisk  fast-zfs, 64Gi, dataVolumeTemplate → dies with the VM. Disposable
 #             by design: bump the image URL, delete the VM, get a fresh OS.
 #   homedisk  fast-zfs, 250Gi, standalone DataVolume → survives. See
 #             home-datavolume.yaml.
 # accessModes/volumeMode are explicit on the root template for the same reason
 # they are on the home DV — do not depend on a StorageProfile lookup.
+#
+# ⚠️ 2026-08-26 — ROOT DISK MOVED fast-block/Block → fast-zfs/Filesystem.
+# The original fast-block + volumeMode: Block choice DID NOT WORK. The CDI
+# importer runs as uid 107, non-root, with no fsGroup, and cannot open a raw
+# zvol device node:
+#
+#   $ kubectl -n workspaces logs importer-prime-3c23fabb-...
+#   E0826 04:17:43 importer.go:138] exit status 1, blockdev: cannot open
+#     /dev/cdi-block-volume: Permission denied
+#     ...importer.GetAvailableSpaceBlock (pkg/importer/file.go:79)
+#
+#   $ kubectl -n workspaces get dv
+#   devbox-home   Succeeded          100.0%          # fast-zfs, Filesystem
+#   devbox-root   ImportInProgress   N/A    9        # fast-block, Block
+#
+# zfs-localpv's CSIDriver declares `fsGroupPolicy: ReadWriteOnceWithFSType`
+# (verified live), which applies fsGroup only to volumes that HAVE an fsType —
+# i.e. never to a raw block volume — so nothing ever grants uid 107 access to
+# the device. The A/B above is the whole proof: same node, same CDI, same
+# cluster, one Filesystem import Succeeded and the only Block volume on the
+# cluster is the one that failed 9 times.
+#
+# Filesystem mode puts a sparse disk.img on a real ZFS dataset instead — which
+# is exactly what home-datavolume.yaml's header already argues for
+# ("fast-block/zvol would be marginally faster and materially less safe").
+# clusters/baremetal/addons/kubevirt-hco/storageprofile.yaml keeps forcing Block
+# on fast-block; that is left alone because kubevirt-csi hot-plug on arrakis
+# wants it. fast-block is simply the wrong class for a CDI http import.
+#
+# ⚠️ ONE MANUAL STEP: KubeVirt does not recreate an existing DataVolume when its
+# template changes. The operator must delete the wedged one once:
+#     kubectl --context=admin@contraxia -n workspaces delete dv devbox-root
+# Sveltos then re-applies the VM and CDI re-imports onto fast-zfs.
 #
 # ── SSH KEYS ──
 # accessCredentials, not a key baked into userData. The Secret is created by
@@ -59,9 +92,11 @@ spec:
             # a dated path under .../releases/24.04/release-YYYYMMDD/ to freeze.
             url: https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
         storage:
-          storageClassName: fast-block
+          # NOT fast-block/Block — the CDI importer cannot open a raw zvol.
+          # See the DISKS block in the header for the evidence.
+          storageClassName: fast-zfs
           accessModes: ["ReadWriteOnce"]
-          volumeMode: Block
+          volumeMode: Filesystem
           resources:
             requests:
               storage: 64Gi

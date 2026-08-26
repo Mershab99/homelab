@@ -70,3 +70,15 @@ resources:
   # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
   # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
   # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.
+  #
+  # 31-cell-TEMPLATE.yaml is likewise a template, never listed. It is the
+  # canonical shape for a HUB WORKLOAD (storage + identity + access path);
+  # 25- is for a nested vCluster. Read it before adding profile N+1.
+  #
+  # ── THIS FILE IS THE PROFILE-NUMBER REGISTRY ──
+  # There is no other one. Claim your number by adding its line HERE in your
+  # FIRST commit, before you write the profile — round 1 ran four agents in
+  # parallel and shipped a duplicate `20-`. Claiming first turns a collision
+  # into a one-line merge conflict instead of two files with the same prefix.
+  # Numbers are an ordering HINT for humans; Sveltos orders on `dependsOn` and
+  # identifies profiles by `metadata.name`. Never renumber a live profile.
