@@ -24,6 +24,12 @@ spec:
         # Tenant has its own kube-proxy (k0s installs it; kubeProxy.disabled
         # is false in the K0smotronControlPlane k0sConfig).
         # Run Cilium as pure CNI — no KPR.
+        # hash-nudge 2026-08-25: arrakis etcd was re-seeded in the storage
+        # migration, wiping the in-cluster Helm release records while the hub
+        # ClusterSummary still cached Helm=Provisioned — Sveltos would never
+        # reinstall. Any change inside this values block flips the hash and
+        # forces the Helm feature to re-reconcile. Safe to remove on the NEXT
+        # unrelated edit to this block.
         kubeProxyReplacement: false
         ipam:
           mode: kubernetes
