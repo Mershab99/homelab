@@ -67,7 +67,21 @@
       "Bash(yq:*)",
       "Bash(python3:*)",
       "Bash(curl:*)",
-      "Bash(orca orchestration:*)"
+      "Bash(kustomize build:*)",
+      "Bash(kustomize:*)",
+      "Bash(task:*)",
+      "Bash(bash -n:*)",
+      "Bash(docker manifest inspect:*)",
+      "Bash(crane:*)",
+      "Bash(skopeo:*)",
+      "Bash(nc:*)",
+      "Bash(dig:*)",
+      "Bash(ping:*)",
+      "Bash(showmount:*)",
+      "Bash(rpcinfo:*)",
+      "Bash(arp:*)",
+      "Bash(orca orchestration:*)",
+      "Bash(orca skills:*)"
     ]
   },
   "hooks": {
