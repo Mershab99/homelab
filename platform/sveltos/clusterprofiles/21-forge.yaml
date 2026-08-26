@@ -36,7 +36,7 @@
 #    resources found"). The one nginx edge in this homelab runs on arrakis, not
 #    here. So the shamu design's own model applies unchanged, with Cilium
 #    LB-IPAM standing in for MetalLB.
-#      ⚠️ VIP CLAIM: 192.168.2.242 — assigned by docs/vip-allocation.md
+#      ⚠️ VIP CLAIM: 192.168.2.244 — assigned by docs/vip-allocation.md
 #      (.240-.250; .240 is tenants/kmc-arrakis-lb). This is the ONLY pool IP
 #      this track claims; see the report's IP section.
 #    `service.http.clusterIP: ""` is load-bearing — the chart defaults it to
@@ -55,7 +55,7 @@
 #        kubectl -n gitea exec deploy/gitea -- gitea admin user create \
 #          --admin --username <ADMIN_USER> --email <ADMIN_EMAIL> \
 #          --password '<ADMIN_PASSWORD>' --must-change-password=true
-#   2. PAT for clones/CI: create in the UI at http://192.168.2.242:3000/
+#   2. PAT for clones/CI: create in the UI at http://192.168.2.244:3000/
 #      (Settings → Applications). Registration is disabled and signin is
 #      required, so the admin above is the only way in.
 #   NEVER put either value in this repo.
@@ -94,7 +94,7 @@ spec:
             type: LoadBalancer
             clusterIP: ""            # chart default is `None`; a LB Service cannot carry it
             annotations:
-              lbipam.cilium.io/ips: 192.168.2.242
+              lbipam.cilium.io/ips: 192.168.2.244
         persistence:
           size: 40Gi
           storageClass: fast-zfs
@@ -130,8 +130,8 @@ spec:
               USER: gitea
               SSL_MODE: require                  # CNPG serves TLS by default
             server:
-              DOMAIN: 192.168.2.242
-              ROOT_URL: http://192.168.2.242:3000/
+              DOMAIN: 192.168.2.244
+              ROOT_URL: http://192.168.2.244:3000/
               DISABLE_SSH: true
               START_SSH_SERVER: false
               LFS_START_SERVER: true

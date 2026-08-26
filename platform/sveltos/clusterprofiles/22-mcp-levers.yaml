@@ -98,7 +98,11 @@ spec:
       values: |
         image:
           # Chart defaults to `latest` — pin the appVersion explicitly.
-          version: "0.0.66"
+          # ⚠️ The registry tag carries a leading `v`. Plain "0.0.66" yields
+          # `quay.io/containers/kubernetes_mcp_server:0.0.66`, which does NOT
+          # exist and ImagePullBackOffs. Verified against the quay tag list:
+          #   v0.0.66, v0.0.66-linux-amd64, v0.0.65, latest, ...
+          version: "v0.0.66"
         extraArgs:
           - --read-only
         ingress:

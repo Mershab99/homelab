@@ -60,7 +60,7 @@ resources:
   # NOTE: infra-db is 26- not 20-; 20 was taken by cpu-workspace in a parallel
   # track merged first. VIPs likewise shifted per docs/vip-allocation.md.
   - 26-infra-db.yaml            # CloudNativePG on the hub (forge + future kagent DB)
-  - 21-forge.yaml               # Gitea 12.7.0 @ LB VIP 192.168.2.242 — the forge of record
+  - 21-forge.yaml               # Gitea 12.7.0 @ LB VIP 192.168.2.244 — the forge of record
   - 22-mcp-levers.yaml          # flux-operator-mcp (write) + kubernetes-mcp-server (read-only)
   - 23-kubewall.yaml            # cluster viewer — BYO SA bound to `view`, ClusterIP only
   # 24-kagent-router.yaml PARKED — Track D may own the kagent chart; enabling

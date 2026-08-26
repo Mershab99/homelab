@@ -363,7 +363,7 @@ $ python -m jsonschema (v1beta1 openAPIV3Schema) against each profile
   OK   kagent                 (19 objects)
 
 # Gitea's rendered config confirms the CNPG wiring and the VIP:
-  Service gitea-http: type LoadBalancer, annotation lbipam.cilium.io/ips: 192.168.2.242, port 3000
+  Service gitea-http: type LoadBalancer, annotation lbipam.cilium.io/ips: 192.168.2.244, port 3000
   Secret gitea-inline-config [database]: DB_TYPE=postgres  HOST=gitea-pg-rw.gitea.svc:5432
                                          NAME=gitea  USER=gitea  SSL_MODE=require
   Deployment env: GITEA__database__PASSWD ← secretKeyRef{name: gitea-pg-app, key: password}
@@ -408,7 +408,7 @@ user drives it. Adapted from devex `runbook-shamu.md` §7 and decision #11.
 
 **Preconditions:** ZFS migration landed (`fast-zfs`, `db-zfs` exist); `26-infra-db`
 and `21-forge` reconciled; `gitea-pg` Cluster healthy; Gitea pod Running and
-reachable at `http://192.168.2.242:3000/`.
+reachable at `http://192.168.2.244:3000/`.
 
 ```bash
 # 1. First admin. The chart creates none — that is deliberate (decision #8).
@@ -417,13 +417,13 @@ kubectl --context=admin@contraxia -n gitea exec deploy/gitea -- \
     --username '<ADMIN_USER>' --email '<ADMIN_EMAIL>' \
     --password '<ADMIN_PASSWORD>' --must-change-password=true
 
-# 2. PAT: log in at http://192.168.2.242:3000/ → Settings → Applications.
+# 2. PAT: log in at http://192.168.2.244:3000/ → Settings → Applications.
 #    Registration is disabled and signin is required, so this admin is the only door.
 #    Store it in a credential helper. NEVER in a git remote URL (see §5.4).
 
 # 3. Create the target repos in the UI (or via API with the PAT), then
 #    re-push each repo from the current OrbStack Gitea:
-git remote add contraxia 'http://192.168.2.242:3000/<OWNER>/<REPO>.git'
+git remote add contraxia 'http://192.168.2.244:3000/<OWNER>/<REPO>.git'
 git push contraxia --all
 git push contraxia --tags
 
@@ -467,7 +467,7 @@ as open items rather than guessed.
 
 1. **Does Track D own the kagent chart?** `24-kagent-router.yaml` is parked
    pending the answer. Enable it, or delete it — never both owners.
-2. **Is `192.168.2.242` free?** If not, move it *and* Gitea's `DOMAIN`/`ROOT_URL`.
+2. **Is `192.168.2.244` free?** If not, move it *and* Gitea's `DOMAIN`/`ROOT_URL`.
 3. **Rotate the Gitea PAT embedded in this worktree's `gitea` remote URL** (§5.4).
 4. **Storage dependency:** nothing in `21-forge` can start until `fast-zfs` and
    `db-zfs` exist. Confirm with the migration-watch worker before reconciling.
@@ -487,7 +487,7 @@ coordinator at merge time; the manifests in this repo are the corrected form.
 1. **`20-infra-db.yaml` renamed to `26-infra-db.yaml`.** Track B had already
    merged `20-cpu-workspace.yaml`. The other numbers in this track (21-25) were
    free and were left alone.
-2. **Gitea VIP moved `192.168.2.241` -> `192.168.2.242`.** All three tracks
+2. **Gitea VIP moved `192.168.2.241` -> `192.168.2.244`.** All three tracks
    independently reasoned ".240 is taken, so .241 is first free" and all three
    claimed `.241`. The Orca cell kept `.241` because that address is baked into
    its `PAIRING_ADDRESS` and the Mac pairing instructions. Authoritative map:
