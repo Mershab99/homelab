@@ -1,0 +1,173 @@
+# devbox bootstrap — turns a stock `ubuntu:24.04` into "sshd + dev toolchain +
+# Orca server" at container start.
+#
+# ── WHY A SCRIPT AND NOT AN IMAGE ──
+# The obvious move is `ghcr.io/mershab99/orca:v1.4.188`, the image devex
+# `images/orca/Dockerfile` builds and 19-orca-cell.yaml uses. It is a PRIVATE
+# ghcr package owned by `mershab99`, while this Mac's registry credential and
+# `gh` session both belong to `mershab-integratrace`
+# (docs/reports/2026-08-25-orca-cell-contraxia.md §B1). `orca-0` on contraxia is
+# ImagePullBackOff on exactly that today. Repeating it here would ship a second
+# pod that cannot start.
+#
+# So this reproduces the Dockerfile's RUN layers at runtime instead. The
+# ingredients are all PUBLIC — verified 2026-08-26:
+#   curl -sIL -o /dev/null -w '%{http_code}' \
+#     https://github.com/stablyai/orca/releases/download/v1.4.188/orca-ide_1.4.188_amd64.deb
+#   -> 200, unauthenticated
+# No registry credential, no imagePullSecret, no `ghcr-pull` hand-apply step.
+#
+# ponytail: ~500 MiB of apt+npm on EVERY pod start (cold start measured in
+# minutes, not seconds — the startupProbe below allows 10). That is the price of
+# not needing a registry. The upgrade path is one line: bake this script into an
+# image, push it to the Gitea registry that Track F is standing up at
+# git.mershab.com, and replace `image: ubuntu:24.04` +  the bootstrap command
+# with that tag. Do it when pod restarts become frequent enough to notice.
+#
+# ── VERSION PINS ──
+# ORCA_VERSION must equal the Mac's Orca version or pairing is refused across
+# the gap. Verified 2026-08-26: `orca status --json` -> result.runtime.appVersion
+# = 1.4.188, and stablyai/orca's latest release is v1.4.188. Bump this and the
+# Mac together, never one alone.
+# The agent-CLI pins are devex's (images/orca/Dockerfile), kept because that
+# exact triple is the combination known to install cleanly on ubuntu:24.04.
+# Both verified resolvable: `npm view @anthropic-ai/claude-code@2.1.235 version`
+# and `npm view @openai/codex@0.148.0 version` -> exact echo, rc=0.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: devbox-bootstrap
+  namespace: workspaces
+data:
+  bootstrap.sh: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    log() { echo "[devbox] $*"; }
+
+    export DEBIAN_FRONTEND=noninteractive
+    DEV_HOME=/data/home
+
+    log "apt: sshd + toolchain + the Chromium shared libraries Orca's deb does not declare"
+    # The Chromium sonames (libnspr4 .. libgbm1) are NOT in the orca-ide deb's
+    # Depends — upstream names python3/at-spi/xdotool and nothing else, so the
+    # binary installs cleanly and then dies with
+    # "libnspr4.so: cannot open shared object file". This list is the 13 sonames
+    # `ldd /opt/Orca/orca-ide` reports missing plus libgbm1, which Chromium
+    # dlopens. Copied verbatim from devex images/orca/Dockerfile, where it was
+    # derived empirically. Do not prune it "because the deb installs fine".
+    apt-get update -qq
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl file jq git gnupg less sudo unzip \
+        openssh-server openssh-client \
+        build-essential python3-pip python3-venv \
+        tmux zsh ripgrep fd-find \
+        xvfb zlib1g-dev \
+        libnspr4 libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 \
+        libgtk-3-0t64 libpango-1.0-0 libxcomposite1 libxdamage1 libxfixes3 \
+        libasound2t64 libgbm1
+
+    log "node ${NODE_MAJOR} + agent CLIs"
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+    apt-get install -y --no-install-recommends nodejs
+    npm install -g --no-fund --no-audit \
+        "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+        "@openai/codex@${CODEX_VERSION}"
+
+    log "orca ${ORCA_VERSION}"
+    curl -fsSL -o /tmp/orca.deb \
+        "https://github.com/stablyai/orca/releases/download/v${ORCA_VERSION}/orca-ide_${ORCA_VERSION}_amd64.deb"
+    apt-get install -y --no-install-recommends /tmp/orca.deb
+    rm -f /tmp/orca.deb
+    rm -rf /var/lib/apt/lists/*
+
+    # ── user + persistent home ────────────────────────────────────────────────
+    # /data is the PVC. Everything that must outlive the pod lives under it:
+    # $HOME (agent OAuth state, Orca config, worktrees) and the sshd host key.
+    log "user dev -> ${DEV_HOME}"
+    mkdir -p "${DEV_HOME}" /data/ssh-host
+    # ubuntu:24.04 ships a stock `ubuntu` account AT UID 1000. Without this,
+    # useradd dies with "UID 1000 is not unique" and the pod CrashLoops — caught
+    # by running this script for real against the image (report §3). devex's
+    # Dockerfile has the same line for the same reason. `|| true` keeps it
+    # idempotent: on a warm restart there is no `ubuntu` left to delete.
+    userdel -r ubuntu >/dev/null 2>&1 || true
+    id -u dev >/dev/null 2>&1 || useradd --uid 1000 --user-group \
+        --home-dir "${DEV_HOME}" --no-create-home --shell /bin/bash dev
+    # Non-recursive on purpose: `chown -R` across a populated worktree PVC costs
+    # minutes on every restart and fixes nothing that is not already correct.
+    chown dev:dev "${DEV_HOME}"
+    printf 'dev ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/dev
+    chmod 0440 /etc/sudoers.d/dev
+
+    install -d -m 0700 -o dev -g dev "${DEV_HOME}/.ssh"
+    if compgen -G '/etc/devbox-ssh/*' > /dev/null; then
+        cat /etc/devbox-ssh/* > "${DEV_HOME}/.ssh/authorized_keys"
+        chown dev:dev "${DEV_HOME}/.ssh/authorized_keys"
+        chmod 0600 "${DEV_HOME}/.ssh/authorized_keys"
+    else
+        # Not fatal: the Orca server is the other half of this box and it does
+        # not need SSH. Dying here would take out a working Orca because a
+        # hand-applied Secret was forgotten.
+        log "WARNING: no keys under /etc/devbox-ssh — Secret 'devbox-ssh-key' is missing; every SSH login will be refused"
+    fi
+
+    # ── sshd ──────────────────────────────────────────────────────────────────
+    # Host key on the PVC so the Mac's known_hosts survives a pod restart. The
+    # ephemeral keys openssh-server's postinst just wrote into /etc/ssh are
+    # ignored: naming any HostKey replaces the built-in default list.
+    if [ ! -f /data/ssh-host/ssh_host_ed25519_key ]; then
+        ssh-keygen -q -t ed25519 -N '' -C devbox -f /data/ssh-host/ssh_host_ed25519_key
+    fi
+    chmod 0600 /data/ssh-host/ssh_host_ed25519_key
+    mkdir -p /run/sshd
+    # `-o`, not a config file: sshd processes command-line options before
+    # /etc/ssh/sshd_config and takes the FIRST value it sees for a keyword, so
+    # these are authoritative no matter what the distro ships or what a future
+    # sshd_config.d drop-in adds. Also keeps the whole config in one grep-able
+    # line instead of a heredoc nested in a YAML block scalar.
+    log "sshd on :22 (pubkey only, user dev)"
+    /usr/sbin/sshd -e \
+        -o "HostKey=/data/ssh-host/ssh_host_ed25519_key" \
+        -o "PermitRootLogin=no" \
+        -o "PasswordAuthentication=no" \
+        -o "KbdInteractiveAuthentication=no" \
+        -o "PubkeyAuthentication=yes" \
+        -o "AllowUsers=dev" \
+        -o "AcceptEnv=LANG LC_*"
+
+    # ── orca ──────────────────────────────────────────────────────────────────
+    # PID 1 is Orca, not sshd: Orca dying is what should restart the pod. sshd
+    # dying alone is survivable and visible on the next login attempt.
+    # The deb's executable is orca-ide, not orca (upstream avoids the GNOME Orca
+    # name clash); after-install.sh symlinks /usr/bin/orca-ide.
+    ORCA_BIN="$(command -v orca-ide || echo /opt/Orca/resources/bin/orca-ide)"
+    # ── THE SANDBOX KNOB IS AN ENV VAR, NOT A FLAG ──
+    # devex's entrypoint.sh (and 19-orca-cell's documented escape hatch) pass
+    # `--no-sandbox` as an argv element before `serve`. Orca's CLI REJECTS it:
+    #     Unknown flag --no-sandbox for command: serve
+    #     Valid flags: --environment, --help, --json, --mobile-pairing,
+    #                  --no-pairing, --page, --pairing-address, --pairing-code,
+    #                  --port, --project-root, --recipe-json
+    # so flipping that knob makes the process fail to start at all — a latent
+    # bug in the very lever meant to rescue a sandbox crash. Electron's own
+    # ELECTRON_DISABLE_SANDBOX=1 does work; verified end to end (report §3).
+    #
+    # Set CONDITIONALLY, never to "0": Electron tests the variable for
+    # presence, so ELECTRON_DISABLE_SANDBOX=0 still disables the sandbox.
+    sandbox_env=()
+    # `if`, not `[ … ] && …` — under `set -e` a false AND-OR list kills the
+    # script, which is a second live bug in devex's entrypoint.sh.
+    if [ "${ORCA_NO_SANDBOX:-1}" = "1" ]; then
+        sandbox_env+=(ELECTRON_DISABLE_SANDBOX=1)
+    fi
+    log "orca serve :6768, advertising ${PAIRING_ADDRESS}"
+    # setpriv, not su/sudo: no extra process between PID 1 and Orca, so SIGTERM
+    # from kubelet lands on Orca itself. Orca auto-starts Xvfb on :99 when
+    # DISPLAY is unset; LIBGL_ALWAYS_SOFTWARE keeps Chromium off the (absent) GPU.
+    exec setpriv --reuid=1000 --regid=1000 --init-groups \
+        env HOME="${DEV_HOME}" XDG_RUNTIME_DIR=/tmp LIBGL_ALWAYS_SOFTWARE=1 \
+        "${sandbox_env[@]}" \
+        "${ORCA_BIN}" serve \
+            --port 6768 \
+            --pairing-address "${PAIRING_ADDRESS}"

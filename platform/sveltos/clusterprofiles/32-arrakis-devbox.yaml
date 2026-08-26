@@ -1,0 +1,49 @@
+# arrakis-devbox — the tenant-side SSH box + Orca server. Track J.
+#
+# The user's ask: "lets use a ssh devbox with orca right now on arrakis as well
+# to offload some orca workspaces, things are getting heavy."
+#
+# persona=platform selects ARRAKIS only (CAPI `Cluster/arrakis` in ns `tenants`
+# carries persona=platform, tier=workload — verified with
+# `kubectl --context admin@contraxia get clusters.cluster.x-k8s.io -A --show-labels`).
+# contraxia is persona=infra and already has its own devbox (20-cpu-workspace).
+#
+# Ships one Namespace + a bootstrap ConfigMap + a StatefulSet/Service. Raw
+# manifests, matching manifests/cpu-workspace and manifests/orca-cell — this
+# repo delivers through policyRefs, and there is no chart for "one pet box".
+#
+# NOT a VirtualMachine, unlike 20-cpu-workspace: arrakis workers are themselves
+# KubeVirt VMs on contraxia, so a VM here would need nested virt. See
+# manifests/arrakis-devbox/devbox.yaml.
+#
+# dependsOn: tenant-baseline
+#   - it depends on tenant-cilium in turn, so this transitively waits for the
+#     CNI. Without it the pod sits Pending on a NotReady node.
+#   - it ships the `kubevirt` StorageClass the volumeClaimTemplate names.
+#
+# ── BEFORE FIRST RECONCILE ── create the SSH key Secret, or you get a working
+# Orca server that refuses every SSH login (the mount is `optional: true`, so it
+# degrades rather than hangs Pending — unlike 20-cpu-workspace's VM):
+#
+#   kubectl --context admin@arrakis --server=https://192.168.2.240:6443 \
+#     -n workspaces create secret generic devbox-ssh-key \
+#     --from-file=mershab.pub=$HOME/.ssh/id_ed25519.pub
+#
+# The `--server` override is required: the admin@arrakis context points at
+# k8s-home.mershab.com:6443, which is a dead DigitalOcean droplet. See
+# docs/reports/2026-08-25-arrakis-devbox.md.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: arrakis-devbox
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: platform
+  dependsOn:
+    - tenant-baseline
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/arrakis-devbox

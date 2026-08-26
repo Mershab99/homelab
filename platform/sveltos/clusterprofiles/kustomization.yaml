@@ -67,6 +67,10 @@ resources:
   # both would have two ClusterProfiles fighting over one Helm release. Pick one
   # owner first. See the file header.
   # - 24-kagent-router.yaml
+  # Tenant-side twin of 20-cpu-workspace: same job (SSH + Orca), on ARRAKIS, as
+  # a StatefulSet rather than a VM (arrakis workers are already VMs — no nested
+  # virt). ClusterIP only, reached by port-forward until the mesh lands.
+  - 32-arrakis-devbox.yaml      # `devbox` StatefulSet + Orca server on arrakis
   # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
   # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
   # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.
