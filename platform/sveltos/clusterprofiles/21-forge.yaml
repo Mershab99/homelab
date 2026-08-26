@@ -1,0 +1,151 @@
+# forge — Gitea on contraxia. The port of devex `apps/shamu/gitea` (decisions
+# #8/#9/#11), moved off the Mac's OrbStack onto the R730.
+#
+# This is the highest-value item in the shamu port: today's forge is a Gitea in
+# OrbStack on a 32 GiB MacBook that is out of headroom. contraxia sits at ~9%
+# CPU / 14% RAM of 32 cores / 94 GiB.
+#
+# Load-bearing pins carried over from decision #8, all re-verified against the
+# live chart repo 2026-08-25 (`helm show chart gitea --version 12.7.0` →
+# appVersion 1.27.0):
+#   chart 12.7.0 (Gitea 1.27.0) · replicaCount 1 · strategy Recreate
+#   (the chart's default rolling update cannot mount an RWO volume the outgoing
+#   pod still holds) · no SSH · NO chart-created admin (its default admin
+#   password is a published constant; empty admin.username/password with no
+#   existingSecret makes the chart skip admin bootstrap entirely — first admin
+#   is created by `kubectl exec`, see FILL).
+#
+# ── DIVERGENCES from the shamu design, deliberate ──
+#
+# 1. Postgres is a CNPG Cluster, NOT the chart's bundled subchart.
+#    `postgresql.enabled: false` AND `postgresql-ha.enabled: false` — note the
+#    chart's 12.7.0 defaults are the reverse of what the values name suggests:
+#    postgresql-ha defaults TRUE (a 3-node repmgr/pgpool cluster) and postgresql
+#    defaults FALSE. Both are turned off explicitly. Rationale + the frozen
+#    `bitnamilegacy/postgresql` image stream: see 20-infra-db's header.
+#    The Cluster CR lives in the policyRef below and MUST NOT move into this
+#    profile (Helm and Resources are independent Sveltos features — the CR would
+#    race its own CRD).
+#    SSL_MODE=require: CNPG serves TLS with its own CA by default. If the pod
+#    logs show a TLS handshake failure, drop to `disable` (in-cluster only).
+#
+# 2. Exposure is a bare LoadBalancer VIP, not an Ingress and not a Gateway.
+#    contraxia has NO in-cluster HTTP router: `kubectl get gatewayclass` returns
+#    nothing, and the `ingress-nginx` and `traefik` namespaces — which DO exist —
+#    are EMPTY (verified 2026-08-25, `kubectl get all -n ingress-nginx` → "No
+#    resources found"). The one nginx edge in this homelab runs on arrakis, not
+#    here. So the shamu design's own model applies unchanged, with Cilium
+#    LB-IPAM standing in for MetalLB.
+#      ⚠️ VIP CLAIM: 192.168.2.242 — assigned by docs/vip-allocation.md
+#      (.240-.250; .240 is tenants/kmc-arrakis-lb). This is the ONLY pool IP
+#      this track claims; see the report's IP section.
+#    `service.http.clusterIP: ""` is load-bearing — the chart defaults it to
+#    `None`, which no LoadBalancer Service can carry.
+#    Plain HTTP on the LAN, same trust boundary decision #12 accepted. There is
+#    no public route to this forge and this profile must not add one.
+#
+# 3. persistence.storageClass fast-zfs (not openebs-zfs) — contraxia's ZFS
+#    LocalPV classes are fast-zfs (default) / fast-block / db-zfs.
+#    ⚠️ DEPENDENCY: neither fast-zfs nor db-zfs exists until the Longhorn→ZFS
+#    migration lands (docs/runbooks/migrating-longhorn-to-zfs.md). Until then
+#    the PVCs stay Pending and Gitea does not start. Expected, not a fault.
+#
+# ── FILL (manual, once, after the pods are Running) ──
+#   1. First admin (the chart deliberately creates none):
+#        kubectl -n gitea exec deploy/gitea -- gitea admin user create \
+#          --admin --username <ADMIN_USER> --email <ADMIN_EMAIL> \
+#          --password '<ADMIN_PASSWORD>' --must-change-password=true
+#   2. PAT for clones/CI: create in the UI at http://192.168.2.242:3000/
+#      (Settings → Applications). Registration is disabled and signin is
+#      required, so the admin above is the only way in.
+#   NEVER put either value in this repo.
+#
+# ⚠️ The forge CUTOVER (re-pushing repos off the OrbStack Gitea and re-pointing
+# Flux/remotes at this one — devex runbook-shamu §7) is a point of no return and
+# is NOT part of this profile. See docs/reports/2026-08-25-shamu-platform-port.md.
+#
+# Selector: persona=infra.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: forge
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - infra-db      # CNPG operator must exist before the gitea-pg Cluster CR applies
+  helmCharts:
+    - repositoryURL: https://dl.gitea.com/charts/
+      repositoryName: gitea
+      chartName: gitea/gitea
+      chartVersion: 12.7.0          # ships Gitea 1.27.0; pin EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: gitea
+      releaseNamespace: gitea
+      helmChartAction: Install
+      values: |
+        replicaCount: 1
+        strategy:
+          type: Recreate
+        ingress:
+          enabled: false             # no ingress controller on contraxia — see header
+        service:
+          http:
+            type: LoadBalancer
+            clusterIP: ""            # chart default is `None`; a LB Service cannot carry it
+            annotations:
+              lbipam.cilium.io/ips: 192.168.2.242
+        persistence:
+          size: 40Gi
+          storageClass: fast-zfs
+        # BOTH bundled DBs off — the chart's 12.7.0 defaults are
+        # postgresql-ha=true / postgresql=false. Postgres comes from CNPG.
+        postgresql-ha:
+          enabled: false
+        postgresql:
+          enabled: false
+        # One replica needs no shared cache/queue/session store: cache→memory,
+        # queue→leveldb, sessions→memory (chart defaults).
+        valkey-cluster:
+          enabled: false
+        valkey:
+          enabled: false
+        gitea:
+          admin:
+            username: ""             # empty + no existingSecret = chart skips admin bootstrap
+            password: ""
+          additionalConfigFromEnvs:
+            # The ONLY credential path. CNPG generates gitea-pg-app; Gitea's
+            # environment-to-ini turns this env var into [database] PASSWD.
+            - name: GITEA__database__PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: gitea-pg-app
+                  key: password
+          config:
+            database:
+              DB_TYPE: postgres
+              HOST: gitea-pg-rw.gitea.svc:5432   # CNPG's read-write Service
+              NAME: gitea
+              USER: gitea
+              SSL_MODE: require                  # CNPG serves TLS by default
+            server:
+              DOMAIN: 192.168.2.242
+              ROOT_URL: http://192.168.2.242:3000/
+              DISABLE_SSH: true
+              START_SSH_SERVER: false
+              LFS_START_SERVER: true
+            service:
+              # This listens on the actual LAN, not an OrbStack-internal LB.
+              DISABLE_REGISTRATION: true
+              REQUIRE_SIGNIN_VIEW: true
+            actions:
+              ENABLED: true          # runners are a separate step, not here
+            repository:
+              DEFAULT_BRANCH: main
+  policyRefs:
+    # gitea namespace + the CNPG Cluster `gitea-pg`.
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/forge

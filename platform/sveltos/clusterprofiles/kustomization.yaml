@@ -53,3 +53,20 @@ resources:
   # Human-facing compute on the R730. Blocked on the ZFS storage classes —
   # dependsOn: storage.
   - 20-cpu-workspace.yaml       # `devbox` KubeVirt VM + SSH at 192.168.2.243
+  # ── shamu platform port (2026-08-25) — the developer-experience tier moves off
+  # the MacBook's OrbStack onto the R730. Ported from devex apps/shamu +
+  # decisions #8-#14; the reconciliation (what was dropped and why) is in
+  # docs/reports/2026-08-25-shamu-platform-port.md. All persona=infra.
+  # NOTE: infra-db is 26- not 20-; 20 was taken by cpu-workspace in a parallel
+  # track merged first. VIPs likewise shifted per docs/vip-allocation.md.
+  - 26-infra-db.yaml            # CloudNativePG on the hub (forge + future kagent DB)
+  - 21-forge.yaml               # Gitea 12.7.0 @ LB VIP 192.168.2.242 — the forge of record
+  - 22-mcp-levers.yaml          # flux-operator-mcp (write) + kubernetes-mcp-server (read-only)
+  - 23-kubewall.yaml            # cluster viewer — BYO SA bound to `view`, ClusterIP only
+  # 24-kagent-router.yaml PARKED — Track D may own the kagent chart; enabling
+  # both would have two ClusterProfiles fighting over one Helm release. Pick one
+  # owner first. See the file header.
+  # - 24-kagent-router.yaml
+  # 25-vcluster-cell-TEMPLATE.yaml is a template, never listed. Copy it to spawn
+  # a cell. CAPVC (devex decision #12) is DEAD here — contraxia runs CAPI core
+  # v1.13.3 and CAPVC v0.2.2 caps at v1.10.x; see the template's header.

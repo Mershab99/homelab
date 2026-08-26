@@ -1,0 +1,151 @@
+# ⚠️ PARKED — present in the tree, NOT listed in kustomization.yaml, so Sveltos
+# never receives it. Same convention as 15-app-coder.yaml. Uncomment the
+# kustomization entry to enable.
+#
+# WHY PARKED: TRACK OWNERSHIP IS UNRESOLVED. This track's brief says "PORT —
+# coordinate with Track D, which owns model config." The coordinator did not
+# answer the ownership question before this track finished (asked 2026-08-25,
+# 10-minute `orca orchestration ask` timed out). If Track D also ships a profile
+# that installs the `kagent` / `kagent-crds` Helm releases, two ClusterProfiles
+# would manage one release and fight. Parking is the only safe default: the
+# manifest is delivered and reviewable, and nothing reconciles until a human
+# decides who owns it.
+#   → OPERATOR DECISION NEEDED. Either (a) enable this and let Track D supply
+#     only the ModelConfig + its API-key Secret, or (b) delete this file and let
+#     Track D own the chart end to end. Do NOT enable both.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# kagent — a MODEL ROUTER and AGENT HARNESS, not a fleet. Port of devex
+# `apps/shamu/kagent` (decision #14), HelmRelease → Sveltos helmCharts.
+# ══════════════════════════════════════════════════════════════════════════════
+# The platform provides the substrate (ModelConfigs to route model calls, Agent
+# CRs as the A2A harness). It does NOT ship an agent fleet: all 10 built-in
+# agents, the tool server, grafana-mcp, querydoc, substrate and oauth2-proxy are
+# off. What remains is the controller (A2A hub, :8083), the UI (:8080), and a
+# small bundled Postgres.
+#
+# ⚠️ kmcp.enabled: false in BOTH charts, forever. The kagent charts bundle kmcp
+# 0.3.0 as a subchart; enabling it double-owns the `mcpservers.kagent.dev` CRD
+# (helm "invalid ownership metadata") and runs a second controller over the same
+# CRs. 16-mcp-baseline already installs kagent-crds 0.9.12 + kmcp 0.3.0 into the
+# persona vclusters (persona=ai) — a DIFFERENT set of clusters, so there is no
+# conflict with this profile, but the CRD-ownership rule is identical and the
+# two pins must move together.
+#
+# ── contraxia divergences from the shamu design ──
+#
+# 1. NO HTTPRoute. Decision #14 put kagent's UI + A2A behind a Cilium Gateway at
+#    VIP .63. contraxia has NO Gateway API at all: `kubectl get gatewayclass` →
+#    "No resources found" (verified 2026-08-25), Cilium's gatewayAPI is not
+#    enabled here, and enabling it needs a values change on the LIVE CNI plus
+#    pre-existing Gateway API CRDs — not something this track will do to a
+#    single-node cluster whose CNI outage is a cluster outage. The
+#    `ingress-nginx` and `traefik` namespaces exist but are EMPTY, so there is
+#    no ingress fallback either. UI access is `kubectl port-forward`.
+#
+# 2. a2aBaseUrl is the in-cluster Service URL, not a VIP. With no external
+#    route, advertising anything else would hand A2A callers an address they
+#    cannot reach. In-cluster callers (the Orca cell, when it lands) work.
+#
+# 3. controller.auth.mode: unsecure is carried over BUT is a materially bigger
+#    deal here than on a devbox — see the risk note in 23-kubewall's header for
+#    why "the LAN is the perimeter" stops being an acceptable argument on the
+#    real management cluster. It is survivable ONLY because the Service is
+#    ClusterIP with no route in. Do not give this a LoadBalancer VIP without
+#    first turning auth on.
+#
+# 4. Bundled Postgres KEPT, deliberately, because this profile is parked. Its
+#    credentials are hardcoded `kagent`/`kagent` (chart's own words: "intentional
+#    for a dev/eval setup"). BEFORE ENABLING THIS PROFILE FOR ANYTHING THAT
+#    MATTERS, move it to the CNPG operator from 20-infra-db:
+#      - add a `postgresql.cnpg.io/v1` Cluster `kagent-pg` in a policyRef
+#        manifests dir, and `dependsOn: infra-db`
+#      - set database.postgres.bundled.enabled: false
+#      - mount the CNPG-generated `kagent-pg-app` Secret's `uri` key via
+#        controller.volumes / controller.volumeMounts (both exist in values
+#        0.9.12) and point database.postgres.urlFile at the mounted path
+#        (urlFile takes precedence over url and keeps the password out of git —
+#        never use database.postgres.url, which would inline the credential).
+#
+# ── FILL — REQUIRED BEFORE ENABLING (Track D territory: model config) ──
+#   The chart always renders exactly one ModelConfig from `providers.*`, and its
+#   DEFAULT IS WRONG FOR THIS HOMELAB. Rendered with the values below (verified
+#   `helm template` at 0.9.12):
+#       provider: OpenAI · model: gpt-4.1-mini
+#       apiKeySecret: kagent-openai · apiKeySecretKey: OPENAI_API_KEY
+#   That is paid OpenAI billing pointed at a Secret that does not exist on
+#   contraxia — it violates decision #14's "no paid-API billing in-cluster" rule
+#   AND the controller has no key to start with. `providers.*` is deliberately
+#   left unset here rather than guessed, because the endpoint choice is Track D's.
+#   Whoever enables this MUST set providers.* to the self-hosted
+#   OpenAI-compatible endpoint (decision #14: Secret `kagent-model-router`, dummy
+#   key — the field is required, the endpoint does not check it), and route
+#   Anthropic-quality work to Hermes over A2A instead of adding a paid provider.
+#   The repo's placeholder for the Secret is
+#   secrets/infrastructure/kagent/model-api-key.example.yaml (the real file is
+#   plaintext + gitignored — see feedback_sops_only_secrets). NEVER commit a key.
+#
+# Selector: persona=infra.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: kagent-router
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    # OCI: sveltos appends chartName to repositoryURL — base URL only here.
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
+      repositoryName: kagent-oci
+      chartName: kagent-crds
+      chartVersion: 0.9.12          # latest stable; 0.10.0 is -rc only. PIN EXACT.
+      releaseName: kagent-crds
+      releaseNamespace: kagent
+      helmChartAction: Install
+      values: |
+        kmcp:
+          enabled: false            # see header — CRD double-ownership
+    - repositoryURL: oci://ghcr.io/kagent-dev/kagent/helm
+      repositoryName: kagent-oci
+      chartName: kagent
+      chartVersion: 0.9.12          # lockstep with kagent-crds
+      releaseName: kagent
+      releaseNamespace: kagent
+      helmChartAction: Install
+      values: |
+        kmcp:
+          enabled: false            # see header
+        # ---- fleet off: router + harness only ----
+        kagent-tools: {enabled: false}
+        grafana-mcp: {enabled: false}
+        querydoc: {enabled: false}          # default-on and wants an OpenAI key
+        substrate: {enabled: false}
+        oauth2-proxy: {enabled: false}
+        k8s-agent: {enabled: false}
+        kgateway-agent: {enabled: false}
+        istio-agent: {enabled: false}
+        promql-agent: {enabled: false}
+        observability-agent: {enabled: false}
+        argo-rollouts-agent: {enabled: false}
+        helm-agent: {enabled: false}
+        cilium-policy-agent: {enabled: false}
+        cilium-manager-agent: {enabled: false}
+        cilium-debug-agent: {enabled: false}
+        # ---- what stays ----
+        controller:
+          auth:
+            mode: unsecure          # ClusterIP-only; see divergence 3 in header
+          # No Gateway on contraxia — advertise the in-cluster Service so A2A
+          # callers get an address that actually resolves.
+          a2aBaseUrl: "http://kagent-controller.kagent.svc:8083/api"
+        ui:
+          route:
+            enabled: false          # OpenShift-only template
+          publicBackendUrl: "/api"
+        database:
+          postgres:
+            bundled:
+              enabled: true         # dev/eval creds — see divergence 4 in header
+              storage: 500Mi
+              storageClassName: fast-zfs

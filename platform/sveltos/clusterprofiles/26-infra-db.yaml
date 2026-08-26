@@ -1,0 +1,49 @@
+# infra-db — CloudNativePG on the BARE-METAL cluster (contraxia), so hub-side
+# workloads get a vended Postgres instead of a chart-bundled one.
+#
+# Why this exists at all: 09-db-operators vends CNPG + MOCO to persona=platform
+# (arrakis). contraxia (persona=infra) had no Postgres operator — verified
+# 2026-08-25, `kubectl get crd | grep -i cnpg` returned nothing. The shamu port
+# brings two consumers that each ship their OWN bundled Postgres with hardcoded
+# in-chart credentials:
+#   * gitea 12.7.0  — bundled `postgresql` subchart, image `bitnamilegacy/postgresql`
+#                     (a FROZEN image stream: no further security patches) and the
+#                     chart's published `gitea`/`gitea` credential. devex decision
+#                     #8 accepted that on a laptop and said, verbatim, "move to a
+#                     real Postgres ... before this holds anything that matters."
+#                     On contraxia this Gitea becomes the forge of record, which
+#                     is exactly that trigger.
+#   * kagent 0.9.12 — bundled dev Postgres, hardcoded `kagent`/`kagent`.
+# Two consumers with the same defect is what makes an operator cheaper than the
+# workaround.
+#
+# NOT a copy of 09-db-operators: MOCO (MySQL) is deliberately absent (nothing on
+# the hub wants MySQL) and there is no `dependsOn: tenant-baseline` — that is a
+# persona=platform profile and would never be satisfied here. CNPG needs no
+# cert-manager (it issues its own CA + server certs), so this bundle has no
+# dependsOn at all and can reconcile first.
+#
+# Consumers declare their own `postgresql.cnpg.io/v1` Cluster CR in THEIR
+# policyRef manifests and `dependsOn: infra-db` — never in this profile. Sveltos
+# runs the Helm feature and the Resources feature independently, so a Cluster CR
+# sitting next to the operator chart would race its own CRD on first reconcile
+# (the same trap 04-storage documents for VolumeSnapshotClass).
+#
+# Selector: persona=infra.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: infra-db
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  helmCharts:
+    # Same pin as 09-db-operators — bump the two together or they drift apart.
+    - repositoryURL: https://cloudnative-pg.github.io/charts
+      repositoryName: cloudnative-pg
+      chartName: cloudnative-pg/cloudnative-pg
+      chartVersion: 0.29.0          # operator 1.30.0; pin EXACT (sveltos v1.12 rejects wildcards)
+      releaseName: cloudnative-pg
+      releaseNamespace: cnpg-system
+      helmChartAction: Install

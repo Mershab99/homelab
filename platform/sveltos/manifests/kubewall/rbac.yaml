@@ -1,0 +1,48 @@
+# KubeWall's identity — hand-made, because the chart's own one is cluster-admin.
+#
+# Chart 0.0.22 renders `ClusterRoleBinding/<release>-cluster-admin-binding` →
+# `cluster-admin` for its ServiceAccount. VERIFIED 2026-08-25 that the entire
+# ClusterRoleBinding template is gated on `serviceAccount.create`:
+#
+#   helm template kw oci://ghcr.io/kubewall/charts/kubewall --version 0.0.22 \
+#     --set serviceAccount.create=false --set serviceAccount.name=kubewall
+#   → renders Deployment/Service/Secret/PVC and NO ClusterRoleBinding,
+#     with serviceAccountName: kubewall
+#
+# So BYO-SA is a clean escape, not a workaround — devex decisions #10/#12 said
+# "the only escape is BYO-SA" but never exercised it. 23-kubewall does, and this
+# file is the identity it points at.
+#
+# `view` instead of cluster-admin: KubeWall is a VIEWER. It reads no Kubernetes
+# Secrets for its own operation — multi-cluster kubeconfigs are added through the
+# UI/API and persist in its PVC, never sourced from cluster Secrets (decision
+# #12 established this from source). So `view` covers the whole job.
+#
+# Accepted consequence: `view` excludes Secrets by design, so the dashboard's
+# Secrets tab will 403 against the local cluster. On the cluster that holds the
+# arrakis kubeconfig, the Sveltos management token and the `tenant-secrets`
+# namespace, that is a feature. Add a narrower Role if some specific namespace's
+# Secrets genuinely need viewing — do NOT widen this to `edit` or `cluster-admin`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubewall
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubewall
+  namespace: kubewall
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kubewall-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: kubewall
+    namespace: kubewall
