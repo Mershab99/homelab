@@ -29,20 +29,41 @@
 #    SSL_MODE=require: CNPG serves TLS with its own CA by default. If the pod
 #    logs show a TLS handshake failure, drop to `disable` (in-cluster only).
 #
-# 2. Exposure is a bare LoadBalancer VIP, not an Ingress and not a Gateway.
-#    contraxia has NO in-cluster HTTP router: `kubectl get gatewayclass` returns
-#    nothing, and the `ingress-nginx` and `traefik` namespaces — which DO exist —
-#    are EMPTY (verified 2026-08-25, `kubectl get all -n ingress-nginx` → "No
-#    resources found"). The one nginx edge in this homelab runs on arrakis, not
-#    here. So the shamu design's own model applies unchanged, with Cilium
-#    LB-IPAM standing in for MetalLB.
+# 2. Exposure is a bare LoadBalancer VIP — PLUS, since 2026-08-25, an Ingress.
+#    ⚠️ The paragraph that used to live here ("contraxia has NO in-cluster HTTP
+#    router ... the one nginx edge in this homelab runs on arrakis, not here")
+#    was true when written and is now WRONG: 27-ingress-hub.yaml installs
+#    ingress-nginx on contraxia and manifests/hub-edge/ingresses.yaml publishes
+#    this forge at https://git.mershab.com. Gateway API is still absent
+#    (`kubectl get gatewayclass` → nothing) and that has not changed.
+#
+#    The VIP below STAYS. It is the LAN path and the fallback if the edge or the
+#    DO droplet is down; the Ingress is additive. Cilium LB-IPAM keeps this
+#    Service because it is CLASSLESS — do not add
+#    `spec.loadBalancerClass: chisel.mershab.com/external` to it or
+#    chisel-operator will claim it and overwrite its status.loadBalancer.ingress.
+#
 #      ⚠️ VIP CLAIM: 192.168.2.244 — assigned by docs/vip-allocation.md
 #      (.240-.250; .240 is tenants/kmc-arrakis-lb). This is the ONLY pool IP
 #      this track claims; see the report's IP section.
 #    `service.http.clusterIP: ""` is load-bearing — the chart defaults it to
 #    `None`, which no LoadBalancer Service can carry.
-#    Plain HTTP on the LAN, same trust boundary decision #12 accepted. There is
-#    no public route to this forge and this profile must not add one.
+#
+#    Trust boundary, restated for 2026-08-25: the VIP is still plain HTTP on the
+#    LAN (decision #12's posture, unchanged), but "there is no public route to
+#    this forge" is NO LONGER TRUE — git.mershab.com is one, over TLS. What
+#    carries the security now is Gitea's own config, not the network: this
+#    profile sets DISABLE_REGISTRATION: true, REQUIRE_SIGNIN_VIEW: true, and
+#    creates NO chart admin (the chart's default admin password is a published
+#    constant). Do not relax any of those three while the Ingress exists.
+#
+#    ⚠️ CUTOVER STEP, NOT YET APPLIED: `server.DOMAIN`/`ROOT_URL` below are still
+#    the LAN IP, so the UI served at git.mershab.com will emit clone/redirect
+#    URLs pointing at 192.168.2.244. Flipping them before the droplet is proven
+#    reachable would break the working LAN forge — and this forge is the git
+#    remote for the whole estate. Swap the two commented lines below once
+#    https://git.mershab.com/ answers. See
+#    docs/reports/2026-08-25-contraxia-edge.md §Cutover.
 #
 # 3. persistence.storageClass fast-zfs (not openebs-zfs) — contraxia's ZFS
 #    LocalPV classes are fast-zfs (default) / fast-block / db-zfs.
@@ -105,7 +126,12 @@ spec:
           limits:
             memory: 2Gi
         ingress:
-          enabled: false             # no ingress controller on contraxia — see header
+          # The Ingress is NOT chart-rendered. It ships in
+          # platform/sveltos/manifests/hub-edge/ingresses.yaml so that ONE file
+          # is the complete public surface of the hub — a reviewer answers
+          # "what of mine is on the internet?" by reading one file instead of
+          # grepping every workload's values block. Leave this false.
+          enabled: false
         service:
           http:
             type: LoadBalancer
@@ -147,6 +173,11 @@ spec:
               USER: gitea
               SSL_MODE: require                  # CNPG serves TLS by default
             server:
+              # ── CUTOVER: uncomment the pair below and delete the pair above
+              # ── once https://git.mershab.com/ is confirmed reachable through
+              # ── the DO droplet (see the header and the report §Cutover).
+              # DOMAIN: git.mershab.com
+              # ROOT_URL: https://git.mershab.com/
               DOMAIN: 192.168.2.244
               ROOT_URL: http://192.168.2.244:3000/
               DISABLE_SSH: true

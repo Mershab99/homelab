@@ -1,0 +1,137 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# THE COMPLETE PUBLIC SURFACE OF CONTRAXIA. One file, on purpose.
+# ══════════════════════════════════════════════════════════════════════════════
+# Everything reachable from the internet on the hub is an Ingress in this file.
+# Nothing else on contraxia is public: the LAN VIP Services (cell/orca `.241`,
+# workspaces devbox `.243`, gitea/gitea-http `.244`) are classless, so
+# chisel-operator ignores them and they stay on 192.168.2.0/24 only.
+#
+# If you are answering "what of mine is on the internet?", `cat` this file. Keep
+# it that way — do not scatter Ingresses into the workload manifest dirs.
+#
+# Delivered by 27-ingress-hub. Served by the ONE chisel-classed nginx LB in ns
+# ingress-nginx → ONE DigitalOcean droplet.
+#
+# ── TLS ──
+# `cert-manager.io/cluster-issuer: letsencrypt-prod` — ACME via Cloudflare
+# DNS-01 (ClusterIssuer verified Ready on contraxia; solver selector covers
+# mershab.com + *.mershab.com; token Secret `cloudflare-api-token` is in ns
+# cert-manager, which is cert-manager's --cluster-resource-namespace here).
+# DNS-01 means certs issue with NO inbound reachability — they will go Ready
+# before the droplet does. Let's Encrypt PROD is rate limited (50 certs per
+# registered domain per week, 5 duplicates per week); these are the first two
+# public certs on this cluster, so there is headroom, but do not churn the
+# hostnames.
+#
+# ── DNS ──
+# Hand-created Cloudflare records are FORBIDDEN. external-dns (Running on
+# contraxia, txtOwnerId `homelab-mgmt`, txtPrefix `edns-mgmt-`, policy sync,
+# source ingress) publishes A + TXT off these hostnames once the LB has an
+# external IP. arrakis's instance owns `homelab-capi-arrakis` / `edns-capi-
+# arrakis-`, so the two never fight over the same TXT registry.
+#
+# ── NOT HERE, deliberately — reserved names, no Ingress ──
+#   kubewall.mershab.com  — KubeWall's REST API has NO authentication at all and
+#     `POST /api/v1/app/config/kubeconfigs` hot-loads a kubeconfig with no
+#     credential. On contraxia that endpoint fronts the CAPI/k0smotron control
+#     plane of arrakis, the Sveltos management plane for every cluster in the
+#     estate, and the tenant-secrets namespace. It stays ClusterIP + port-forward
+#     (23-kubewall.yaml), or mesh-only once Track G's NetBird lands. It must NOT
+#     get an Ingress. This is not a preference.
+#   kagent.mershab.com    — 24-kagent-router.yaml is PARKED; name reserved so a
+#     future track does not pick a different one.
+---
+# Gitea — the forge of record. Also stays on LAN VIP 192.168.2.244:3000; this
+# Ingress is an ADDITIONAL path, not a replacement.
+#
+# ⚠️ Gitea's own `server.ROOT_URL`/`DOMAIN` are still 192.168.2.244 in
+# 21-forge.yaml, so until the cutover step in
+# docs/reports/2026-08-25-contraxia-edge.md the UI served here will emit links
+# and clone URLs pointing at the LAN IP. That is deliberate: flipping ROOT_URL
+# before the droplet is proven would break the working LAN forge, and the forge
+# is this estate's git remote.
+#
+# SSH is disabled in the chart (DISABLE_SSH: true), so this is HTTPS-clone only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gitea
+  namespace: gitea
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # git-over-HTTP essentials, not tuning: nginx defaults to a 1m request body,
+    # which 413s any push bigger than a trivial packfile, and to a 60s read
+    # timeout, which cuts off server-side packfile generation on a large clone.
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [git.mershab.com]
+      secretName: gitea-tls
+  rules:
+    - host: git.mershab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gitea-http
+                port:
+                  number: 3000
+---
+# Orca cell — the remote agent server.
+#
+# ⚠️ HIGHEST-RISK ITEM ON THIS EDGE. `orca serve` runs agent terminals with a
+# shell on a pod that mounts a 100Gi PVC of OAuth state, on the cluster that
+# manages every other cluster here. Its own authentication model over 6768 is
+# UNVERIFIED from this side (the pod is ImagePullBackOff pending the ghcr-pull
+# Secret, so it could not be probed), and "unknown auth" in front of "arbitrary
+# code execution" is not a bet worth taking on a public address.
+#
+# So it is fail-closed: HTTP basic auth in front, from Secret `orca-basic-auth`
+# in ns `cell`. That Secret is hand-applied and NOT in git — until it exists,
+# nginx returns 503 for this host, which is the correct default.
+#
+#   htpasswd -nbB <USER> '<PASSWORD>' > /tmp/auth   # then: shred /tmp/auth
+#   kubectl --context admin@contraxia -n cell create secret generic \
+#     orca-basic-auth --from-file=auth=/tmp/auth
+#
+# If the Orca client cannot present basic credentials, delete the three
+# `auth-*` annotations below — and then move this host behind Track G's NetBird
+# mesh instead of leaving it bare. Do not leave it bare.
+#
+# Also note PAIRING_ADDRESS in manifests/orca-cell/orca.yaml is still
+# "192.168.2.241"; remote pairing needs it flipped to orca.mershab.com. That is
+# a cutover step, not a startup value — see the report.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orca
+  namespace: cell
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: orca-basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "orca cell"
+    # Agent sessions are long-lived websockets; the 60s default would drop them
+    # every minute.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [orca.mershab.com]
+      secretName: orca-tls
+  rules:
+    - host: orca.mershab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: orca
+                port:
+                  number: 6768

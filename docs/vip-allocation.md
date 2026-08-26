@@ -49,6 +49,46 @@ or shrink the pool to a range that is genuinely outside it.
 KubeWall (`23-kubewall.yaml`) is deliberately **ClusterIP, not a VIP** — its API
 is unauthenticated and its SA is cluster-admin, so it stays off the LAN.
 
+## The hub edge consumes ZERO pool addresses
+
+`27-ingress-hub.yaml` (added 2026-08-25) puts an ingress-nginx LoadBalancer on
+contraxia, but it takes **no** address from `lan-pool`. Its Service carries
+`spec.loadBalancerClass: chisel.mershab.com/external`, so Cilium LB-IPAM skips
+it entirely and chisel-operator claims it instead, pointing it at a DigitalOcean
+droplet. Its external IP is a public DO address, not a `192.168.2.x`.
+
+⚠️ **That class split is what protects every row in the table above.**
+chisel-operator chart 0.7.1 documents `loadBalancerClass: ""` as *"When empty,
+all LoadBalancer services are reconciled, matching the default behavior."* — an
+empty value would make the operator claim `.241`, `.243` and `.244` too and
+overwrite their `status.loadBalancer.ingress` with the droplet IP, flapping
+every LAN VIP at once. Rules:
+
+- The **edge** Service is the only one on contraxia with that class.
+- **Never** add `loadBalancerClass` to a Service pinned with
+  `lbipam.cilium.io/ips`.
+- **Never** blank the `loadBalancerClass` value in `02-ingress-external.yaml`.
+
+Check after any edge change:
+
+```sh
+kubectl --context admin@contraxia --request-timeout=60s get svc -A -o wide \
+  | grep -i loadbalancer          # .241/.243/.244 must still show their pinned IPs
+```
+
+## Public names (not pool addresses, but allocated the same way)
+
+`*.mershab.com` records are published by external-dns off Ingress hostnames — do
+not hand-create them in Cloudflare. Claim a name by adding a row here **and** an
+Ingress in `platform/sveltos/manifests/hub-edge/ingresses.yaml`.
+
+| Name | Backend | Status |
+|---|---|---|
+| `git.mershab.com` | `gitea/gitea-http:3000` | published (also on `.244`) |
+| `orca.mershab.com` | `cell/orca:6768` | published, **behind nginx basic auth** |
+| `kubewall.mershab.com` | — | **RESERVED, must stay unpublished** (unauthenticated API) |
+| `kagent.mershab.com` | — | reserved; `24-kagent-router.yaml` is parked |
+
 ## Rationale for the ordering
 
 `.241` stays with the **Orca cell** because it is the highest-value service and

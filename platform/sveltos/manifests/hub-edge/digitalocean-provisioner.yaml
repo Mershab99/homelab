@@ -1,0 +1,23 @@
+# DigitalOcean ExitNodeProvisioner for the CONTRAXIA (hub) edge. Lives in the
+# ingress-nginx ns — the same namespace as the nginx LoadBalancer Service —
+# because chisel-operator v0.7.1 resolves the
+# `chisel-operator.io/exit-node-provisioner` annotation ONLY in the Service's
+# namespace.
+#
+# Delivered by 27-ingress-hub. Requires Secret `digitalocean-auth`
+# (key DIGITALOCEAN_TOKEN) in THIS namespace — hand-applied, never in git.
+# Verified present on contraxia 2026-08-25.
+#
+# This is a SEPARATE provisioner object from the arrakis one
+# (manifests/arrakis-edge/, same name, different cluster). They share the DO
+# account and therefore the ~$6/mo × 2 bill. See the report's cost note.
+apiVersion: chisel-operator.io/v1
+kind: ExitNodeProvisioner
+metadata:
+  name: digitalocean-provisioner
+  namespace: ingress-nginx
+spec:
+  DigitalOcean:
+    auth: digitalocean-auth        # Secret name; key DIGITALOCEAN_TOKEN
+    region: tor1                   # nearest DO region, matching arrakis-edge
+    size: s-1vcpu-1gb              # ~$6/mo
