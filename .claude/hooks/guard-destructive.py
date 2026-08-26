@@ -72,8 +72,8 @@ BLOCKED = [
     # --- Git: protect the dirty shared repo and the GitHub remote ---
     (r"\bgit\s+add\s+(-A|--all|\.)(\s|$)",
      "git add -A / git add . sweeps unrelated dirty files; stage explicit paths only"),
-    (r"\bgit\s+push\b.*\borigin\b",
-     "origin is GitHub; push to the 'gitea' remote instead"),
+    (r"\bgit\s+push\b.*\bgithub\b",
+     "github is the GitHub mirror; push to 'origin' (git.mershab.com) instead"),
     (r"\bgit\s+push\b.*(--force|-f)(\s|$)",
      "force push is forbidden"),
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)",
