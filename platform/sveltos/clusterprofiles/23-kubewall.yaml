@@ -5,8 +5,14 @@
 # kubeconfig ends up (arrakis via CAPI, the persona vclusters via
 # exportKubeConfig), so the observer belongs next to the machinery it observes.
 #
-# Deliberately NOT `dependsOn` anything: the observer must stay up when the
-# observed breaks. That is the entire reason to run it.
+# ⚠️ CORRECTED 2026-08-26. This header used to say "deliberately NOT `dependsOn`
+# anything: the observer must stay up when the observed breaks." That reasoning
+# is wrong about what `dependsOn` does. Sveltos `dependsOn` gates FIRST
+# DEPLOYMENT ONLY — it never undeploys a provisioned profile when a dependency
+# later degrades. So it bought no availability, and the cost was real: this
+# profile's chart creates a `fast-zfs` PVC, and on a cold bootstrap that PVC
+# could be created before 04-storage had installed the StorageClass. Now
+# `dependsOn: storage`, like every other cell with a claim.
 #
 # ══════════════════════════════════════════════════════════════════════════════
 # THE RISK RE-EVALUATION THE BRIEF ASKED FOR — and why this profile diverges
@@ -27,7 +33,7 @@
 # a routable LAN address, backed by cluster-admin, means anyone who can reach
 # 192.168.2.0/24 owns the entire fleet — with no credential and no audit trail.
 #
-# Two changes, both free, both verified against chart 0.0.22:
+# Three changes, all free, all verified (1 and 2 against chart 0.0.22; 3 live):
 #
 #   1. NO LoadBalancer, NO VIP. `service.type: ClusterIP` (the chart default;
 #      the shamu values overrode it). Reach it with:
@@ -45,10 +51,19 @@
 #      `serviceAccount.create`, so this removes the cluster-admin grant outright
 #      rather than shadowing it. See manifests/kubewall/rbac.yaml.
 #
-# Residual risk after both: the API is still unauthenticated, so anything that
-# can reach the pod's ClusterIP inside the cluster can drive it — but it can now
-# only read, and only what `view` allows. That is a proportionate posture for a
-# dashboard. Revisit if it is ever exposed beyond port-forward.
+#   3. ADDED 2026-08-26 — NO IN-CLUSTER CALLERS. The two changes above left a
+#      stated residual: "the API is still unauthenticated, so anything that can
+#      reach the pod's ClusterIP inside the cluster can drive it." On a cluster
+#      that also runs an agent cell, that residual is a privilege-escalation
+#      gadget — any compromised pod gets cluster-wide `view` with no credential.
+#      manifests/kubewall/networkpolicy.yaml is a default-deny-ingress policy.
+#      port-forward is unaffected (it enters from the host netns, not the pod
+#      network — verified live; see that file).
+#
+# Residual risk after all three: an operator who already holds cluster
+# credentials can port-forward to an unauthenticated read-only dashboard. That
+# is a proportionate posture. Revisit ONLY if it is ever exposed beyond
+# port-forward — and if it is, authentication must come first, not after.
 #
 # ⚠️ ORDERING: the Deployment (Helm feature) and the ServiceAccount (Resources
 # feature) are applied independently by Sveltos, so on a first reconcile the pod
@@ -65,6 +80,8 @@ spec:
   clusterSelector:
     matchLabels:
       persona: infra
+  dependsOn:
+    - storage       # the chart creates a fast-zfs PVC. See the header correction.
   helmCharts:
     # OCI registry, not an index.yaml repo.
     - repositoryURL: oci://ghcr.io/kubewall/charts

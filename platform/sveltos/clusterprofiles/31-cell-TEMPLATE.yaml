@@ -1,0 +1,327 @@
+# ⚠️ TEMPLATE — NOT RENDERED. Deliberately absent from kustomization.yaml, the
+# same convention as 25-vcluster-cell-TEMPLATE.yaml and devex's
+# `apps/shamu/vclusters/_template.yaml`. `kustomize build` stays green because
+# kustomize never reads a file it is not told about.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+# THE CELL PATTERN — how to add a workload to the contraxia hub
+# ══════════════════════════════════════════════════════════════════════════════
+# A "cell" is one hub workload with four things: a name, storage, an identity,
+# and an access path. This file is the canonical shape. It is a sibling of, not
+# a replacement for, 25-vcluster-cell-TEMPLATE.yaml — that one spawns a nested
+# *cluster*; this one deploys a *workload*. Pick by what you are adding.
+#
+# Written against the six cells round 1 shipped (19-orca-cell, 20-cpu-workspace,
+# 21-forge, 22-mcp-levers, 23-kubewall, 26-infra-db). Where they disagreed, this
+# file is the tie-break. Divergences are listed in
+# docs/reports/2026-08-25-cell-pattern.md.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# ADD A CELL IN 5 STEPS
+# ──────────────────────────────────────────────────────────────────────────────
+#   1. CLAIM YOUR NUMBER FIRST, IN ITS OWN COMMIT.
+#        cp 31-cell-TEMPLATE.yaml NN-<name>.yaml
+#        sed -i '' 's/CHANGEME/<name>/g' NN-<name>.yaml
+#        # add `- NN-<name>.yaml` to kustomization.yaml, commit, push.
+#      The kustomization IS the number registry — there is no other one. Round 1
+#      had four agents in parallel and shipped a duplicate `20-`; the fix is that
+#      the FIRST commit on your branch claims the number, so a collision shows up
+#      as a merge conflict on one line instead of two files with the same prefix.
+#      Numbers are a rough ordering hint, not a dependency mechanism — Sveltos
+#      orders on `dependsOn`, never on the filename. Never renumber a live
+#      profile: the ClusterProfile name is `metadata.name`, but the review diff
+#      of a renumber is indistinguishable from a delete+create.
+#
+#   2. Write the payload under `platform/sveltos/manifests/<name>/`. Anything
+#      that is not a Helm chart goes here: the Namespace, ServiceAccounts,
+#      Services, CRs, NetworkPolicies. Sveltos reads the whole directory.
+#
+#   3. Set `dependsOn` (see below), `clusterSelector`, and the storage class.
+#
+#   4. Run the VERIFICATION CHECKLIST at the bottom of this file. All of it.
+#      Every round-1 defect that reached the live cluster would have been caught
+#      by one of those five commands.
+#
+#   5. Commit, push to `gitea`, let the coordinator push to `origin`. Nothing
+#      reaches the cluster until Flux fetches `origin/main` and Sveltos applies.
+#      `kubectl apply` is denied on purpose — the write path is git.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# clusterSelector — one label, always
+# ──────────────────────────────────────────────────────────────────────────────
+#   persona: infra     → contraxia only (the hub). THIS IS THE DEFAULT FOR A CELL.
+#   persona: platform  → arrakis only (the tenant).
+#   matchExpressions persona In [infra, platform] → both.
+# A cell runs on the hub because that is where the idle 32 cores, the tank pool
+# and KubeVirt are. If you are reaching for `platform`, you are writing a tenant
+# app, not a cell — copy 17-family-apps.yaml instead.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# dependsOn — the ordering contract
+# ──────────────────────────────────────────────────────────────────────────────
+# `dependsOn` names other ClusterProfiles by `metadata.name` (NOT filename) and
+# gates FIRST DEPLOYMENT ONLY. It does not tear your cell down when a dependency
+# later degrades, so "the observer must survive the observed" is NOT a reason to
+# omit it — 23-kubewall made exactly that mistake and shipped a `fast-zfs` PVC
+# with no `dependsOn: storage`.
+#
+#   storage    — REQUIRED if the cell has ANY PVC, including one a Helm chart
+#                creates for you. fast-zfs/fast-block/db-zfs do not exist until
+#                04-storage reconciles.
+#   virt-host  — a KubeVirt VirtualMachine or a DataVolume.
+#   infra-db   — a `postgresql.cnpg.io/v1` Cluster CR.
+#   tls-stack  — an Ingress with a cert-manager annotation, or a Certificate CR.
+#   dns        — nothing needs this; external-dns watches, it is not a dependency.
+#
+# ⚠️ NEVER put a CR in the same profile that installs its CRD via `helmCharts`.
+# Sveltos runs the Helm feature and the Resources feature INDEPENDENTLY, so the
+# CR races its own CRD on first reconcile. Split it: operator profile installs
+# the chart, consumer profile ships the CR and `dependsOn` the operator. This is
+# the same trap 04-storage documents for VolumeSnapshotClass and the reason
+# 26-infra-db exists separately from 21-forge.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# STORAGE — fast-zfs, and Pending is not a bug
+# ──────────────────────────────────────────────────────────────────────────────
+#   fast-zfs (default) · Filesystem · Retain · thin — the default for everything.
+#   db-zfs             · Filesystem · Retain — recordsize tuned for Postgres.
+#   fast-block         · raw zvol   · Delete — kubevirt-csi hot-plug ONLY.
+#
+# ALWAYS NAME THE CLASS EXPLICITLY even when you want the default: a claim that
+# rides `(default)` silently follows a future default change somewhere else.
+#
+# All three are `WaitForFirstConsumer`. A blank/standalone volume with no pod
+# scheduled against it sits in `PendingPopulation` forever — add
+# `cdi.kubevirt.io/storage.bind.immediate.requested: "true"` on DataVolumes.
+#
+# All three are thin-provisioned and expandable, so oversizing buys nothing and
+# undersizing costs a resize. Size for the working set, not the fear.
+#
+# ⚠️ DO NOT use `fast-block` for a CDI `http`/`registry` import. The CDI importer
+# runs as uid 107 non-root and cannot open a raw zvol device node — verified on
+# this cluster 2026-08-26, `blockdev: cannot open /dev/cdi-block-volume:
+# Permission denied`, DataVolume `devbox-root` wedged with 9 restarts, while the
+# Filesystem-mode `devbox-home` on fast-zfs imported to Succeeded 100%.
+# Details: docs/reports/2026-08-25-cell-pattern.md §Defects, D-1.
+#
+# ⚠️ PVCs stay `Pending` until the `tank` zpool exists on r730
+# (bootstrap/zfs/create-pool.sh, a hand-run operator step). That is the correct
+# ordering, not a fault — do NOT "fix" it by pointing a claim at another class.
+# As of 2026-08-26 the pool IS created (`kubectl get zfsnode -n openebs` → r730)
+# and claims bind normally.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# ACCESS PATH — pick ONE, in this order of preference
+# ──────────────────────────────────────────────────────────────────────────────
+#   1. ClusterIP + `kubectl port-forward`. The default. Costs no address and no
+#      attack surface, and port-forward already requires cluster credentials —
+#      which restores authentication to apps that have none. It reaches a pod
+#      through a NetworkPolicy (verified 2026-08-26: HTTP 200 to
+#      flux-operator-mcp, whose chart NetworkPolicy admits only ns mcp + cell).
+#      Choose this unless a human or a LAN device must reach the cell unattended.
+#
+#   2. Ingress on the hub edge (27/28-*, Track F) + a real `*.mershab.com` name.
+#      cert-manager `ClusterIssuer/letsencrypt-prod` is Ready and uses Cloudflare
+#      DNS-01, so a cert issues WITHOUT any inbound HTTP. external-dns publishes
+#      the record off the Ingress. Add `dependsOn` on the edge profile.
+#
+#   3. LoadBalancer on a LAN VIP. Only when something on the LAN speaks a raw
+#      protocol (SSH, a git-over-SSH remote, a pairing port).
+#        ⚠️ ARP-PROBE BEFORE YOU CLAIM. lan-pool (192.168.2.240–.250) OVERLAPS
+#          the router's DHCP scope. Cilium will assign a squatted address and the
+#          Service will show a healthy EXTERNAL-IP that is unreachable — this hit
+#          Gitea on .242.
+#            ping -c 1 -W 700 192.168.2.<n>; arp -n 192.168.2.<n>
+#          A MAC other than r730's 18:66:da:ed:9b:c4 means TAKEN.
+#        Then add a row to docs/vip-allocation.md IN THE SAME COMMIT, and pin the
+#        address with `lbipam.cilium.io/ips` so it survives Service re-creation.
+#        .242 and .245 are BURNED. .246–.250 probed free 2026-08-26.
+#
+#   4. NetBird mesh (29/30-*, Track G) for reach from off-LAN without a public
+#        edge.
+#
+# ⚠️ THE loadBalancerClass SPLIT — the single most destructive thing to get wrong
+#   NEVER set `spec.loadBalancerClass` on a LAN VIP Service. chisel-operator
+#   claims ONLY Services carrying `chisel.mershab.com/external` and then
+#   overwrites their `status.loadBalancer.ingress` — a classed LAN Service gets
+#   its VIP stolen and flaps. Classless == Cilium LB-IPAM == LAN. The class
+#   belongs to exactly ONE Service in the estate: the edge ingress controller's,
+#   because chisel binds one Service per ExitNode (1:1) and each ExitNode is a
+#   DigitalOcean droplet. Everything public rides that one ingress.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# NAMESPACE — where to declare it
+# ──────────────────────────────────────────────────────────────────────────────
+# DEFAULT: in your own `manifests/<name>/namespace.yaml`, delivered by the
+# policyRef. The cell owns its namespace and a `git rm` of the cell removes it.
+#
+# EXCEPTION, and the only one: if a hand-applied Secret (imagePullSecret, SSH
+# key, API token) must exist BEFORE the first reconcile, put the Namespace in
+# `clusters/baremetal/infrastructure/namespaces.yaml` instead, so the operator
+# has somewhere to put it. That is why `cell` and `velero` live there.
+#
+# A namespace named only as `releaseNamespace` on a helmChart is auto-created by
+# Helm — that is fine when nothing else needs to land in it first (ns `mcp`,
+# `cnpg-system`), but you cannot label it, so use an explicit Namespace object
+# the moment you need a PSA label.
+#
+# PSA: contraxia enforces no restricted default, so most cells need no label.
+# Add `pod-security.kubernetes.io/enforce: privileged` ONLY for a workload that
+# drives host kernel state (openebs, velero node-agent, projectsveltos).
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# SECRETS — named here, never written here
+# ──────────────────────────────────────────────────────────────────────────────
+# Cluster secrets are plaintext + gitignored (`*.secret.yaml`) and applied by
+# hand via ./secrets/apply.sh. NEVER commit, print or transmit one. In this file
+# you name the Secret and give the operator a `kubectl create secret` command
+# with PLACEHOLDERS ONLY, in the header, so it is impossible to miss.
+#
+# Make the reference `optional: true` wherever the cell can start without it.
+# A missing REQUIRED pull secret does not fail loudly — the kubelet emits
+# `FailedToRetrieveImagePullSecret` as a Warning and then retries an ANONYMOUS
+# pull, which on a private ghcr package returns `403 Forbidden`. That looks
+# exactly like "the tag does not exist" and cost round 1 a full misdiagnosis
+# (see docs/reports/2026-08-25-cell-pattern.md §orca-0).
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# RESOURCES — every cell states requests
+# ──────────────────────────────────────────────────────────────────────────────
+# A pod with no requests is BestEffort and is the FIRST thing the kubelet evicts
+# under node pressure. r730 is one node; there is nowhere for an evicted pod to
+# go. Round 1 shipped the forge of record — the thing that will hold every repo —
+# as BestEffort. Set requests on everything that holds state.
+#   requests = what it needs to be healthy while idle.
+#   memory limit = the guard rail. CPU limit = usually omit; CFS throttling a
+#   build on a box that is 90% idle is the wrong trade.
+#
+# ──────────────────────────────────────────────────────────────────────────────
+# VERIFICATION CHECKLIST — run ALL of it before you commit
+# ──────────────────────────────────────────────────────────────────────────────
+#   1. kustomize build platform/sveltos/clusterprofiles   # MUST pass
+#      kustomize build clusters/baremetal/infrastructure  # if you touched it
+#
+#   2. Prove the chart version EXISTS (not "should"):
+#        helm show chart <repo>/<chart> --version <v>
+#        helm show chart oci://<host>/<path>/<chart> --version <v>
+#      Sveltos v1.12 REJECTS `.x` wildcards. Pin EXACT.
+#
+#   3. Prove every values key you pin EXISTS:
+#        helm show values <chart> --version <v> | grep -n '<key>'
+#      A key that is not in the defaults is silently ignored — the pin does
+#      nothing and you find out in production. (Free-form maps like gitea's
+#      `gitea.config.*` are the exception; everything else must appear.)
+#
+#   4. RENDER, THEN PIN. Write your values block to a file and template it:
+#        helm template <rel> <chart> --version <v> -n <ns> -f /tmp/vals.yaml
+#      Then read the images out of the render and prove each TAG exists in its
+#      registry — `image.version: "0.0.66"` shipped to production when the real
+#      quay tag was `v0.0.66`. A chart that renders its CRDs from `templates/`
+#      instead of `crds/` will also deadlock its own first install if it ships a
+#      CR alongside them; the render is where you see that.
+#
+#   5. If you claimed a LAN VIP: `arp -n` it from OFF the box, and add the row to
+#      docs/vip-allocation.md in the same commit.
+#
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  # Sveltos identifies the profile by THIS, not by the filename. Renaming it is
+  # a delete + create; renumbering the file is not.
+  name: CHANGEME
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra          # the hub. See clusterSelector above.
+  dependsOn:
+    - storage                 # DELETE ONLY IF THIS CELL HAS NO PVC AT ALL.
+    # - virt-host             # a VirtualMachine / DataVolume
+    # - infra-db              # a postgresql.cnpg.io/v1 Cluster CR
+    # - tls-stack             # a Certificate CR or a cert-manager-annotated Ingress
+
+  # ── Helm-installed cells ── delete this whole block for a raw-manifest cell.
+  helmCharts:
+    - repositoryURL: https://example.invalid/charts   # OCI: base URL only, sveltos appends chartName
+      repositoryName: CHANGEME
+      chartName: CHANGEME
+      chartVersion: "0.0.0"   # EXACT. Proved with `helm show chart` — step 2.
+      releaseName: CHANGEME
+      releaseNamespace: CHANGEME
+      helmChartAction: Install
+      values: |
+        # Every key below proved present by `helm show values` — step 3.
+        # Every image tag below proved present in its registry — step 4.
+        replicaCount: 1
+        # Requests are not optional. See RESOURCES above.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            memory: 512Mi
+        persistence:
+          storageClass: fast-zfs   # named explicitly even though it is default
+          size: 10Gi
+        ingress:
+          # Charts default this ON surprisingly often, and a dead Ingress object
+          # on a cluster with no controller is worse than nothing. Opt in.
+          enabled: false
+        service:
+          type: ClusterIP        # access path 1. See ACCESS PATH above.
+
+  # ── the payload ── Namespace, SAs, Services, CRs, NetworkPolicies.
+  # Sveltos reads every file in the directory. Delete this block if the cell is
+  # pure Helm and needs nothing alongside it.
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/CHANGEME
+---
+# ══════════════════════════════════════════════════════════════════════════════
+# THE PAYLOAD — copy into platform/sveltos/manifests/CHANGEME/namespace.yaml.
+# Kept here rather than in a `_template` directory so a future agent handed ONLY
+# this file has everything. Delete this document when you copy the file.
+# ══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: CHANGEME
+  # labels:
+  #   # ONLY for a workload that drives host kernel state. See NAMESPACE above.
+  #   pod-security.kubernetes.io/enforce: privileged
+---
+# Access path 3 only — delete unless the cell genuinely needs a LAN address.
+# NO `spec.loadBalancerClass`. See THE loadBalancerClass SPLIT above.
+apiVersion: v1
+kind: Service
+metadata:
+  name: CHANGEME
+  namespace: CHANGEME
+  annotations:
+    # ARP-probed free, and a row added to docs/vip-allocation.md in this commit.
+    lbipam.cilium.io/ips: "192.168.2.CHANGEME"
+spec:
+  type: LoadBalancer
+  selector:
+    app: CHANGEME
+  ports:
+    - name: CHANGEME
+      port: 0
+      targetPort: 0
+---
+# Access path 1 hardening — an app with no authentication of its own is reachable
+# from EVERY pod in the cluster on its ClusterIP. This denies all pod-network
+# ingress while leaving `kubectl port-forward` working, because port-forward
+# enters from the host netns, not the pod network (verified 2026-08-26).
+# Delete if the cell authenticates its own callers or is meant to serve them.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: CHANGEME-default-deny-ingress
+  namespace: CHANGEME
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
