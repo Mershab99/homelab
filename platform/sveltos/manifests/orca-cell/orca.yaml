@@ -65,6 +65,10 @@ spec:
           image: 192.168.2.244:3000/mershab/orca:v1.4.188
           imagePullPolicy: IfNotPresent
           env:
+            # kubectl exec shells get the stock PATH, which misses the CLI the
+            # entrypoint installs into /data/.local/bin — without this, a bare
+            # `orca account add` in an exec session is "command not found".
+            - {name: PATH, value: "/data/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
             # Client-advertised address only — bind is always 0.0.0.0:6768.
             # The LB-IPAM VIP below; an IP is a valid --pairing-address and no
             # LAN DNS names this Service (split-horizon CoreDNS serves the
