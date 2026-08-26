@@ -1,0 +1,45 @@
+# orca-cell — the remote Orca server ("the cell"), on the bare-metal hub.
+#
+# WHY: today every agent terminal, worktree and build runs on the MacBook's
+# 32 GiB (shared with a 12 GiB OrbStack VM). contraxia is 32 cpu / ~94 GiB idling
+# at ~9% / ~14%. Moving `orca serve` here makes the Mac a thin client that can
+# sleep without killing the work. Ported from devex `apps/cell/orca` (decisions
+# #3 image-as-deb, #7 mesh, #11 single durable pet), which targeted `shamu`.
+#
+# persona=infra — this is a hub workload, not a tenant app. It lands on
+# contraxia (SveltosCluster mgmt/mgmt, persona=infra), the same cluster the
+# storage bundle targets.
+#
+# dependsOn storage: the PVC asks for `fast-zfs`, which does not exist until
+# 04-storage has reconciled (LocalPV-ZFS + the three StorageClasses). Without
+# this the StatefulSet would sit Pending on an unknown class through the whole
+# Longhorn→ZFS migration window.
+#
+# NO Helm chart: upstream ships no Orca chart. NO Gateway API: contraxia has no
+# GatewayClass. The Service is a plain type: LoadBalancer on the Cilium lan-pool.
+#
+# ── PREREQUISITE, hand-applied, NOT in git ──
+#   Secret `ghcr-pull` (kubernetes.io/dockerconfigjson) in ns `cell` — the image
+#   is a private ghcr package. Exact command:
+#   docs/reports/2026-08-25-orca-cell-contraxia.md, runbook step 2.
+#   Optional: Secret `github-mcp-token` (key GITHUB_PERSONAL_ACCESS_TOKEN) in the
+#   same namespace; the pod starts without it.
+#
+# ── VERSION SKEW IS THE #1 PAIRING FAILURE ──
+#   The image tag pins Orca 1.4.188 to match the Mac client. Bumping one side
+#   alone breaks `orca environment add`. See the report's risk section.
+apiVersion: config.projectsveltos.io/v1beta1
+kind: ClusterProfile
+metadata:
+  name: orca-cell
+spec:
+  clusterSelector:
+    matchLabels:
+      persona: infra
+  dependsOn:
+    - storage
+  policyRefs:
+    - kind: GitRepository
+      name: homelab
+      namespace: flux-system
+      path: ./platform/sveltos/manifests/orca-cell

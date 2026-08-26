@@ -1,0 +1,115 @@
+# Orca cell — the remote agent server. Ported from devex
+# `apps/cell/orca/{base,overlays/shamu}` (decisions #3, #7, #11) onto contraxia's
+# Sveltos delivery. The kustomize base/overlay split is deliberately NOT carried
+# over: there is exactly one cell here, and this repo delivers raw manifests
+# through policyRefs. Cell #2 = copy this dir + a new numbered ClusterProfile.
+#
+# StatefulSet, replicas 1, forever: `orca serve` is a single-host mode and the
+# pod is a durable pet — its PVC holds every agent's OAuth state. Never scale it.
+#
+# The `cell` Namespace is NOT here. It lives in
+# clusters/baremetal/infrastructure/namespaces.yaml so it exists before the
+# hand-applied `ghcr-pull` Secret needs a home (same reasoning as `velero`).
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: orca
+  namespace: cell
+spec:
+  serviceName: orca
+  replicas: 1
+  selector:
+    matchLabels: {app: orca}
+  template:
+    metadata:
+      labels: {app: orca}
+    spec:
+      securityContext:
+        fsGroup: 1000            # image runs as uid 1000 with HOME=/data
+      # The Service below is named `orca`, so legacy service links would inject
+      # ORCA_PORT=tcp://10.x.x.x:6768 into this pod and `orca serve --port` would
+      # exit with "Invalid --port value". entrypoint.sh already sanitises it;
+      # switching the links off removes the whole class of collision instead.
+      enableServiceLinks: false
+      # ghcr.io/mershab99/orca is a PRIVATE package. Applied by hand into ns
+      # `cell` (docs/reports/2026-08-25-orca-cell-contraxia.md §runbook step 2);
+      # never in git — decision #2's plaintext posture does not extend to a
+      # registry credential that also grants package:write.
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: orca
+          # PIN MUST TRACK THE MAC. The client refuses to pair across an app
+          # version gap; the Mac was 1.4.188 on 2026-08-25 (`orca status --json`
+          # → result.runtime.appVersion). Bump this and the Mac together, never
+          # one alone. Built by devex `make shamu-image` (linux/amd64).
+          image: ghcr.io/mershab99/orca:v1.4.188
+          imagePullPolicy: IfNotPresent
+          env:
+            # Client-advertised address only — bind is always 0.0.0.0:6768.
+            # The LB-IPAM VIP below; an IP is a valid --pairing-address and no
+            # LAN DNS names this Service (split-horizon CoreDNS serves the
+            # arrakis zone, not the hub's LB IPs).
+            - {name: PAIRING_ADDRESS, value: "192.168.2.241"}
+            # If the pod dies with a Chromium sandbox error, set this to "1" and
+            # record it in the report. Talos blocks nothing relevant by default,
+            # so it starts off. (images/orca/entrypoint.sh honours it.)
+            - {name: ORCA_NO_SANDBOX, value: "0"}
+          envFrom:
+            # github-mcp-server in http mode wants its own Authorization header
+            # per request, so repo .mcp.json files interpolate
+            # ${GITHUB_PERSONAL_ACCESS_TOKEN}. optional: the cell must come up
+            # before that Secret has ever been created.
+            - secretRef: {name: github-mcp-token, optional: true}
+          ports:
+            - {containerPort: 6768, name: orca}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          # The entire point of this track: agent terminals stop competing with
+          # the MacBook's 32 GiB (12 of which the OrbStack VM holds). The node is
+          # 32 cpu / ~94 GiB running at ~9% / ~14%. No CPU limit — a compile
+          # burst should eat idle cores, not get CFS-throttled; the memory limit
+          # is the real guard rail.
+          resources:
+            requests: {cpu: "4", memory: 16Gi}
+            limits: {memory: 48Gi}
+          readinessProbe:
+            tcpSocket: {port: 6768}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        # fast-zfs = the post-migration cluster default (04-storage). Named
+        # explicitly anyway: this claim must never silently follow a future
+        # default elsewhere. The class is thin-provisioned, expandable, and
+        # reclaimPolicy Retain — so 100Gi costs only what is written, grows in
+        # place, and survives an accidental PVC delete. Oversizing buys nothing.
+        storageClassName: fast-zfs
+        resources:
+          requests:
+            storage: 100Gi
+---
+# type: LoadBalancer, not Gateway API — contraxia has NO GatewayClass
+# (`kubectl get gatewayclass` → none; Cilium's Gateway API support is off here).
+# No loadBalancerClass: classless Services are what Cilium LB-IPAM claims, the
+# `external` class belongs to chisel-operator (public edge, wrong path for this).
+apiVersion: v1
+kind: Service
+metadata:
+  name: orca
+  namespace: cell
+  annotations:
+    # Pinned so PAIRING_ADDRESS above stays true across Service re-creation.
+    # lan-pool is 192.168.2.240–250; .240 is tenants/kmc-arrakis-lb.
+    # Cilium v1.19 — modern key; io.cilium/lb-ipam-ips (used by the arrakis CP
+    # Service) is the deprecated spelling of the same thing.
+    lbipam.cilium.io/ips: "192.168.2.241"
+spec:
+  type: LoadBalancer
+  selector: {app: orca}
+  ports:
+    - {name: orca, port: 6768, targetPort: 6768}
